@@ -49,17 +49,19 @@ function simulate_once(
         projections = (EpiBranch.kernel_projection(model.edge_kernel),), recorder = recorder,
         seed! = (best, members, r) -> _seed_network!(
             best, members, state, model.external_hazard, n_initial, Tobs, r;
-            initial_cases = sim_opts.initial_cases
+            initial_cases = sim_opts.initial_cases,
+            n_initial_given = sim_opts.n_initial_given
         ),
         introduction = _ext_active(model.external_hazard) ?
             (EpiBranch._ext_prepare(model.external_hazard), Tobs) : nothing,
+        seeded = sim_opts.initial_cases,
         targets = (inf, st) -> (
             (nb, _edge_kernel(model, inf, k, st, from))
                 for (k, nb) in enumerate(model.adjacency[inf])
-                if !is_infected(st.individuals[nb])
         ),
-        # Tracing reaches every neighbour, infected or not, so it reads the
-        # adjacency directly rather than the susceptible-only `targets`.
+        # Infected neighbours stay in `targets`: `HostImmunity` holds them back
+        # until `susceptible_again_time`, after which they can be reinfected.
+        # Tracing reads the adjacency directly.
         contacts = (inf, st) -> model.adjacency[inf]
     )
 
@@ -73,11 +75,13 @@ end
 # time 0 unless chosen `initial_cases` or an external hazard seed it.
 function _seed_network!(
         best, members, state, extsrc, n_initial, Tobs, rng;
-        initial_cases = nothing
+        initial_cases = nothing, n_initial_given = false
     )
     EpiBranch._seed_candidates!(
         best, members, state, extsrc, Tobs, rng, initial_cases
     ) do b, m, r
+        n_initial_given && n_initial > length(m) &&
+            throw(ArgumentError("n_initial cannot exceed the number of nodes ($(length(m)))"))
         for id in randperm(r, length(m))[1:min(n_initial, length(m))]
             b[id] = 0.0
         end
@@ -85,6 +89,8 @@ function _seed_network!(
     return nothing
 end
 
-function EpiBranch._validate_initial_cases(model::NetworkProcess, opts::SimOpts)
-    return EpiBranch._validate_initial_case_ids(opts, length(model.adjacency))
+supports_initial_cases(::NetworkProcess) = true
+
+function EpiBranch.validate_initial_cases(model::NetworkProcess, opts::SimOpts)
+    return EpiBranch.validate_initial_case_ids(opts, length(model.adjacency))
 end

@@ -1,0 +1,1 @@
+`age_bands` builds an age distribution for `demographics` from band edges and population proportions, or from a table with lower, upper and proportion columns. It returns a `MixtureModel` of `Uniform` distributions.

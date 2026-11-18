@@ -1,0 +1,1 @@
+Two per-case costs added in this release are gone: recording a terminal outcome built a new key name for every case, and settling a case boxed the set of traced contacts. Together they made simulation about 10 to 23% slower on every model.

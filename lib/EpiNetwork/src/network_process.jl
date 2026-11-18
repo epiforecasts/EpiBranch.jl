@@ -85,7 +85,7 @@ model = ModelSpec(NetworkProcess(adjacency, Exponential(2.0));
     progression = [Transition(:recovered; from = :infection, delay = 6.0, terminal = true)])
 ```
 """
-struct NetworkProcess{K, E} <: TransmissionModel
+struct NetworkProcess{K, E} <: FixedPopulationProcess
     adjacency::Vector{Vector{Int}}   # adjacency[i] = graph neighbours of node i
     edge_kernel::K                   # contact interval: shared, callable, or per-edge
     from::Union{Symbol, Nothing}     # infectious-window start; nothing → derive from progression
@@ -147,17 +147,6 @@ population_size(::NetworkProcess) = NoPopulation()
 # A node's contacts are its graph neighbours, so contact tracing has a set to
 # act along here (see `EpiBranch.trace_contacts!`).
 EpiBranch.supplies_contacts(::NetworkProcess) = true
-
-# The race honours a `stopping_rules` entry, or a non-default `max_cases` or
-# `max_generations`, but leaves those two keywords' defaults off, so an
-# existing run over the fixed graph keeps going to extinction or `max_time`
-# unless a cap is explicitly asked for (`_drop_default_shortcuts`).
-_honours_termination_controls(::NetworkProcess) = false
-
-# See `_warn_uncovered_terminal_states` in EpiBranch's branching_process.jl.
-function _validate_process_windows(m::NetworkProcess, progression)
-    return _warn_uncovered_terminal_states(m.until, progression; from = m.from)
-end
 
 function Base.show(io::IO, m::NetworkProcess)
     n = length(m.adjacency)

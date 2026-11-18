@@ -219,15 +219,15 @@ population_size(::RoutedNetwork) = NoPopulation()
 # `max_generations`, but leaves those two keywords' defaults off, so an
 # existing run over the fixed network keeps going to extinction or `max_time`
 # unless a cap is explicitly asked for (`_drop_default_shortcuts`).
-_honours_termination_controls(::RoutedNetwork) = false
+honours_termination_controls(::RoutedNetwork) = false
 
 # Each route closes independently at the earliest of its own `until` states
-# (see `_warn_uncovered_terminal_states` in EpiBranch's branching_process.jl),
+# (see `warn_uncovered_terminal_states` in EpiBranch's branching_process.jl),
 # so a terminal state missing from one route's `until` leaves that route open
 # even if every other route covers it.
-function _validate_process_windows(m::RoutedNetwork, progression)
+function validate_process_windows(m::RoutedNetwork, progression)
     for w in m.windows
-        _warn_uncovered_terminal_states(w.until, progression; route = w.name, from = w.from)
+        warn_uncovered_terminal_states(w.until, progression; route = w.name, from = w.from)
     end
     return nothing
 end
@@ -344,12 +344,14 @@ function simulate_once(
         risks = EpiBranch.transmission_risks(model), recorder = recorder,
         seed! = (best, members, r) -> _seed_network!(
             best, members, state, model.external_hazard, sim_opts.n_initial, Tobs, r;
-            initial_cases = sim_opts.initial_cases
+            initial_cases = sim_opts.initial_cases,
+            n_initial_given = sim_opts.n_initial_given
         ),
         introduction = _ext_active(model.external_hazard) ?
             (EpiBranch._ext_prepare(model.external_hazard), Tobs) : nothing,
+        seeded = sim_opts.initial_cases,
         contacts = (inf, st) -> _route_contacts(
-            routes, interventions, st.individuals[inf], inf, st.rng
+            routes, interventions, individuals(st)[inf], inf, st.rng
         )
     )
 
@@ -357,7 +359,8 @@ function simulate_once(
     return state
 end
 
-# One route's susceptible targets, each with that route's kernel resolved for
+# One route's targets (infected neighbours included; `HostImmunity` holds them
+# back until they are susceptible again), each with the kernel of that route resolved for
 # the pair: a shared distribution, a per-edge vector, a covariate callable or a
 # `PairKernel`, exactly as `NetworkProcess` resolves its edge kernel (see
 # `_resolve_kernel`). A `reach` that proposes its own contacts is wrapped so
@@ -368,7 +371,6 @@ function _route_targets(w::RouteWindow, tracing::Bool)
     return (inf, st) -> (
         (nb, _resolve_kernel(kernel, adjacency, inf, pos, st, w.from))
             for (pos, nb) in enumerate(adjacency[inf])
-            if !is_infected(st.individuals[nb])
     )
 end
 
@@ -391,13 +393,13 @@ EpiBranch.route_pair_kernel(t::_TracedProposals, infector_id, target_id, state) 
     EpiBranch.route_pair_kernel(t.reach, infector_id, target_id, state)
 EpiBranch.pending_beyond(t::_TracedProposals, state, reinfects::Bool) =
     EpiBranch.pending_beyond(t.reach, state, reinfects)
-EpiBranch._resumable_route(t::_TracedProposals) = EpiBranch._resumable_route(t.reach)
+EpiBranch.resumable_route(t::_TracedProposals) = EpiBranch.resumable_route(t.reach)
 # The redraw must propose through `t`, not `t.reach`. `t.reach`'s own
-# `_resume_route!` calls `propose_along` on whatever object it is given, so
+# `resume_route!` calls `propose_along` on whatever object it is given, so
 # passing `t` here routes the redraw to `t`'s `propose_along` method. That
 # method records it in `t.proposed`, for tracing to read back.
-EpiBranch._resume_route!(t::_TracedProposals, race, ri, old_max_time, traits) =
-    EpiBranch._resume_route!(t.reach, race, ri, old_max_time, traits, t)
+EpiBranch.resume_route!(t::_TracedProposals, race, ri, old_max_time, traits) =
+    EpiBranch.resume_route!(t.reach, race, ri, old_max_time, traits, t)
 
 function EpiBranch.propose_along(
         t::_TracedProposals, infector_id, state, open_t, close_t, capped, traits
@@ -405,7 +407,7 @@ function EpiBranch.propose_along(
     contacts = EpiBranch.propose_along(t.reach, infector_id, state, open_t, close_t, capped, traits)
     if t.tracing
         contacts = collect(contacts)
-        # A resumed redraw (`EpiBranch._resume_route!`) opens this infector
+        # A resumed redraw (`EpiBranch.resume_route!`) opens this infector
         # again, from where the previous call left off, so a second call here
         # adds to what the first already recorded rather than replacing it.
         append!(
@@ -416,6 +418,8 @@ function EpiBranch.propose_along(
     return contacts
 end
 
-function EpiBranch._validate_initial_cases(model::RoutedNetwork, opts::SimOpts)
-    return EpiBranch._validate_initial_case_ids(opts, model.n)
+supports_initial_cases(::RoutedNetwork) = true
+
+function EpiBranch.validate_initial_cases(model::RoutedNetwork, opts::SimOpts)
+    return EpiBranch.validate_initial_case_ids(opts, model.n)
 end

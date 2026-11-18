@@ -21,7 +21,7 @@ made available by `using EpiBranch` and have to be written in full. The
 network and household names, such as [`NetworkProcess`](@ref) and
 [`HouseholdProcess`](@ref), come from the satellite packages and need `using
 EpiNetwork` or `using EpiHouseholds`. A function whose name ends in `!`
-changes one of its arguments in place. For the hooks the engine dispatches on,
+changes one of its arguments in place. For the hooks called during a simulation,
 that argument is the simulation state or the person being resolved, and the
 first argument is the intervention, step or action the method is written for.
 The last section, [For extension authors](@ref), lists what you need only to
@@ -41,6 +41,7 @@ fixed set of contacts. [`ModelSpec`](@ref) adds the rest of the scenario.
 BranchingProcess
 Infectiousness
 OffspringTimes
+RenewalOffspring
 transmission_timing
 implied_R
 EpiBranch.MultiTypeOffspring
@@ -66,6 +67,11 @@ ModelSpec
 single_type_offspring
 EpiBranch.has_single_type_law
 EpiBranch.offspring_law_unchanged
+EpiBranch.reporting_probability
+EpiBranch.reporting_from
+EpiBranch.onset_law
+EpiBranch.scale_mean
+EpiBranch.sum_offspring
 ```
 
 ## Approximate population dynamics
@@ -119,19 +125,20 @@ max_generations)` with the exact, individual-based simulation.
 
 The state holds the susceptibles of each type, set from the population size
 and the number immune. `PerContactDepletion` removes them one potential contact
-at a time, as the individual-based simulation does. `StartOfGenerationDepletion`
-thins the contacts of a type by its susceptible share at the start of the
-generation, in one binomial draw capped at the susceptibles left, as
-discrete-generation models usually do. With the second rule and an offspring
-law with a closed-form sum (`Poisson`, `NegBin`, `Binomial`), a generation
-costs the same whatever the number of cases.
+at a time, as the individual-based simulation does, but draws the result
+without visiting every contact. With a `Poisson` or `NegBin` offspring law the
+cost of a generation is independent of the number of cases; with another law it
+is proportional to the number of new infections.
+
+A [`ModelSpec`](@ref) built on the process, with a `generation_length`, also
+runs here, and applies its `GroupVaccination` campaigns to the susceptibles of
+each type between generations.
 
 ```@docs
 simulate_by_generation
 GenerationCounts
 AbstractDepletion
 PerContactDepletion
-StartOfGenerationDepletion
 ```
 
 ## Population characteristics
@@ -144,6 +151,7 @@ group membership, and willingness to be vaccinated. Pass them to `ModelSpec` as
 ```@docs
 clinical_presentation
 demographics
+age_bands
 transmission_traits
 groups
 group_attribute
@@ -164,10 +172,17 @@ Reporting
 Hospitalisation
 Death
 Recovery
+Testing
+AbstractAssay
+Assay
+within_host
+EpiBranch.trajectory_value
+EpiBranch.measure
 exclusive_probabilities
 is_terminal
 terminal_event
 terminal_target
+produced_states
 progression_loglik
 ```
 
@@ -205,9 +220,7 @@ OnIsolation
 TraceEveryone
 TraceNobody
 PreviouslyTraced
-AlwaysEligible
 SymptomaticParent
-NoTracing
 AnyOf
 AllOf
 NoneOf
@@ -232,6 +245,8 @@ RingVaccination
 MassVaccination
 GroupVaccination
 AbstractEffectMode
+EpiBranch.effect_mode
+EpiBranch.dose_label
 LeakyMode
 AllOrNothingMode
 ```
@@ -249,6 +264,7 @@ Infections
 ReportedCases
 opened_at
 After
+PerGroup
 CapacityConstrained
 capacity_usage
 default_capacity_priority
@@ -290,7 +306,9 @@ Extinction
 MaxCases
 MaxGenerations
 MaxTime
+AbstractSimulationState
 SimulationState
+individuals
 Base.copy(::SimulationState)
 Individual
 EpiBranch.IndividualState
@@ -316,6 +334,29 @@ type for anything else you want logged.
 ContactRecorder
 NoContactRecorder
 ExposedContactRecorder
+```
+
+## Case definitions
+
+A case definition classifies each case (confirmed, probable, suspected, or
+whatever a surveillance system uses) from what has happened to them. Pass one
+as the `case_definition` of a [`ModelSpec`](@ref). It is evaluated each
+time an event is recorded on a case, such as symptoms, a trace or a test result.
+The classification can therefore change over time, and
+[`case_classification_changes`](@ref) lists each change with its time.
+[`linelist`](@ref) shows the final classification as `case_classification`. A definition
+of your own is a function `history -> label`, or a subtype of
+[`AbstractCaseDefinition`](@ref) with an `EpiBranch.classify_case` method.
+
+```@docs
+AbstractCaseDefinition
+ClinicalCaseDefinition
+CaseHistory
+event_time
+has_happened
+case_classification
+case_classification_changes
+EpiBranch.case_definition
 ```
 
 ## Information about each case
@@ -353,16 +394,21 @@ realised generation intervals.
 
 ```@docs
 linelist
+censor_linelist
 event_time_metadata
+EpiBranch.reported_value
 contacts
 chain_statistics
 compute_trace_level!
 realised_generation_interval
 realised_generation_intervals
+realised_serial_interval
+realised_serial_intervals
 containment_probability
 is_extinct
 generation_R
 weekly_incidence
+incidence
 summarise
 scenario_sweep
 ```
@@ -380,8 +426,10 @@ distribution of chain sizes (as in epichains).
 reproduction_number
 extinction_probability
 epidemic_probability
+emergence_probability
 probability_contain
 end_of_outbreak_probability
+end_of_outbreak_inputs
 proportion_transmission
 proportion_cases_individual
 proportion_cases_offspring
@@ -463,7 +511,7 @@ A [`Signal`](@ref) reads a population quantity off a simulated
 [`SimulationState`](@ref) over a reporting step: [`TransitionCount`](@ref)
 (new cases per step) or [`Prevalence`](@ref) (cases currently in a state).
 [`SignalData`](@ref) pairs several of these, each with a measurement density
-of your own, and scores them all against the same simulated path, rather
+of your own, and evaluates their likelihoods on one shared simulated path, rather
 than letting separate `~` statements each simulate their own outbreak:
 
 ```julia
@@ -550,7 +598,6 @@ given size are seen. Add one to a model with `observation = ...`.
 ```@docs
 ObservationModel
 NoObservation
-PerCaseObservation
 MinimumSize
 ChainDetection
 observe
@@ -558,6 +605,13 @@ ChainSizeLaw
 ThinnedChainSize
 TruncatedChainSize
 DetectedChainSize
+```
+
+### Poisson mixtures
+
+```@docs
+PoissonLognormal
+PoissonWeibull
 ```
 
 ### Reproduction number varying between chains
@@ -580,6 +634,7 @@ pairwise_surv_loglik
 PairwiseSurvivalData
 InfectionLayer
 compile_contact_pairs
+EpiBranch.seeded_hosts
 ContactPairsLayout
 MassActionHazard
 SumHazard
@@ -638,13 +693,33 @@ Conditional
 EpiBranch.resolve
 ```
 
+## Population
+
+The population is specified once and every model reads it.
+
+```@docs
+Population
+NoPopulation
+EpiBranch.SinglePopulation
+EpiBranch.GroupedPopulation
+EpiBranch.population
+```
+
+How the groups of a population meet is a mixing value, which a
+[`BranchingProcess`](@ref) and a [`MixingProcess`](@ref) both take.
+
+```@docs
+Mixing
+FrequencyDependent
+DensityDependent
+```
+
 ## Default placeholders
 
 The values shown as defaults in signatures when a setting is left out, such as
 `max_cases = NoCases()`.
 
 ```@docs
-NoPopulation
 NoAttributes
 NoTypeLabels
 NoAgeDistribution
@@ -708,6 +783,15 @@ EpiBranch.recorder
 EpiBranch.progression
 EpiBranch.process
 EpiBranch.n_types
+EpiBranch.FixedPopulationProcess
+EpiBranch.process_window
+EpiBranch.honours_termination_controls
+EpiBranch.supports_initial_cases
+EpiBranch.validate_initial_cases
+EpiBranch.validate_initial_case_ids
+EpiBranch.seed_initial_cases!
+EpiBranch.validate_process_windows
+EpiBranch.warn_uncovered_terminal_states
 ```
 
 ### Writing a route that proposes its own contacts
@@ -723,6 +807,10 @@ EpiBranch.proposes_own_contacts
 EpiBranch.propose_along
 EpiBranch.route_pair_kernel
 EpiBranch.pending_beyond
+EpiBranch.resume_route!
+EpiBranch.resumable_route
+EpiBranch.MassAction
+EpiBranch.mass_action_schedule
 ```
 
 ### Stopping rules
@@ -738,14 +826,18 @@ EpiBranch.honoured_without_should_stop
 
 ```@docs
 EpiBranch.initialise_individual!
+EpiBranch.initialise_episode!
 EpiBranch.resolve_individual!
 EpiBranch.on_infection_settled!
 EpiBranch.trace_contacts!
+EpiBranch.admit_trace_actions!
+EpiBranch.is_ring_hop
 EpiBranch.traces_contacts
 EpiBranch.traces_source
 EpiBranch.has_effect
 EpiBranch.supplies_contacts
 EpiBranch.keep_active
+EpiBranch.InterventionWrapper
 EpiBranch.competing_risk
 Risk
 EpiBranch.HostSusceptibility
@@ -756,13 +848,19 @@ EpiBranch.HostImmunity
 EpiBranch.infectious_removal_time
 EpiBranch.risk_applies
 EpiBranch.standing_block
+EpiBranch.may_lapse
+EpiBranch.prevents_contact
 EpiBranch.infinite_draw_is_final
 intervention_time
 EpiBranch.reset!
 EpiBranch.abort_infection!
 EpiBranch.infection_aborted_time
+EpiBranch.prevent_symptoms!
+EpiBranch.symptoms_prevented_time
 set_isolated!
 clear_isolated!
+EpiBranch.flag_for_isolation!
+EpiBranch.traced_isolation_time
 ```
 
 #### Isolation and contact tracing rules
@@ -801,6 +899,7 @@ EpiBranch.action_cache
 EpiBranch.apply_actions!
 EpiBranch.action_candidates
 EpiBranch.acts_on_population
+EpiBranch.gates_on_population_clock
 EpiBranch.needs_contacts
 EpiBranch.may_revise
 EpiBranch.is_settled
@@ -811,6 +910,8 @@ EpiBranch.record_capacity_use!
 EpiBranch.resource_key
 EpiBranch.refused_action
 EpiBranch.held_until
+EpiBranch.count_dosing
+EpiBranch.GroupDosing
 ```
 
 #### Start triggers
@@ -839,6 +940,13 @@ EpiBranch.records_contacts
 EpiBranch.sample_value
 ```
 
+### Writing a case definition
+
+```@docs
+EpiBranch.classify_case
+EpiBranch.relevant_events
+```
+
 ### Writing an observation model
 
 An observation model defines [`observe`](@ref) for the closed-form likelihood
@@ -854,11 +962,18 @@ EpiBranch.apply_observation!
 EpiBranch.calendar_multiplier
 EpiBranch.next_calendar_break
 EpiBranch.calendar_shape
+EpiBranch.calendar_bound
 EpiBranch.PiecewiseConstantCalendar
 EpiBranch.SmoothCalendar
 EpiBranch.pair_kernel
 pairwise_surv_loglik_by_component
 EpiBranch.infection_likelihood_compatible
+EpiBranch.validate_infection_likelihood
+EpiBranch.infection_layer_columns
+EpiBranch.layer_host_times
+EpiBranch.validate_removal_gap_keys
+EpiBranch.REMOVAL_STRETCHES_KEY
+EpiBranch.LEAKY_REMOVAL_STRETCHES_KEY
 EpiBranch.susceptibility_components
 EpiBranch.susceptibility_host_times
 EpiBranch.binding_release
@@ -890,10 +1005,7 @@ helpers the package may change at any time.
 
 ```@docs
 EpiBranch.get_generation_time
-EpiBranch._settle_case!
-EpiBranch._at_case!
 EpiBranch.population_size
-EpiBranch._create_individual
 EpiBranch.logsumexp
 EpiBranch.required_fields
 EpiBranch._validate_required_fields

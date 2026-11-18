@@ -1,0 +1,1 @@
+`HybridProcess` now checks, for a scalar approximation, that the approximation's transmission and removal rates match the exact model's, and that the exact progression is a single exponential removal with no latent period. A mismatch throws an `ArgumentError` rather than changing the dynamics at the switch.

@@ -16,9 +16,19 @@ public resolve
 # Intervention interface: a package subtyping `AbstractIntervention`
 # overrides these.
 public initialise_individual!
+public initialise_episode!
 public resolve_individual!
 public on_infection_settled!
 public trace_contacts!
+# What a tracer written outside the package needs to work with the built-in
+# ones: ration its follow-up actions through whatever wraps it, learn that it
+# is called for a ring member, and hand a traced contact over to `Isolation`.
+public admit_trace_actions!
+public is_ring_hop
+public flag_for_isolation!
+public traced_isolation_time
+# How the line list reports a state key.
+public reported_value
 public traces_contacts
 public traces_source
 public has_effect
@@ -30,6 +40,8 @@ public required_fields
 public infectious_removal_time
 public risk_applies
 public standing_block
+public may_lapse
+public prevents_contact
 # The built-in risk sources the guides link to, and the kernel trait for a
 # kernel with mass at infinity.
 public HostImmunity
@@ -39,6 +51,15 @@ public analytic_offspring_effect
 # End an infection early from any intervention hook, and read when it ended.
 public abort_infection!
 public infection_aborted_time
+
+# Prevent symptoms from any intervention hook, and read from when.
+public prevent_symptoms!
+public symptoms_prevented_time
+
+# Testing: `trajectory_value` reads the within-host trajectory stored by
+# `within_host`. A new `AbstractAssay` defines `measure`.
+public trajectory_value
+public measure
 
 # Isolation eligibility: whether an isolation time counts as a detection.
 public records_isolation
@@ -64,6 +85,17 @@ public propose_along
 public route_pair_kernel
 public pending_beyond
 
+# Mass action, the reference route that proposes its own contacts: a
+# `MassAction` reach for a closed population (what `HomogeneousProcess` and
+# `MixingProcess` build), and the hazard schedule a pairwise likelihood reads
+# for it. `resume_route!` and `resumable_route` are the hooks a route
+# declaring `proposes_own_contacts` uses to redraw a window capped at the time
+# limit of the run when a later `simulate(model, state; max_time)` resumes the race.
+public MassAction
+public mass_action_schedule
+public resume_route!
+public resumable_route
+
 # Transmission-model interface. A new process subtypes `TransmissionModel`
 # and extends these seam methods:
 #   - candidate generation: `generate_offspring` (offspring-driven) or
@@ -78,12 +110,19 @@ public attributes
 public observation
 public recorder
 public population_size
+public population
+public SinglePopulation
+public GroupedPopulation
 public n_types
 public model_generation_time
 # The two remaining layers of a `ModelSpec`, alongside the four above: the
 # within-host progression and the transmission model it wraps.
 public progression
 public process
+public case_definition
+# The two hooks of a case definition written outside the package.
+public classify_case
+public relevant_events
 #   - `transmission_risks` to contribute per-pair competing risks (e.g. a
 #     network's per-edge probability), resolved alongside the built-ins.
 public transmission_risks
@@ -132,6 +171,9 @@ public pair_kernel
 public calendar_multiplier, next_calendar_break, calendar_shape,
     PiecewiseConstantCalendar, SmoothCalendar
 public infection_likelihood_compatible
+# Traits the closed forms ask instead of matching `Reporting` and
+# `clinical_presentation` by type.
+public reporting_probability, reporting_from, onset_law
 public susceptibility_components, susceptibility_host_times, HazardScaling
 public binding_release
 public removal_gap_host_times, removal_gap_host_times_withdrawn
@@ -139,7 +181,8 @@ public removal_block_probability
 public record_removal!, revise_removal!, withdraw_removal!
 public removal_stretches
 public InterventionAction, intervention_actions, action_draw!, action_cache,
-    apply_actions!, action_candidates, acts_on_population, needs_contacts,
+    apply_actions!, action_candidates, acts_on_population, gates_on_population_clock,
+    needs_contacts,
     may_revise, is_settled
 
 # Pairwise survival likelihood: how its two accumulation passes group rows
@@ -204,3 +247,66 @@ public sellke_race!
 # The state a case's infectious window opens at, derived from the composed
 # progression.
 public infectious_from
+
+# A fixed-population structure written outside the package: subtype
+# `FixedPopulationProcess` for the shared defaults, say through `process_window`
+# which states open and close its window, whether it takes `initial_cases` and
+# seeds them with `seed_initial_cases!`, and whether the `max_cases` and
+# `max_generations` defaults apply.
+public FixedPopulationProcess
+public process_window
+public supports_initial_cases
+public validate_initial_cases
+public validate_initial_case_ids
+public seed_initial_cases!
+public honours_termination_controls
+public validate_process_windows
+public warn_uncovered_terminal_states
+
+# Building and checking an infection layer from a simulated outbreak: the
+# per-host columns, the removal-stretch columns the likelihood reads under
+# `REMOVAL_STRETCHES_KEY` and `LEAKY_REMOVAL_STRETCHES_KEY`, and the checks that
+# refuse a model the layer cannot represent.
+public infection_layer_columns
+public layer_host_times
+public validate_infection_likelihood
+public validate_removal_gap_keys
+public REMOVAL_STRETCHES_KEY
+public LEAKY_REMOVAL_STRETCHES_KEY
+
+# Hooks the extending guides ask a package to define for its own
+# intervention, trace rate, delay or action.
+#   - `keep_active` says which targets an intervention still acts on;
+#   - `traces`, `draw_trace_delay` and `apply_trace!` are the methods behind
+#     `TraceRate`, `TraceDelay` and `TraceAction`;
+#   - `capacity_key`, `capacity_time_key`, `resource_key`, `held_until` and
+#     `refused_action` are what a capacity-limited intervention defines;
+#   - `InterventionWrapper` is the supertype of a wrapper of your own.
+public keep_active
+public traces
+public draw_trace_delay
+public apply_trace!
+public capacity_key
+public capacity_time_key
+public resource_key
+public held_until
+public count_dosing
+public GroupDosing
+public refused_action
+public InterventionWrapper
+
+# Offspring and vaccination hooks named in the guides: how a model draws the
+# offspring of a case and says whether that law is unchanged by the
+# interventions in the run, the effect mode and dose label of a vaccination,
+# and the helper that populates a state lazily.
+public draw_offspring
+public offspring_law_unchanged
+public has_single_type_law
+public lazily_populate!
+public effect_mode
+public dose_label
+
+# `simulate_by_generation` with a `multiplier`: the mean-scaling rule and the
+# one-step generation total an offspring family can define.
+public scale_mean
+public sum_offspring

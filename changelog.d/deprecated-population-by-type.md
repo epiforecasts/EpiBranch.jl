@@ -1,0 +1,1 @@
+`population_by_type` in `simulate_by_generation` is deprecated: give the model its sizes by type, `BranchingProcess(...; population = Population(sizes))`, and `simulate_by_generation` reads them from there.

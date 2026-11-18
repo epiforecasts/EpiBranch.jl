@@ -14,9 +14,6 @@ function _window_open(ind::Individual{T}, from::Symbol) where {T}
         _state_real(ind.state, Symbol(from, :_time), T(Inf))
 end
 
-# Earliest of the `until` removal states' times (Inf if none reached).
-_window_close(ind::Individual, until::Tuple) = _close_at(ind, _time_keys(until))
-
 # The state keys holding the times of `states`. Building a key concatenates two
 # names, which costs more than reading it, so a loop that closes many windows on
 # the same states builds the keys once.
@@ -114,6 +111,9 @@ _innermost(iv::AbstractIntervention) = iv
 function _discovers_actions(iv::AbstractIntervention)
     return _has_own_method(intervention_actions, typeof(iv), AbstractIntervention)
 end
+
+# The `route` of the opening a chosen initial case is seeded through.
+const _SEEDED_ROUTE = -1
 
 # One case's window on one route: who it is, which route, and when that window
 # opened and closes. Every proposal a case makes along a route shares one of
@@ -477,7 +477,7 @@ end
 
 # Applies `_certain_release` to each source in turn, stopping at the first whose
 # releases do not bind. Tuples are walked element by element, as in
-# `_any_risk_blocks`, which resolves each call at compile time.
+# `_walk_risks`, which resolves each call at compile time.
 _fold_release(release, ::Tuple{}, parent, contact, state, transmission_time) = release, true
 @inline function _fold_release(
         release, sources::Tuple, parent, contact, state, transmission_time
@@ -531,15 +531,15 @@ function _permanently_blocked(
         _any_standing(_never_skip, model_risks, parent, contact, state, transmission_time) ||
         # A `Scheduled` wrapper can still turn its block off later unless the
         # wrapped intervention's protection persists outside the active
-        # window (`_may_lapse`), so such a risk is never read as standing here,
+        # window (`may_lapse`), so such a risk is never read as standing here,
         # however certain it looks at this one proposal.
-        _any_standing(_may_lapse, interventions, parent, contact, state, transmission_time)
+        _any_standing(may_lapse, interventions, parent, contact, state, transmission_time)
 end
 
 _never_skip(source) = false
 
 # Whether any source not skipped by `skip` contributes a standing risk, walked
-# like `_any_risk_blocks` to keep each call resolved at compile time.
+# like `_walk_risks` to keep each call resolved at compile time.
 _any_standing(skip, ::Tuple{}, parent, contact, state, transmission_time) = false
 @inline function _any_standing(
         skip, sources::Tuple, parent, contact, state, transmission_time
@@ -562,11 +562,12 @@ function _any_standing(skip, sources, parent, contact, state, transmission_time)
 end
 
 # Whether the composed risks block `parent` infecting `contact` at the proposed
-# `transmission_time`, and whether that block is permanent (see
-# `_permanently_blocked`). A risk may read the exposure from the contact's
-# `infection_time`, but a proposed contact is still susceptible, so it holds
-# nothing yet: set it to the proposed time for the resolution, and put it back
-# if the contact is blocked, leaving it as it was.
+# `transmission_time`, whether the block stops the meeting itself rather than
+# only the infection (see `prevents_contact`), and whether the block is
+# permanent (see `_permanently_blocked`). A risk may read the exposure from the
+# contact's `infection_time`, but a proposed contact is still susceptible, so it
+# holds nothing yet: set it to the proposed time for the resolution, and put it
+# back if the contact is blocked, leaving it as it was.
 function _proposal_blocked(
         state::SimulationState, parent, contact, transmission_time,
         model_risks, interventions, builtin_blocks = _sellke_builtin_risk_blocks
@@ -577,10 +578,11 @@ function _proposal_blocked(
     # Scheduled risks use the proposed contact time even when earlier contacts
     # were blocked. Outside this evaluation the clock records accepted infections.
     state.max_infection_time = transmission_time
-    blocked = _composed_risks_block(
+    level = _composed_risks_block(
         state, parent, contact, transmission_time,
         model_risks, interventions, builtin_blocks
     )
+    blocked = level != _NOT_BLOCKED
     permanent = blocked && _permanently_blocked(
         state, parent, contact, transmission_time, model_risks, interventions
     )
@@ -590,7 +592,7 @@ function _proposal_blocked(
         ) : nothing
     state.max_infection_time = previous_clock
     blocked && (contact.infection_time = previous)
-    return blocked, permanent, release
+    return blocked, level == _CONTACT_PREVENTED, permanent, release
 end
 
 """
@@ -685,7 +687,7 @@ function _warn_contactless(model, interventions)
     supplies_contacts(model) && return nothing
     names = unique(
         String[
-            string(nameof(typeof(_unwrap_scheduled(iv))))
+            string(nameof(typeof(_innermost(iv))))
                 for iv in interventions
                 if traces_contacts(iv) || (_proposes_actions(iv) && needs_contacts(iv))
         ]
@@ -794,7 +796,7 @@ function _walk_ring!(
             for id in keep_active(iv, state, pending, is_new)
                 k = get(pos, id, 0)
                 k == 0 && continue
-                push!(frontier, state.individuals[id])
+                push!(frontier, individuals(state)[id])
             end
         end
     end
@@ -811,56 +813,13 @@ again (see [`HostImmunity`](@ref EpiBranch.HostImmunity)). Read from
 declares a `:susceptible_again` step, with no extra bookkeeping cost where it
 does not.
 
-A literal [`Transition`](@ref) is recognised directly from its `state`
-field, which costs nothing and is exact regardless of its `probability`. Any
-other `AbstractClinicalTransition` is probed instead: a disposable individual
-is given `state.attributes`, to keep a `Transition` reading one of them from
-failing on a missing key, then marked to make `_transition_selected` take
-every `probability` gate it meets unless the probability is exactly zero; it
-is run through every transition's `initialise_individual!` and
-`resolve_individual!` on a copy of `state.rng`, and the result is read back
-off `susceptible_again_time`. That marking keeps detection exact regardless
-of probability on the custom-transition path too, instead of leaving it to
-the single draw a real run would make.
-
-The probe never runs a model's own per-individual `setup` (`HouseholdProcess`
-sets `:household` there, for instance), so a custom transition that reads a
-key only `setup` supplies raises a `KeyError` on the probe, even though a
-real run always has it. Treating that as "reinfection cannot be ruled out",
-rather than letting it abort the whole simulation, costs only the
-bookkeeping that keeps a settled member's proposals pending: the real run
-never hits this path, because the key is always set there.
+A step is read through [`produced_states`](@ref): the progression allows
+reinfection when any step declares `:susceptible_again`, whatever its
+`probability`. A custom step that sets `susceptible_again_time` without
+declaring the state is ignored.
 """
 function _allows_reinfection(state)
-    transitions = state.transitions
-    any(t -> t isa Transition && t.state === :susceptible_again, transitions) && return true
-    any(t -> !(t isa Transition), transitions) || return false
-    probe = try
-        _reinfection_probe(state)
-    catch e
-        e isa KeyError && return true
-        rethrow()
-    end
-    return isfinite(susceptible_again_time(probe))
-end
-
-function _reinfection_probe(state)
-    probe = Individual(; id = 0, infection_time = zero(_timetype(state)))
-    probe.state[_REINFECTION_PROBE_KEY] = true
-    saved_rng = state.rng
-    state.rng = copy(saved_rng)
-    try
-        _apply_attributes!(state.attributes, state.rng, probe)
-        for t in state.transitions
-            initialise_individual!(t, probe, state)
-        end
-        for t in state.transitions
-            resolve_individual!(t, probe, state)
-        end
-    finally
-        state.rng = saved_rng
-    end
-    return probe
+    return any(t -> :susceptible_again in produced_states(t), state.transitions)
 end
 
 """
@@ -932,7 +891,10 @@ blocked introduction is followed by the next one from the same hazard. The risks
 of isolation and quarantine are not: they
 stand in for removing an infector, and an introduction's source is outside the
 population. Omit `introduction` for a model whose seeds are index cases, which
-are put to no risk at all. An introduced case's `:infection_route` is
+are put to no risk at all. `seeded`, the ids of chosen initial cases, are
+seeded as index cases even when `introduction` is given: infected at the seed
+whatever the risks, and recorded with `:seeded` set rather than as
+introductions. An introduced case's `:infection_route` is
 `:external`, including on a model that also names routes.
 
 A `progression` whose transitions can reach `:susceptible_again` (see
@@ -948,7 +910,7 @@ settled member is ever offered again.
 `max_time` ends the race at that time: individuals whose infection would fall
 later are left uninfected, and the state is exactly the full run's state
 restricted to infections up to `max_time`. The exception is a mass-action route
-(`_MassAction`) whose infectious window never closes, which samples its contacts
+(`MassAction`) whose infectious window never closes, which samples its contacts
 only up to `max_time`: there the cut run is a draw of the same process rather
 than the same draw. Returns `true` when the race ran
 until no candidate infection remained (the population reached extinction) and
@@ -999,7 +961,8 @@ function _sellke_race_typed!(
         routes = nothing, interventions = (), contacts = nothing, risks = (),
         introduction = nothing, watches = nothing, projections = nothing,
         max_time = Inf, max_generation = typemax(Int), stopping_rules = (),
-        recorder::ContactRecorder = NoContactRecorder(), resume = nothing
+        recorder::ContactRecorder = NoContactRecorder(), resume = nothing,
+        seeded = nothing
     )
     # A model either passes `routes`, a collection of `(RouteWindow, targets)`
     # pairs, or the single-route shorthand `from`/`until`/`targets`. The
@@ -1198,6 +1161,15 @@ function _sellke_race_typed!(
 
     # The seeds' own opening: no infector, so nothing about it is ever read.
     resume === nothing && push!(openings, _RouteOpening(0, 0, zero(T), T(Inf)))
+    # The chosen initial cases' opening, which the risk check skips: they are
+    # infected at the seed whatever the risks.
+    if resume === nothing && seeded !== nothing
+        push!(openings, _RouteOpening(0, _SEEDED_ROUTE, zero(T), T(Inf)))
+        # Like the seeds' own opening, it is never watched, but it takes the
+        # slot its position in `openings` implies.
+        live && _watch_opening!(watch, 0, false)
+    end
+    seeded_ids = seeded === nothing ? nothing : Set{Int}(seeded)
     # Proposals a redraw has unlinked, which stay in `proposals` and the heap
     # until they are compacted away.
     orphans = 0
@@ -1228,13 +1200,16 @@ function _sellke_race_typed!(
     if resume === nothing
         for k in 1:m
             best[k] < Inf || continue
-            seeded = best[k]
+            seeded_time = best[k]
             best[k] = T(Inf)
-            _propose!(race, k, 1, seeded)
+            _propose!(
+                race, k, seeded_ids !== nothing && members[k] in seeded_ids ? 2 : 1,
+                seeded_time
+            )
         end
     else
         # A route that samples its own contacts rather than listing them
-        # (`_MassAction`) only drew them up to the race's own time limit where
+        # (`MassAction`) only drew them up to the race's own time limit where
         # its window never closes, and remembered which group pairs it cut
         # short (see `propose_along`'s `capped`). Resuming redraws exactly
         # those, from the limit the previous call stopped at: the exponential
@@ -1242,7 +1217,7 @@ function _sellke_race_typed!(
         # extended window is the same draw as sampling the whole window at
         # once would have been.
         for (ri, (_, route_targets)) in enumerate(rts)
-            _resume_route!(route_targets, race, ri, resume.max_time, traits)
+            resume_route!(route_targets, race, ri, resume.max_time, traits)
         end
     end
 
@@ -1316,9 +1291,10 @@ function _sellke_race_typed!(
         # risks read. A risk of your own that reads the infector should
         # therefore return nothing when the two are the same individual. An
         # index case is put to no risk at all.
-        source = infector_id == 0 ? ind : state.individuals[infector_id]
-        if checks && (infector_id != 0 || introduction !== nothing)
-            blocked, permanent, certain_release = _proposal_blocked(
+        source = infector_id == 0 ? ind : individuals(state)[infector_id]
+        is_seeded = opening.route == _SEEDED_ROUTE
+        if checks && !is_seeded && (infector_id != 0 || introduction !== nothing)
+            blocked, prevented, permanent, certain_release = _proposal_blocked(
                 state, source, ind, bt, risks,
                 opening.route == 0 ? introduction_interventions :
                     route_interventions[opening.route],
@@ -1331,7 +1307,12 @@ function _sellke_race_typed!(
                 # proposal, and a permanent one keeps drawing only if it says
                 # the pair's draws still matter (see the `_sellke_race!`
                 # docstring).
-                keeps_drawing = _logs_blocked(members, source, ind) &&
+                # A block that stops the meeting leaves no contact to record, to
+                # keep drawing for or to list on the infector.
+                prevented && opening.route != 0 && _on_route(
+                    (_, rt) -> _withdraw_contact!(rt, race, source, ind), rts, opening.route
+                )
+                keeps_drawing = !prevented && _logs_blocked(members, source, ind) &&
                     records_contacts(recorder, source, ind, state, bt)
                 if !may_block
                     _discard_proposal!(members, best, j)
@@ -1405,7 +1386,7 @@ function _sellke_race_typed!(
         ind.state[:infected] = true
         ind.state[:index] = infector_id == 0
         if infector_id != 0
-            infector = state.individuals[infector_id]
+            infector = individuals(state)[infector_id]
             ind.parent_id = infector.id
             ind.generation = infector.generation + 1
             ind.chain_id = infector.chain_id
@@ -1421,6 +1402,8 @@ function _sellke_race_typed!(
                 (w, rt) -> _record_infection!(rt, infector, ind, w, routes !== nothing),
                 rts, opening.route
             )
+        elseif is_seeded
+            ind.state[:seeded] = true
         elseif introduction !== nothing
             ind.state[:infection_route] = :external
         end
@@ -1489,10 +1472,27 @@ function _sellke_race_typed!(
         self_proposing && (
             capped_generation = _open_routes!(rts, open_ctx, capped_generation, true)
         )
-        traced = _trace_from!(
-            state, ind, typed_interventions, case_contacts, pos, tracing
-        )
-        _trace_source!(state, ind, typed_interventions, tracing_source)
+        # `traced` is assigned once, from the `let`: the closure below captures
+        # it, and reassigning a captured variable boxes it on every settled case.
+        traced = let traced = _trace_from!(
+                state, ind, typed_interventions, case_contacts, pos, tracing
+            )
+            found = _trace_source!(state, ind, typed_interventions, tracing_source)
+            # An infector isolated by being traced back becomes eligible for
+            # forward tracing under a rule such as `OnIsolation()` only now. The
+            # walk made when it settled could not see that.
+            if found !== nothing
+                retraced = _trace_from!(
+                    state, found, typed_interventions, case_contacts, pos, tracing
+                )
+                # The action pass picks its candidates from the traced set,
+                # which must therefore include contacts reached from the infector.
+                if retraced !== nothing
+                    traced = traced === nothing ? retraced : union!(traced, retraced)
+                end
+            end
+            traced
+        end
         # A model with nothing in `acting` never calls `_admit_actions!`
         # inside `_apply_case_actions!`. Installing the sink anyway, a
         # `Dict{Any, Any}` write and delete per settled case, would cost
@@ -1573,15 +1573,15 @@ function _finish_race!(
         race.state.continuation = nothing
         _return_buffers!(race.buffers)
     else
-        # A route reporting a pending window but no working `_resume_route!`
+        # A route reporting a pending window but no working `resume_route!`
         # would otherwise lose its leftover contacts without warning the
         # moment `simulate(model, state; max_time)` resumes this race.
         for (_, route_targets) in rts
-            _pending_beyond(route_targets, race) && !_resumable_route(route_targets) &&
+            _pending_beyond(route_targets, race) && !resumable_route(route_targets) &&
                 throw(
                 ArgumentError(
                     "route `$(nameof(typeof(route_targets)))` reports pending_beyond " *
-                        "but has no matching `_resume_route!`, so the contacts its " *
+                        "but has no matching `resume_route!`, so the contacts its " *
                         "capped window still owes cannot be redrawn on resume; " *
                         "`simulate(model, state; max_time)` cannot continue this race"
                 )
@@ -1653,7 +1653,7 @@ _return_buffers!(b::_RaceBuffers) = _return_pooled!(b)
 A race cut off by `max_time`, a stopping rule or `max_generation`, kept on
 [`SimulationState`](@ref)'s `continuation` field so [`simulate`](@ref)'s
 continuation method can resume where it stopped: the routes it was running,
-with whatever bookkeeping a route keeps on itself (such as `_MassAction`'s
+with whatever bookkeeping a route keeps on itself (such as `MassAction`'s
 cut group pairs), the members it raced over, its `contacts`/`introduction`/
 `watches`/`projections`, the case and generation caps besides `max_time`
 itself, and the buffers its queue and every other pending proposal live in.
@@ -1818,6 +1818,11 @@ _case_contacts(contacts, rts, race, max_generation) = contacts
 _route_open(route_targets, ind, w::RouteWindow) = window_open(ind, w)
 _route_may_block(route_targets) = false
 _route_builtin_blocks(route_targets) = _sellke_builtin_risk_blocks
+# Take back a contact the race has just found was never made, for a route that
+# lists the contacts it creates on their infector. A route over a fixed
+# population records no contact for a blocked proposal and has nothing to
+# take back.
+_withdraw_contact!(route_targets, race, parent, contact) = nothing
 function _record_infection!(route_targets, infector, ind, w, named)
     push!(infector.secondary_case_ids, ind.id)
     named && (ind.state[:infection_route] = w.name)
@@ -1833,7 +1838,7 @@ the race to walk as `(target_id, kernel)` pairs (an adjacency list, or
 anything callable that way). `false` by default. Declare `true` for a route
 whose contacts are cheaper to sample than to list, such as a spatial kernel
 over a large population or contact with everyone in an area: mass action
-(`_MassAction`) declares it for exactly this reason. A route declaring `true`
+(`MassAction`) declares it for exactly this reason. A route declaring `true`
 must also implement [`propose_along`](@ref EpiBranch.propose_along) and
 [`route_pair_kernel`](@ref EpiBranch.route_pair_kernel), and may implement
 [`pending_beyond`](@ref EpiBranch.pending_beyond).
@@ -1856,7 +1861,7 @@ EpiBranch.proposes_own_contacts); every other route lists its targets instead
 time itself. The race does the rest: a target already settled, or the
 infector itself, is dropped from what this returns, without `route` having to
 check either; the per-individual `susceptibility` and `infectiousness` `route`
-reads off `state.individuals[...]` are not scaled again afterwards. `traits`
+reads off `individuals(state)[...]` are not scaled again afterwards. `traits`
 is whether any individual in the run departs from the defaults of each, which
 `route` may use to skip the pair-by-pair lookup where neither does, as mass
 action does; it is only ever a hint, since reading the records directly gives
@@ -1904,26 +1909,37 @@ of them could still wane and `reinfects` holds.
 """
 pending_beyond(route, state, reinfects::Bool) = false
 
-# Resuming a cut race (`simulate`'s continuation method): redraw, from
-# `old_max_time`, whatever `route_targets` sampled only up to the previous
-# call's `max_time` because a window with no natural close left it capped
-# (`propose_along`'s `capped`; see `pending_beyond`). The default is a no-op,
-# right for a route that lists its targets instead and so never caps a window
-# in the first place; `_MassAction` is the only built-in route that needs
-# this, in `mass_action.jl`. Redrawn contacts are submitted through
-# `proposer` (`propose_along(proposer, ...)`). A wrapper around
-# `route_targets` that needs to see them, such as a tracing wrapper recording
-# what the race considers, passes itself as `proposer` here instead of
-# defaulting to `route_targets` and letting the redraw bypass it.
-_resume_route!(route_targets, race, ri, old_max_time, traits, proposer = route_targets) = nothing
+"""
+    resume_route!(route, race, ri, old_max_time, traits, proposer = route)
 
-# Whether `route_targets` has a `_resume_route!` method of its own, so a race
-# it leaves with a pending window (`pending_beyond`) can actually be redrawn
-# on resume rather than silently dropped by the no-op default above.
-# `_MassAction` is the only built-in route that overrides this, in
-# `mass_action.jl`; a third-party route declaring `proposes_own_contacts` and
-# a non-default `pending_beyond` needs to override it too.
-_resumable_route(route_targets) = false
+Resume a cut race (`simulate`'s continuation method): redraw, from
+`old_max_time`, whatever `route` sampled only up to the previous call's
+`max_time` because a window with no natural close left it capped (the `capped`
+argument of [`propose_along`](@ref EpiBranch.propose_along); see
+[`pending_beyond`](@ref EpiBranch.pending_beyond)).
+
+The default is a no-op, which suits a route that lists its targets and never
+caps a window. Redrawn contacts are submitted through `proposer`
+(`propose_along(proposer, ...)`). A wrapper around `route` that needs to see
+them, such as a tracing wrapper recording what the race considers, passes
+itself as `proposer` so that the redraw does not bypass it. A route that
+overrides this must also declare it with
+[`resumable_route`](@ref EpiBranch.resumable_route).
+"""
+resume_route!(route, race, ri, old_max_time, traits, proposer = route) = nothing
+
+"""
+    resumable_route(route) -> Bool
+
+Whether `route` has a [`resume_route!`](@ref EpiBranch.resume_route!) method of
+its own. If it does, a race the route leaves with a pending window
+([`pending_beyond`](@ref EpiBranch.pending_beyond)) is redrawn on resume
+instead of being silently dropped by the no-op default. Defaults to `false`; a
+route that declares [`proposes_own_contacts`](@ref EpiBranch.proposes_own_contacts)
+and a non-default `pending_beyond` overrides both. A wrapper forwards it to the
+route it wraps.
+"""
+resumable_route(route) = false
 
 # Whether a route left contacts past the time limit that it never proposed, so
 # that a race which ran out of candidates was cut off rather than extinct. A
@@ -1937,7 +1953,7 @@ end
 # Propose the infections one case's window on one route leads to. The default
 # asks the route for every susceptible target and its pair kernel, and draws one
 # contact per pair, keeping those inside the window. A route that finds its own
-# contacts (`proposes_own_contacts`), such as mass action (`_MassAction`),
+# contacts (`proposes_own_contacts`), such as mass action (`MassAction`),
 # answers through the public `propose_along` instead: it returns the
 # `(target_id, time)` pairs themselves, and the race does the submitting and
 # the processed/reinfects bookkeeping that every other route gets through
@@ -1966,7 +1982,7 @@ function _propose_along!(
         state, rng, pos, processed, watch, snapshot, watched_keys,
         route_projections, full_snapshot, reinfects,
     ) = race
-    infector = state.individuals[infector_id]
+    infector = individuals(state)[infector_id]
     proj = route_projections[ri]
     for (target_id, kernel) in route_targets(infector_id, state)
         k = get(pos, target_id, 0)
@@ -2254,7 +2270,7 @@ function _records_changed!(
     # `case == 0` is a deferred action's own event, which settles nobody: it
     # has no position of its own to pre-stamp against its own writes, and the
     # scan below, over every tracked host, already covers whomever it wrote to.
-    case == 0 || _refresh_host!(snapshot, watched_keys, state.individuals[members[case]], case)
+    case == 0 || _refresh_host!(snapshot, watched_keys, individuals(state)[members[case]], case)
     kept = 0
     for oi in w.open
         if openings[oi].close_t >= now
@@ -2280,7 +2296,7 @@ function _records_changed!(
             _untrack_at!(w, idx)
             continue
         end
-        ind = state.individuals[members[k]]
+        ind = individuals(state)[members[k]]
         # The routes this host's own moved keys already explain, so the
         # undeclared-read check below compares only a route none of them
         # cover.
@@ -2457,13 +2473,13 @@ function _redraw_moved!(
     for oi in sort!(collect(keys(redo)))
         members_hit = redo[oi]
         opening = openings[oi]
-        source = state.individuals[opening.infector]
+        source = individuals(state)[opening.infector]
         passed_since = _passed_since(pops, passed, oi)
         for (id, kernel) in _on_route((_, t) -> t(opening.infector, state), rts, opening.route)
             j = get(pos, id, 0)
             (j == 0 || (processed[j] && !reinfects)) && continue
             members_hit === nothing || j in members_hit || continue
-            m = source.infectiousness * state.individuals[id].susceptibility
+            m = source.infectiousness * individuals(state)[id].susceptibility
             m <= 0 && continue
             pair_rng = stream(rng, (opening.infector, id), (:contact, opening.route))
             lower = now - opening.open_t - slack

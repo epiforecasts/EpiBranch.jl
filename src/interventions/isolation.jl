@@ -8,9 +8,10 @@
 """
     IsolationEligibility
 
-Rule for which cases can be isolated: [`SymptomaticOnly`](@ref) (the default)
-or [`AllCases`](@ref). Whether an eligible case is actually isolated also
-depends on the intervention's `test_sensitivity`.
+Rule for which cases can draw a test result: [`SymptomaticOnly`](@ref) (the
+default) or [`AllCases`](@ref). Isolation is timed from symptom onset, so under
+either rule a case with no onset is never isolated. Whether an eligible case is
+isolated also depends on the `test_sensitivity` of the intervention.
 
 To write a new rule, define a subtype and a method of
 [`is_eligible_for_isolation`](@ref EpiBranch.is_eligible_for_isolation).
@@ -54,10 +55,13 @@ end
 struct SymptomaticOnly <: IsolationEligibility end
 is_eligible_for_isolation(::SymptomaticOnly, ind, state) = !is_asymptomatic(ind)
 
-"""Every case is eligible, including asymptomatic ones (mass-testing
-scenarios)."""
+"""Every case is eligible to draw a test result, including asymptomatic ones.
+
+Isolation is timed from symptom onset, so a case with no onset is never
+isolated. `AllCases` widens who draws `:test_positive`, and isolation itself
+follows [`SymptomaticOnly`](@ref). Mass testing of asymptomatic cases needs a
+custom rule and an isolation time that does not depend on onset."""
 struct AllCases <: IsolationEligibility end
-is_eligible_for_isolation(::AllCases, ind, state) = true
 
 # Fields an eligibility rule reads beyond the onset time every isolation needs.
 # A custom rule extends `required_fields` for its own type; the default is none.
@@ -69,7 +73,7 @@ required_fields(::SymptomaticOnly) = [:asymptomatic]
 """
     Isolation(; onset_to_isolation_delay, duration,
               eligibility = SymptomaticOnly(), test_sensitivity = 1.0,
-              post_isolation_transmission = 0.0)
+              post_isolation_transmission = 0.0, prevents_contact = true)
 
 Isolate cases a delay after symptom onset, so they stop (or reduce) onward
 transmission. Isolation applies to cases; traced contacts who are not yet
@@ -88,13 +92,24 @@ known cases are quarantined through [`ContactTracing`](@ref).
   start from it, but no transmission is prevented. There is no default
   because indefinite isolation is a modelling choice to make explicitly.
 - `eligibility`: who can be isolated, [`SymptomaticOnly`](@ref) (default) or
-  [`AllCases`](@ref) (for example with mass testing).
+  [`AllCases`](@ref), which lets asymptomatic cases draw a test result but
+  does not isolate them, because isolation is timed from symptom onset.
 - `test_sensitivity`: probability that an eligible case is detected and
   isolated (default 1). A number, a distribution or a function
-  `(rng, ind) -> ...`, drawn once per case.
+  `(rng, ind) -> ...`, drawn once per case. A [`Testing`](@ref) step in the
+  model's `progression` can be given instead: a case is then detected when its
+  own test, taken from its within-host trajectory, is positive. Isolation still
+  starts `onset_to_isolation_delay` after onset. Analytic effects
+  (`analytic_offspring_effect`) need a number or a distribution and refuse this form.
 - `post_isolation_transmission`: fraction of normal transmission that
   continues while isolated, between 0 and 1 (default 0, perfect isolation;
   0.25 would be leaky isolation).
+- `prevents_contact`: whether an isolated case has no contact with the people
+  it would have infected (default `true`, as in hospital), so the contacts the
+  isolation blocks are left out of [`contacts`](@ref) and tracing does not
+  reach them. Set it to `false` for isolation at home, where household
+  contacts continue: the isolation still prevents infection, but the contact
+  is recorded and can be traced. See [`prevents_contact`](@ref EpiBranch.prevents_contact).
 
 After a finite `duration` the case transmits again at its normal
 rate from the release time ([`isolation_release_time`](@ref)) until its
@@ -120,7 +135,8 @@ model = BranchingProcess(NegBin(2.5, 0.16), LogNormal(1.6, 0.5))
 spec = ModelSpec(model; interventions = [iso], attributes = clinical_presentation(incubation_period = LogNormal(1.5, 0.5)))
 state = simulate(spec; max_cases = 500)
 
-# Leaky isolation lasting 14 days, open to all cases
+# Leaky isolation lasting 14 days; AllCases lets every case draw a test result,
+# but only cases with an onset are isolated
 Isolation(
     onset_to_isolation_delay = 1.0, duration = 14.0,
     eligibility = AllCases(), post_isolation_transmission = 0.25,
@@ -136,6 +152,7 @@ struct Isolation{E <: IsolationEligibility, D, S, U} <: AbstractIntervention
     test_sensitivity::S
     post_isolation_transmission::Float64
     duration::U
+    prevents_contact::Bool
 end
 
 function Isolation(;
@@ -143,13 +160,16 @@ function Isolation(;
         duration,
         eligibility::IsolationEligibility = SymptomaticOnly(),
         test_sensitivity = 1.0,
-        post_isolation_transmission::Real = 0.0
+        post_isolation_transmission::Real = 0.0,
+        prevents_contact::Bool = true
     )
     return Isolation(
         eligibility, onset_to_isolation_delay, test_sensitivity,
-        Float64(post_isolation_transmission), duration
+        Float64(post_isolation_transmission), duration, prevents_contact
     )
 end
+
+prevents_contact(iso::Isolation) = iso.prevents_contact
 
 required_fields(iso::Isolation) = union([:onset_time], required_fields(iso.eligibility))
 # Read from the entry recorded for this isolation, not the folded span. While
@@ -248,17 +268,39 @@ function initialise_individual!(iso::Isolation, individual, state)
     clear_isolated!(individual)
     delete!(individual.state, :_isolation_handle)
     delete!(individual.state, :_isolation_start)
+    _draw_test_positive!(iso, individual, state)
+    return nothing
+end
+
+# A reinfection redraws the test result and ends the earlier episode's own
+# self-isolation, but leaves any quarantine standing on the person alone.
+function initialise_episode!(iso::Isolation, individual, state)
+    reset!(iso, individual)
+    _draw_test_positive!(iso, individual, state)
+    return nothing
+end
+
+function _draw_test_positive!(iso::Isolation, individual, state)
     if is_eligible_for_isolation(iso.eligibility, individual, state)
         rng = stream(state.rng, individual.id, (:isolation, :test))
-        sens = sample_value(iso.test_sensitivity, rng, individual)
-        individual.state[:test_positive] = rand(rng) < sens
+        individual.state[:test_positive] = _draw_test_positive(iso.test_sensitivity, rng, individual)
     else
         individual.state[:test_positive] = false
     end
     return nothing
 end
 
+# `test_sensitivity` as a probability: drawn once per case when the case is
+# created.
+function _draw_test_positive(sensitivity, rng, individual)
+    return rand(rng) < sample_value(sensitivity, rng, individual)
+end
+
+# A sensitivity given as a step in the progression is read from the case once
+# the progression has resolved, instead of being drawn at creation.
+_read_test_positive!(sensitivity, iso, individual, state) = nothing
 function resolve_individual!(iso::Isolation, individual, state)
+    _read_test_positive!(iso.test_sensitivity, iso, individual, state)
     # An isolation already standing on the individual is a quarantine written by
     # `ContactTracing`: a case's contacts are traced when the *infector* is
     # settled, which is before the contact itself resolves. Self-isolation from
@@ -277,7 +319,8 @@ function resolve_individual!(iso::Isolation, individual, state)
 
     # Three isolation pathways, each independent:
     #   - test_isolation_time:  onset + delay, occurs iff test_positive
-    #   - _traced_isolation_time: set by ContactTracing's FlagOnly action
+    #   - traced_isolation_time: set by the FlagOnly action of ContactTracing
+    #     or by any intervention through `flag_for_isolation!`,
     #     for traced contacts, occurs iff contact was traced and has an onset
     # Isolation occurs at the earlier of any active pathway. A
     # test-negative-but-traced contact is still isolated via tracing.
@@ -290,7 +333,7 @@ function resolve_individual!(iso::Isolation, individual, state)
     # the recorded time is held back to the onset.
     onset = onset_time(individual)
     traced_time = isnan(onset) ? Inf :
-        max(_state_real(individual.state, :_traced_isolation_time, Inf), onset)
+        max(traced_isolation_time(individual), onset)
     test_time = is_test_positive(individual) ?
         _self_isolation_time(iso, individual, state) : Inf
     final = min(test_time, traced_time)

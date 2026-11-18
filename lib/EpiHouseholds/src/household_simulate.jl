@@ -34,6 +34,12 @@ function simulate_once(
         model::HouseholdProcess, sim_opts::SimOpts;
         interventions, attributes, progression, observation, recorder, rng
     )
+    sim_opts.n_initial_given && throw(
+        ArgumentError(
+            "HouseholdProcess seeds one index case in every household and does not " *
+                "support n_initial; use initial_cases to choose the index cases"
+        )
+    )
     from = something(model.from, infectious_from(progression))
     Tobs = model.obs_end
 
@@ -65,6 +71,7 @@ function simulate_once(
         ),
         introduction = _ext_active(model.external_hazard) ?
             (EpiBranch._ext_prepare(model.external_hazard), Tobs) : nothing,
+        seeded = initial_cases,
         targets = (inf, st) -> (
             (oid, EpiBranch._state_pair_kernel(model.kernel, inf, oid, st, from))
                 for oid in model.members[model.household_of[inf]] if oid != inf
@@ -95,8 +102,10 @@ function _seed_clique!(
     return nothing
 end
 
-function EpiBranch._validate_initial_cases(model::HouseholdProcess, opts::SimOpts)
-    return EpiBranch._validate_initial_case_ids(opts, length(model.household_of))
+supports_initial_cases(::HouseholdProcess) = true
+
+function EpiBranch.validate_initial_cases(model::HouseholdProcess, opts::SimOpts)
+    return EpiBranch.validate_initial_case_ids(opts, length(model.household_of))
 end
 
 # The race's `members` are every person in id order, so a household's ids are
