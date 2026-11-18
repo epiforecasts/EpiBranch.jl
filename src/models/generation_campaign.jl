@@ -149,8 +149,8 @@ function _doses_by_type(rng::AbstractRNG, c::_Campaign, ::CapacityConstrained, t
     return rand(rng, Multinomial(doses, Float64.(sizes) ./ sum(sizes)))
 end
 
-# The doses of a campaign for a single type, whose budget is shared or has the
-# one entry of a budget per group.
+# The doses of a campaign for a single type, with a shared budget or a budget
+# of one entry per group.
 _single_doses(c::_Campaign{<:AbstractVector}, t0, t1) = _interval_doses(c, t0, t1, only(c.budget))
 _single_doses(c::_Campaign, t0, t1) = _interval_doses(c, t0, t1)
 

@@ -491,8 +491,8 @@ function _continue_generations(
     )
 end
 
-# A single type keeps its count, susceptibles and size as plain integers, so a
-# generation allocates no vectors for them.
+# A single type keeps its count, susceptibles and size as plain integers and
+# allocates no vectors for them in a generation.
 function _run_generations(
         model::BranchingProcess, offspring, state::GenerationCounts, campaigns,
         counts::Int; max_generations::Integer, rng::AbstractRNG, multiplier
