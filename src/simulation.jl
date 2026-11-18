@@ -65,9 +65,9 @@ individuals feeding back on transmission (see
 bounded by `max_time` alone: pass `max_cases = nothing` and
 `max_generations = nothing`, and no `stopping_rules`, `condition`,
 `index_types` or `initial_cases`. The result is then a
-[`CountSimulationState`](@ref), with the same daily counts in distribution as
-the individual simulation of the same model and the people built when they are
-asked for. Any other run returns a [`SimulationState`](@ref).
+[`CountSimulationState`](@ref). Its daily counts have the same distribution as
+those of the individual simulation of the same model, and its people are built
+when they are asked for. Any other run returns a [`SimulationState`](@ref).
 
 The probability and delay of each step in a case's natural history are set
 on the transitions in the `progression` of a [`ModelSpec`](@ref). Each takes

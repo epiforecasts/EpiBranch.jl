@@ -2,20 +2,20 @@
 #
 # A model in which nothing about an individual feeds back on transmission has
 # the same joint distribution of daily counts whether each person is simulated
-# or only each day's cohort of new cases. The cohort infected on day `s` has
-# `n` members, each with an infectiousness `ν` of mean one. The members of a
-# cohort share nothing, so the cohort's total infectiousness `Λ` is the sum of
-# its `ν`: `Gamma(n k, 1/k)` when `ν ~ Gamma(k, 1/k)` (a negative binomial
-# offspring law, or `RenewalOffspring` with a finite `k`) and `n` when every
-# `ν` is one. The cohort infects `Poisson(Λ R(t) g(t - s))` people on day `t`,
-# independently for each `t`, with `R(t)` the mean offspring number at `t` and
-# `g` the generation time on the daily lags.
+# or only the cohort of new cases on each day. The cohort infected on day `s`
+# has `n` members, each with an infectiousness `ν` of mean one. The members of
+# a cohort share nothing, so the total infectiousness `Λ` of the cohort is the
+# sum of its `ν`: `Gamma(n k, 1/k)` when `ν ~ Gamma(k, 1/k)` (a negative
+# binomial offspring law, or `RenewalOffspring` with a finite `k`), and `n`
+# when every `ν` is one. The cohort infects `Poisson(Λ R(t) g(t - s))` people
+# on day `t`, independently for each `t`, with `R(t)` the mean offspring number
+# at `t` and `g` the generation time on the daily lags.
 #
-# The result keeps, for each day, the cohort's count, its `Λ` and how many
-# infections it received from each earlier cohort. That is enough to continue
-# the run and to build the people when they are asked for: the infections that
-# a cohort caused are shared out among its members in proportion to the `ν`
-# of each, which are `Dirichlet(k, …, k)` given `Λ` (equal shares when every
+# The result keeps, for each day, the count of the cohort, its `Λ` and the
+# number of infections it received from each earlier cohort. That is enough to
+# continue the run and to build the people when they are asked for. The
+# infections caused by a cohort are shared among its members in proportion to
+# their `ν`, which are `Dirichlet(k, …, k)` given `Λ` (equal shares when every
 # `ν` is one).
 
 """
@@ -24,8 +24,8 @@
 The rule by which [`simulate`](@ref) runs `model` as daily counts rather than
 as individuals, or `nothing` if `model` has to be simulated as individuals.
 A model qualifies when nothing about an individual feeds back on
-transmission and its generation time is a distribution on whole days. Add a
-method for a new model type to give it the count-level path; the rule is a
+transmission and its generation time is a distribution on whole days. Adding a
+method for a new model type gives it the count-level path. The rule is a
 [`CountRule`](@ref).
 """
 count_rule(::TransmissionModel) = nothing
@@ -35,7 +35,7 @@ count_rule(::TransmissionModel) = nothing
 
 How a cohort of `n` people infected on one day infects people on later days
 ([`EpiBranch.count_rule`](@ref)): the number infected `lag` days later, on day
-`t`, is `Poisson(Λ R(t) g[lag])`. `Λ` is the cohort's total infectiousness, drawn
+`t`, is `Poisson(Λ R(t) g[lag])`. `Λ` is the total infectiousness of the cohort, drawn
 once as `Gamma(n k, 1/k)`, or `n` if `k` is `Inf`. `R` is a function of the day.
 """
 struct CountRule{F}
@@ -93,11 +93,12 @@ day, rather than the people. It is an [`AbstractSimulationState`](@ref), so
 read from it as from a [`SimulationState`](@ref).
 
 The people are built the first time they are asked for, from a random number
-stream the state holds, and are then kept: a seed gives the same line list
-whenever it is asked for. Who infected whom, each person's clinical
-presentation and onset, and the reporting of an `observation` are all drawn
-then. Continue the run with `simulate(model, state; max_time)`, which
-discards the people built so far and builds them again from the same stream.
+stream the state holds, and are then kept. A seed gives the same line list
+whenever it is asked for. The infector of each case, the clinical
+presentation and onset of each person, and the reporting of an `observation`
+are all drawn at that point. `simulate(model, state; max_time)` continues the
+run, discards the people built so far and builds them again from the same
+stream.
 
 Fields:
 
@@ -189,10 +190,10 @@ end
 process_of(model::TransmissionModel) = model
 process_of(spec::ModelSpec) = spec.process
 
-# `simulate`'s hand-off: the rule when the request can be answered by counts. A
-# run that stops on anything but a time, or that asks for a particular index
-# case, a repeated run or a shared random stream, is simulated as individuals:
-# those are decided per person.
+# Hand-off from `simulate`: the rule when counts can answer the request. A run
+# that stops on anything but a time, or that asks for a particular index case,
+# a repeated run or a shared random stream, is simulated as individuals,
+# because those are decided per person.
 function _count_route(
         model, initial_cases, index_types, max_cases, max_generations, max_time,
         stopping_rules, condition, rng
@@ -213,9 +214,9 @@ end
 
 Continue `state`, a [`CountSimulationState`](@ref), up to a later `max_time`.
 Every cohort already there keeps the infectiousness it was given, so the
-continuation is the run carried on, not a new one. `state` is mutated in place
-and returned; the people built from it so far are dropped and built again when
-next asked for. `model` must still run on the count-level path.
+continuation extends the same run. `state` is mutated in place and returned.
+The people built from it so far are dropped and built again when next asked
+for. `model` must still run on the count-level path.
 """
 function simulate(
         model::TransmissionModel, state::CountSimulationState; max_time::Real,
@@ -238,10 +239,10 @@ end
 
 # ── The people ───────────────────────────────────────────────────────
 
-# The people of a count-level run: index cases first, then each day's cases in
-# turn, so a case's infector always has the smaller id. The infections a
-# cohort caused on a day are shared among its members by their own
-# infectiousness (see the top of this file), and every case is then given its
+# The people of a count-level run: index cases first, then the cases of each
+# day in turn, so the infector of a case always has the smaller id. The
+# infections caused by a cohort on a day are shared among its members by their
+# own infectiousness (see the top of this file). Every case is then given its
 # natural history as in the individual simulation.
 function _realise!(s::CountSimulationState)
     built = s.built
@@ -286,8 +287,8 @@ function _realise!(s::CountSimulationState)
     return sim
 end
 
-# The cumulative share of the cohort's infections that each of its `n` members
-# causes: equal when every member has the same infectiousness, otherwise
+# The cumulative share of the infections of the cohort that each of its `n`
+# members causes: equal when every member has the same infectiousness, otherwise
 # `Dirichlet(k, …, k)`, the split of a `Gamma(n k)` total among `n` independent
 # `Gamma(k)` parts.
 function _member_shares(rule::CountRule, n::Int, rng)
