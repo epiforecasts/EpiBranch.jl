@@ -330,7 +330,7 @@ using StableRNGs
 zero_inflated = MixtureModel([Dirac(0), NegativeBinomial(0.5, 0.5 / (0.5 + 3.0))], [0.4, 0.6])
 mixture_runs = simulate(BranchingProcess(zero_inflated, Exponential(5.0)), 200;
     max_cases = 200, rng = StableRNG(1))
-(mean_R = mean(zero_inflated), contained = containment_probability(mixture_runs))
+(mean_R = mean(zero_inflated), contained = containment_probability(mixture_runs).proportion)
 ```
 
 The mean R is 0.6 × 3 = 1.8. A mixture like this works for simulation, but has
@@ -646,7 +646,7 @@ n_infected(s) = count(is_infected, individuals(s))
 no_control = simulate(ModelSpec(bay), 200; n_initial = 1, stopping_rules = stop,
     rng = StableRNG(11))
 
-iso = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = 14.0)
+iso = Isolation(delay = Exponential(1.0), duration = 14.0)
 isolating = ModelSpec(bay; interventions = [iso],
     attributes = clinical_presentation(incubation_period = LogNormal(1.0, 0.4)))
 with_isolation = simulate(isolating, 200; n_initial = 1, stopping_rules = stop,

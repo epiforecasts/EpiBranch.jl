@@ -42,8 +42,109 @@ using Dates
         rng = StableRNG(42)
         model = BranchingProcess(Poisson(0.8), Exponential(5.0))
         results = simulate(model, 200; rng = rng)
-        cp = containment_probability(results)
+        cp = containment_probability(results).proportion
         @test cp > 0.5
+    end
+
+    @testset "containment_probability mcse and posterior" begin
+        model = BranchingProcess(NegBin(1.5, 0.3))
+        results = simulate(model, 200; max_cases = 500, rng = StableRNG(42))
+        est = containment_probability(results; max_cases = 500)
+        @test est.n == 200
+        @test est.proportion == count(s -> s.extinct && s.cumulative_cases < 500, results) / 200
+        @test est.n_contained == round(Int, est.proportion * 200)
+        @test est.mcse ≈ sqrt(est.proportion * (1 - est.proportion) / 200)
+        @test est.posterior == Beta(est.n_contained + 0.5, 200 - est.n_contained + 0.5)
+
+        est_model = containment_probability(model, 200; max_cases = 500, rng = StableRNG(42))
+        @test est_model.n_contained == est.n_contained
+        @test est_model.mcse == est.mcse
+
+        # Every run contained: no standard error, but the Beta still has width
+        all_in = EpiBranch._binomial_estimate(50, 50)
+        @test all_in.mcse == 0.0
+        @test all_in.posterior == Beta(50.5, 0.5)
+        @test std(all_in.posterior) > 0
+        none_in = EpiBranch._binomial_estimate(0, 50)
+        @test none_in.mcse == 0.0
+        @test none_in.posterior == Beta(0.5, 50.5)
+        @test_throws ArgumentError EpiBranch._binomial_estimate(0, 0)
+    end
+
+    @testset "containment_difference" begin
+        # Independent: the variances of the two proportions add
+        ca = [trues(56); falses(14)]
+        cb = [trues(48); falses(32)]
+        ind = EpiBranch._contained_difference(ca, cb, false)
+        @test ind.difference ≈ 0.2
+        @test ind.mcse ≈ sqrt(0.8 * 0.2 / 70 + 0.6 * 0.4 / 80)
+
+        # Paired: standard deviation of the per-run differences over sqrt(n)
+        base = [trues(60); falses(40)]
+        other = copy(base)
+        other[1:10] .= false
+        pair = EpiBranch._contained_difference(base, other, true)
+        unpair = EpiBranch._contained_difference(base, other, false)
+        @test pair.difference == unpair.difference ≈ 0.1
+        d = Int.(base) .- Int.(other)
+        @test pair.mcse ≈ std(d) / sqrt(100)
+        @test pair.mcse < unpair.mcse
+
+        model = BranchingProcess(NegBin(1.5, 0.3))
+        a = simulate(model, 200; max_cases = 500, rng = CommonRandomNumbers(1))
+        b = simulate(model, 200; max_cases = 500, rng = CommonRandomNumbers(1))
+        same = containment_difference(a, b; max_cases = 500, paired = true)
+        @test same.difference == 0.0
+        @test same.mcse == 0.0
+        @test same.a == containment_probability(a; max_cases = 500).proportion
+        @test same.paired
+        @test_throws ArgumentError containment_difference(a, b[1:100]; paired = true)
+        # Unequal sizes are fine when independent
+        @test containment_difference(a, b[1:100]).paired == false
+
+        # Runs sharing random numbers give the same difference with or without
+        # pairing.
+        process = BranchingProcess(NegBin(1.5, 0.3), Exponential(5.0))
+        attrs = clinical_presentation(incubation_period = LogNormal(1.6, 0.5))
+        iso = Isolation(delay = Exponential(2.0), duration = Inf)
+        t = simulate(
+            ModelSpec(process; attributes = attrs, interventions = [iso]),
+            500; max_cases = 500, rng = CommonRandomNumbers(1)
+        )
+        u = simulate(
+            ModelSpec(process; attributes = attrs),
+            500; max_cases = 500, rng = CommonRandomNumbers(1)
+        )
+        pt = containment_difference(t, u; max_cases = 500, paired = true)
+        up = containment_difference(t, u; max_cases = 500)
+        @test pt.difference == up.difference
+        @test isfinite(pt.mcse) && pt.mcse >= 0
+
+        # An isolation delay longer than any run changes nothing, so the runs
+        # stay coupled: paired difference and MCSE are 0, unpaired MCSE is not.
+        late = Isolation(delay = Exponential(1.0e12), duration = Inf)
+        l = simulate(
+            ModelSpec(process; attributes = attrs, interventions = [late]),
+            500; max_cases = 500, rng = CommonRandomNumbers(1)
+        )
+        pl = containment_difference(l, u; max_cases = 500, paired = true)
+        ul = containment_difference(l, u; max_cases = 500)
+        @test pl.difference == 0.0
+        @test pl.mcse == 0.0
+        @test ul.mcse > 0
+
+        # From two models: the result matches simulating and comparing, and
+        # paired runs of one model are identical.
+        tm = ModelSpec(process; attributes = attrs, interventions = [iso])
+        um = ModelSpec(process; attributes = attrs)
+        pm = containment_difference(tm, um, 500; max_cases = 500, paired = true, seed = 1)
+        @test pm == containment_difference(t, u; max_cases = 500, paired = true)
+        im = containment_difference(tm, um, 200; max_cases = 500, rng = StableRNG(3))
+        @test !im.paired
+        @test containment_difference(um, um, 200; max_cases = 500, paired = true).mcse == 0.0
+        @test_throws ArgumentError containment_difference(
+            tm, um, 10; paired = true, rng = StableRNG(1)
+        )
     end
 
     @testset "weekly_incidence" begin
@@ -100,7 +201,7 @@ using Dates
 
     @testset "ringbp-style scenario" begin
         rng = StableRNG(314)
-        iso = Isolation(onset_to_isolation_delay = LogNormal(1.0, 0.5), duration = Inf)
+        iso = Isolation(delay = LogNormal(1.0, 0.5), duration = Inf)
         ct = ContactTracing(
             probability = 0.5, isolation_to_trace_delay = Exponential(2.0),
             action = Quarantine(duration = Inf)
@@ -114,7 +215,7 @@ using Dates
             500; max_cases = 5000, max_generations = 50, rng = rng
         )
 
-        @test containment_probability(results) >= 0.5
+        @test containment_probability(results).proportion >= 0.5
     end
 
     @testset "Full pipeline: simulate → linelist → chain_statistics" begin
@@ -137,7 +238,7 @@ using Dates
 
     @testset "Leaky isolation allows more transmission" begin
         rng1 = StableRNG(42)
-        iso_perfect = Isolation(onset_to_isolation_delay = Exponential(1.0), post_isolation_transmission = 0.0, duration = Inf)
+        iso_perfect = Isolation(delay = Exponential(1.0), post_isolation_transmission = 0.0, duration = Inf)
         results_perfect = simulate(
             ModelSpec(
                 BranchingProcess(Poisson(3.0), Exponential(5.0));
@@ -147,7 +248,7 @@ using Dates
         )
 
         rng2 = StableRNG(42)
-        iso_leaky = Isolation(onset_to_isolation_delay = Exponential(1.0), post_isolation_transmission = 0.5, duration = Inf)
+        iso_leaky = Isolation(delay = Exponential(1.0), post_isolation_transmission = 0.5, duration = Inf)
         results_leaky = simulate(
             ModelSpec(
                 BranchingProcess(Poisson(3.0), Exponential(5.0));
@@ -156,8 +257,8 @@ using Dates
             200; max_cases = 200, rng = rng2
         )
 
-        @test containment_probability(results_perfect) >=
-            containment_probability(results_leaky)
+        @test containment_probability(results_perfect).proportion >=
+            containment_probability(results_leaky).proportion
     end
 
     @testset "incubation_linked_generation_time convenience" begin
@@ -325,8 +426,8 @@ using Dates
         model = BranchingProcess(Poisson(2.0), Exponential(5.0))
         results = simulate(model, 100; max_cases = 50, rng = rng)
 
-        cp_naive = containment_probability(results)
-        cp_aware = containment_probability(results; max_cases = 50)
+        cp_naive = containment_probability(results).proportion
+        cp_aware = containment_probability(results; max_cases = 50).proportion
         @test cp_aware <= cp_naive
     end
 
@@ -337,7 +438,7 @@ using Dates
             containment_probability(states; max_cases = 50)
 
         spec = ModelSpec(
-            model; interventions = [Isolation(onset_to_isolation_delay = 1.0, duration = Inf)],
+            model; interventions = [Isolation(delay = 1.0, duration = Inf)],
             attributes = clinical_presentation(incubation_period = Exponential(5.0))
         )
         states = simulate(spec, 200; max_time = 40.0, rng = StableRNG(7))
@@ -348,7 +449,7 @@ using Dates
             model, 200; max_cases = 50, rng = StableRNG(7),
             parallel = true
         )
-        @test 0.0 <= p <= 1.0
+        @test 0.0 <= p.proportion <= 1.0
         @test_throws MethodError containment_probability(model, 10; condition = 1:5)
     end
 
@@ -371,7 +472,7 @@ using Dates
         rng = StableRNG(42)
         model = BranchingProcess(NegBin(R, k), Exponential(5.0))
         results = simulate(model, 500; max_cases = 5000, max_generations = 200, rng = rng)
-        q_simulated = containment_probability(results)
+        q_simulated = containment_probability(results).proportion
 
         @test abs(q_analytical - q_simulated) < 0.1
     end

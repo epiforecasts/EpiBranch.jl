@@ -255,7 +255,7 @@ struct _MaskLessRule <: EpiHouseholds.ConditionOn end
         base = ModelSpec(HouseholdProcess(sizes, Exponential(1.0)); progression = prog)
         iso = ModelSpec(
             HouseholdProcess(sizes, Exponential(1.0)); progression = prog,
-            interventions = [Isolation(onset_to_isolation_delay = Exponential(0.2), duration = Inf)]
+            interventions = [Isolation(delay = Exponential(0.2), duration = Inf)]
         )
 
         base_cases = sum(simulate(base; rng = StableRNG(s)).cumulative_cases for s in 1:10)
@@ -362,7 +362,7 @@ struct _MaskLessRule <: EpiHouseholds.ConditionOn end
         # must be counted from the time each case was infected.
         clinical = clinical_presentation(incubation_period = LogNormal(1.0, 0.3))
         iso = Isolation(
-            onset_to_isolation_delay = Exponential(1.0),
+            delay = Exponential(1.0),
             test_sensitivity = 1.0, duration = Inf
         )
         m = ModelSpec(
@@ -390,7 +390,7 @@ struct _MaskLessRule <: EpiHouseholds.ConditionOn end
         # checks that the trace is still recorded and turned into isolation.
         clinical = clinical_presentation(incubation_period = LogNormal(1.0, 0.3))
         iso = Isolation(
-            onset_to_isolation_delay = Exponential(1.0),
+            delay = Exponential(1.0),
             test_sensitivity = 0.0, duration = Inf
         )
         flag = ContactTracing(OnSymptomOnset(), 1.0, Exponential(0.5), FlagOnly())
@@ -481,7 +481,7 @@ struct _MaskLessRule <: EpiHouseholds.ConditionOn end
             prob_asymptomatic = 0.0
         )
         iso = Isolation(
-            onset_to_isolation_delay = Exponential(1.0),
+            delay = Exponential(1.0),
             test_sensitivity = 1.0, duration = Inf
         )
         m = ModelSpec(
@@ -1057,7 +1057,7 @@ struct _MaskLessRule <: EpiHouseholds.ConditionOn end
             prob_asymptomatic = 0.0
         )
         iso = Isolation(
-            onset_to_isolation_delay = Exponential(1.0),
+            delay = Exponential(1.0),
             test_sensitivity = 1.0, duration = Inf
         )
         latent = [
@@ -1163,7 +1163,7 @@ struct _MaskLessRule <: EpiHouseholds.ConditionOn end
             prob_asymptomatic = 0.0
         )
         iso = Isolation(
-            onset_to_isolation_delay = Exponential(2.0),
+            delay = Exponential(2.0),
             test_sensitivity = 1.0, duration = Inf
         )
         ct = ContactTracing(

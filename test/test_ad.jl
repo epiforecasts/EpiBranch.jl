@@ -26,7 +26,7 @@ using StableRNGs
     sizes_data = [1, 2, 1, 3, 1, 5, 2]
     lengths_data = [0, 1, 2, 0, 3, 1]
     counts_data = [0, 1, 2, 0, 3, 1, 0]
-    incidence_data = [1, 2, 4, 5, 9, 12, 18]
+    incidence_steps = 7
 
     fdm = central_fdm(5, 1)
     fd_grad(f, x) = first(FiniteDifferences.grad(fdm, f, x))
@@ -84,27 +84,29 @@ using StableRNGs
         # ForwardDiff on the calendar-time PGF, so this differentiates
         # ForwardDiff through ForwardDiff.
         scenario(
-            (R, d) -> loglikelihood(IncidenceCounts(d), NegBin(R[1], 0.5), LogNormal(1.6, 0.5)),
-            [1.2], incidence_data
+            (R, n) -> sum(incidence_moments(NegBin(R[1], 0.5), LogNormal(1.6, 0.5), n).cov),
+            [1.2], incidence_steps
         ),
         # The reporting probability enters the same PGF, so it differentiates
         # alongside the offspring parameter.
         scenario(
-            (θ, d) -> loglikelihood(
-                IncidenceCounts(d), NegBin(θ[1], 0.5), LogNormal(1.6, 0.5);
-                reporting_probability = θ[2], reporting_delay = Gamma(2.0, 1.0)
+            (θ, n) -> sum(
+                incidence_moments(
+                    NegBin(θ[1], 0.5), LogNormal(1.6, 0.5), n;
+                    reporting_probability = θ[2], reporting_delay = Gamma(2.0, 1.0)
+                ).cov
             ),
-            [1.2, 0.6], incidence_data
+            [1.2, 0.6], incidence_steps
         ),
-        # A multi-type process differentiates through its offspring matrix,
-        # here against counts by type.
+        # A multi-type process differentiates through its offspring matrix.
         scenario(
-            (θ, d) -> loglikelihood(
-                IncidenceCounts(d; seeds = [0, 1]),
-                EpiBranch.MultiTypeOffspring([θ[1] 0.4; 0.3 θ[2]], R -> NegBin(R, 0.5)),
-                LogNormal(1.6, 0.5)
+            (θ, n) -> sum(
+                incidence_moments(
+                    EpiBranch.MultiTypeOffspring([θ[1] 0.4; 0.3 θ[2]], R -> NegBin(R, 0.5)),
+                    LogNormal(1.6, 0.5), n; seeds = [0, 1]
+                ).cov
             ),
-            [1.2, 0.9], [0 1; 1 1; 1 3; 2 4; 3 6]
+            [1.2, 0.9], incidence_steps
         ),
     ]
 
@@ -242,7 +244,7 @@ end
     clinical = clinical_presentation(
         incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.0
     )
-    iso = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
+    iso = Isolation(delay = Exponential(1.0), duration = Inf)
     function total_infection_time(μ)
         model = BranchingProcess(NegBin(2.0, 0.5), LogNormal(μ, 0.5))
         state = simulate(
@@ -299,7 +301,7 @@ end
     clinical = clinical_presentation(
         incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.0
     )
-    iso = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
+    iso = Isolation(delay = Exponential(1.0), duration = Inf)
     ct = ContactTracing(
         probability = 1.0, isolation_to_trace_delay = Exponential(0.5),
         action = FlagOnly(), depth = 2
@@ -327,7 +329,7 @@ end
     clinical = clinical_presentation(
         incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.0
     )
-    iso = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
+    iso = Isolation(delay = Exponential(1.0), duration = Inf)
     ct = ContactTracing(
         probability = 1.0, isolation_to_trace_delay = Exponential(0.5),
         action = Quarantine(duration = Inf)
@@ -389,7 +391,7 @@ end
     clinical = clinical_presentation(
         incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.0
     )
-    iso = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
+    iso = Isolation(delay = Exponential(1.0), duration = Inf)
     ct = ContactTracing(
         probability = 1.0, isolation_to_trace_delay = Exponential(0.5),
         action = Quarantine(duration = Inf)
@@ -445,7 +447,7 @@ end
         incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.0
     )
     iso = Isolation(
-        onset_to_isolation_delay = Exponential(1.0),
+        delay = Exponential(1.0),
         post_isolation_transmission = 0.3, duration = Inf
     )
     ct = ContactTracing(

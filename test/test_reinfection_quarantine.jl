@@ -2,7 +2,7 @@ using Distributions
 using StableRNGs
 
 @testset "A reinfection keeps a quarantine standing on the person" begin
-    iso = Isolation(onset_to_isolation_delay = 0.5, duration = Inf)
+    iso = Isolation(delay = 0.5, duration = Inf)
     tracing = ContactTracing(
         TraceEveryone(), 1.0, Exponential(0.5), Quarantine(duration = 14.0)
     )
