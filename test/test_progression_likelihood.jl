@@ -61,6 +61,42 @@ struct _UntrackedTransition <: EpiBranch.AbstractClinicalTransition end
         @test progression_loglik(spec, individuals(state)) ≈ expected
     end
 
+    @testset "a Conditional delay and probability score as the distributions they resolve to" begin
+        scale(ind) = 1.0 + mod(ind.id, 3)
+        reporting_for(ind) = LogNormal(0.0, 0.2 * scale(ind))
+        recovery_for(ind) = Exponential(2.0 * scale(ind))
+        conditional = ModelSpec(
+            BranchingProcess(Poisson(1.5), Exponential(5.0));
+            progression = [
+                Reporting(
+                    delay = Conditional(reporting_for),
+                    probability = Conditional(ind -> Dirac(0.5 + 0.1 * scale(ind)))
+                ),
+                Recovery(delay = Conditional(recovery_for)),
+            ],
+            attributes = clinical
+        )
+        state = simulate(conditional; max_cases = 200, rng = StableRNG(2))
+        expected = 0.0
+        for ind in individuals(state)
+            get(ind.state, :infected, false) || continue
+            onset = onset_time(ind)
+            isfinite(onset) || continue
+            p = 0.5 + 0.1 * scale(ind)
+            elapsed = ind.state[:recovery_candidate_time] - onset
+            expected += if ind.state[:reported]
+                log(p) + logpdf(reporting_for(ind), ind.state[:reporting_time] - onset)
+            else
+                log1p(-p * cdf(reporting_for(ind), elapsed))
+            end
+            expected += logpdf(recovery_for(ind), elapsed)
+        end
+        @test expected < 0
+        @test progression_loglik(conditional, state) ≈ expected
+        @test count(ind -> get(ind.state, :reported, false), individuals(state)) > 0
+        @test count(ind -> !get(ind.state, :reported, true), individuals(state)) > 0
+    end
+
     @testset "never-infected individuals contribute nothing" begin
         attrs = [clinical, transmission_traits(susceptibility = 0.4)]
         spec = ModelSpec(
