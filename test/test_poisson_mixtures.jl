@@ -20,6 +20,72 @@ using StableRNGs
         end
     end
 
+    @testset "Mass function matches superspreading" begin
+        # `dpoislnorm(x, meanlog, sdlog)` and `dpoisweibull(x, shape, scale)`
+        # from superspreading 0.4.0. Its integration is accurate to about 1e-8
+        # at these counts, except for the (-0.5, 1.0) lognormal at count 20,
+        # where it returns 5.86e-5 and direct integration gives 6.404e-5; that
+        # count is left out.
+        xs = [0, 1, 5, 20]
+        lnorm_ref = Dict(
+            (-0.5, 1.0) => [
+                5.12428646929183e-01, 2.58714852092794e-01,
+                1.38899840898597e-02,
+            ],
+            (0.5, 0.8) => [
+                2.40886906634488e-01, 2.48174179186483e-01,
+                4.67428348258177e-02, 2.94270715342657e-04,
+            ],
+            (1.0, 1.5) => [
+                2.11514514509127e-01, 1.59315164253183e-01,
+                4.81145363376694e-02, 5.65462793828036e-03,
+            ],
+        )
+        weibull_ref = Dict(
+            (0.7, 1.0) => [
+                0.523964215242873, 0.203107922890086,
+                0.0231208801820102, 0.000147858917472714,
+            ],
+            (1.5, 2.0) => [
+                2.76214636099870e-01, 2.56857542279831e-01,
+                4.11242941834865e-02, 3.17729715601352e-07,
+            ],
+            (0.5, 3.0) => [
+                0.379886912922477, 0.138267368129019,
+                0.0348765095198392, 0.00497276338355947,
+            ],
+        )
+        for (p, ref) in lnorm_ref
+            @test [pdf(PoissonLognormal(p...), x) for x in xs[1:length(ref)]] ≈ ref rtol = 1.0e-6
+        end
+        for (p, ref) in weibull_ref
+            @test [pdf(PoissonWeibull(p...), x) for x in xs[1:length(ref)]] ≈ ref rtol = 1.0e-6
+        end
+    end
+
+    @testset "Large counts match direct integration over the log rate" begin
+        # superspreading underflows to zero or loses accuracy beyond a count
+        # of about 20, so these are checked against a fine grid in the log of
+        # the rate instead.
+        grid = range(-15, 15; length = 1001)
+        function direct(rate, x)
+            f = t -> (λ = exp(t); exp(logpdf(Poisson(λ), x) + logpdf(rate, λ) + t))
+            return first(quadgk(f, grid...; rtol = 1.0e-12))
+        end
+        cases = (
+            (PoissonLognormal(-0.5, 1.0), LogNormal(-0.5, 1.0)),
+            (PoissonLognormal(1.0, 1.5), LogNormal(1.0, 1.5)),
+            (PoissonWeibull(0.7, 1.0), Weibull(0.7, 1.0)),
+            (PoissonWeibull(0.5, 3.0), Weibull(0.5, 3.0)),
+        )
+        for (d, rate) in cases, x in (100, 500)
+            @test pdf(d, x) ≈ direct(rate, x) rtol = 1.0e-6
+        end
+        d = PoissonLognormal(1.0, 1.5)
+        @test cdf(d, 100) + ccdf(d, 100) ≈ 1.0 atol = 1.0e-8
+        @test cdf(d, 500) ≈ sum(pdf(d, x) for x in 0:500) rtol = 1.0e-6
+    end
+
     @testset "Moments and sampling" begin
         @test mean(lnorm) ≈ exp(-0.5 + 0.5)
         @test mean(weib) ≈ mean(Weibull(0.7, 1.0))

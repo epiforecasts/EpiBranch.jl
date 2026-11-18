@@ -85,14 +85,57 @@ Distributions.insupport(::_PoissonMixture, x::Integer) = x >= 0
 Distributions.mean(d::_PoissonMixture) = mean(_rate_law(d))
 Distributions.var(d::_PoissonMixture) = mean(d) + var(_rate_law(d))
 
-# Expectation of `f(Poisson(λ), x)` over the rate, integrated over the
-# probability scale of the rate law. The integrand is sharply peaked where the
-# rate is near `x`; the interval is split there.
+# Log of the integrand of the mass function over the log rate `t`. It is
+# concave in `t` for both rate laws, so it has a single mode.
+function _log_mixture_integrand(rate, x, t)
+    λ = exp(t)
+    return logpdf(Poisson(λ), x) + logpdf(rate, λ) + t
+end
+
+# Mode of a concave function on `[lo, hi]` by golden-section search.
+function _concave_mode(g, lo, hi)
+    φ = (sqrt(5) - 1) / 2
+    a, b = lo, hi
+    c, e = b - φ * (b - a), a + φ * (b - a)
+    gc, ge = g(c), g(e)
+    for _ in 1:80
+        if gc < ge
+            a, c, gc = c, e, ge
+            e = a + φ * (b - a)
+            ge = g(e)
+        else
+            b, e, ge = e, c, gc
+            c = b - φ * (b - a)
+            gc = g(c)
+        end
+    end
+    return (a + b) / 2
+end
+
+# Expectation of `f(Poisson(λ), x)` over the rate, integrated over the log of
+# the rate. For large `x` the mass sits in the far tail of the rate law, where
+# the probability scale cannot resolve it, and it is a narrow peak, of width
+# at most `1 / √x` in log rate, at the mode of the integrand of the mass
+# function. The integral is split around that mode and around `log(x)`, where
+# the Poisson cumulative distribution changes. The range covers all but 1e-300
+# of the rate law in each tail, within the range of a double.
 function _poisson_mixture_expectation(f, d::_PoissonMixture, x::Real)
     rate = _rate_law(d)
-    integrand = u -> f(Poisson(quantile(rate, u)), x)
-    split = clamp(cdf(rate, x), 1.0e-12, 1 - 1.0e-12)
-    value, _ = quadgk(integrand, 0, split, 1; rtol = 1.0e-10, atol = 1.0e-300)
+    integrand = function (t)
+        λ = exp(t)
+        return f(Poisson(λ), x) * exp(logpdf(rate, λ) + t)
+    end
+    lo = max(log(quantile(rate, 1.0e-300)), log(floatmin()))
+    hi = min(log(cquantile(rate, 1.0e-300)), log(floatmax()))
+    width = inv(sqrt(x + 1))
+    centres = [_concave_mode(t -> _log_mixture_integrand(rate, x, t), lo, hi)]
+    x > 0 && push!(centres, log(x))
+    points = [lo, hi]
+    for centre in centres, c in (-16, -8, -4, -2, -1, 0, 1, 2, 4, 8, 16)
+        t = centre + c * width
+        lo < t < hi && push!(points, t)
+    end
+    value, _ = quadgk(integrand, sort!(unique!(points))...; rtol = 1.0e-10, atol = 1.0e-300)
     return value
 end
 
