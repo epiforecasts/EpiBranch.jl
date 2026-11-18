@@ -118,8 +118,8 @@ loglikelihood(data, observe(chain_size_distribution(NegBin(0.8, 0.5)), MinimumSi
 struct ChainSizes
     data::Vector{Int}
     seeds::Vector{Int}
-    # Distinct (size, seeds) pairs and how often each occurs, built once so a
-    # likelihood call does not tabulate the data again.
+    # Distinct (size, seeds) pairs with their counts, built once so that
+    # likelihood calls do not tabulate the data again.
     table_sizes::Vector{Int}
     table_seeds::Vector{Int}
     table_counts::Vector{Int}
