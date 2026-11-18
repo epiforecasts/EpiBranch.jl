@@ -214,3 +214,41 @@ using Statistics
         @test large_t < 10 * small_t + 1.0e-4
     end
 end
+
+@testset "simulate_by_generation agrees with the individual simulation for several types" begin
+    # Both deplete each type against its own population, so the number of
+    # cases of each type has the same mean and variance over many runs.
+    function same_law(a, b)
+        se = sqrt(var(a) / length(a) + var(b) / length(b))
+        @test isapprox(mean(a), mean(b); atol = 5se)
+        @test isapprox(var(a), var(b); rtol = 0.15)
+    end
+    reps = 4000
+    for (sizes, index_types, generations) in (
+            ([60, 300], [1, 1, 1, 2, 2], 3), ([30, 30], [1, 1, 1, 2, 2], 3),
+            ([200, 40], [1, 1, 2, 2, 2], 4),
+        )
+        model = BranchingProcess(
+            [1.5 0.5; 0.5 1.5], R -> Poisson(R), EpiBranch.NoGenerationTime();
+            population = Population(sizes)
+        )
+        n_initial = [count(==(j), index_types) for j in 1:2]
+        by_individual = map(1:reps) do s
+            state = simulate(
+                model; index_types, max_generations = generations, rng = StableRNG(s)
+            )
+            infected = filter(ind -> get(ind.state, :infected, true), individuals(state))
+            [count(ind -> ind.state[:type] == j, infected) for j in 1:2]
+        end
+        by_generation = map(1:reps) do s
+            state = simulate_by_generation(
+                model; n_initial, max_generations = generations, rng = StableRNG(s + reps)
+            )
+            sizes .- state.susceptibles
+        end
+        for j in 1:2
+            same_law(getindex.(by_individual, j), getindex.(by_generation, j))
+        end
+        same_law(sum.(by_individual), sum.(by_generation))
+    end
+end

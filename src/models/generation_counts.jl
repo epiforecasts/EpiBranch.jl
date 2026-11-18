@@ -6,9 +6,9 @@
 # no ordering between the cases of a generation.
 #
 # `PerContactDepletion` mirrors `_offspring_builtin_risk_blocks` on the
-# individual-based race when there is a single type. With several types the
-# individual-based simulation thins every contact against one shared population
-# fraction, which makes the two differ.
+# individual-based race. Both thin a contact against the susceptible share of
+# the type it would infect, so with several types the two give the same law of
+# the counts of each generation.
 #
 # A shared `multiplier` is drawn once per generation. With `Poisson` offspring
 # the total of a generation is `Poisson` scaled by the same draw, and
@@ -29,11 +29,10 @@ abstract type AbstractDepletion end
 
 Decide every potential contact one at a time: a contact of a type is kept with
 probability equal to the susceptible share of the type *at that moment*, and
-each kept contact lowers the share for the next. For a single type this is the
-rule of the individual-based simulation. For several types it differs, because
-the individual-based simulation thins every contact against one shared
-population fraction, while this rule uses the share of each type. It is the
-default of [`simulate_by_generation`](@ref).
+each kept contact lowers the share for the next. This is the rule of the
+individual-based simulation, for one type or several: each type is depleted
+against its own population. It is the default of
+[`simulate_by_generation`](@ref).
 
 The rule is drawn exactly, without visiting every contact. Where the offspring
 law is a mixed Poisson (`Poisson`, with or without `multiplier`, and `NegBin`),
