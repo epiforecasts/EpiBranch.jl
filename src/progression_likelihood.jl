@@ -37,11 +37,11 @@ Set `truncated = true` when cases enter the data because a step happened by
 `followup_end`, for example a line list of cases selected by the date they were
 reported. Each observed [`Reporting`](@ref), [`Hospitalisation`](@ref) or
 non-terminal [`Transition`](@ref) is then scored as its delay density divided
-by the probability that the delay is at most `followup_end` minus the time the
-step starts from. Fitting a delay to such a line list without this is biased
+by the probability that the delay is at most `followup_end` minus its start
+time. Fitting a delay to such a line list without this is biased
 towards short delays, because long delays are cut off. The correction applies
-only to observed steps, so the cases must all be selected on that step; do not
-use it together with the censored form for the same step. [`Recovery`](@ref),
+only to observed steps. All cases must be selected on that step, and the
+censored form must not be used for the same step. [`Recovery`](@ref),
 [`Death`](@ref) and terminal transitions compete with other outcomes and are
 scored as before. A custom [`transition_loglik`](@ref EpiBranch.transition_loglik)
 method needs a `followup_end` keyword to be used with a finite `followup_end`,

@@ -304,7 +304,7 @@ probability, rather than by a density; the built-in steps take this keyword.
 With `truncated = true`, a step that did happen is scored conditionally on
 having happened by `followup_end`, as for a case selected into the data by that
 event: the density of its delay divided by the probability the delay is at most
-`followup_end` minus the time the step starts from. [`Recovery`](@ref),
+`followup_end` minus its start time. [`Recovery`](@ref),
 [`Death`](@ref) and terminal [`Transition`](@ref)s compete with other
 outcomes, so they ignore it. A custom step needs the keyword only to be used
 with `truncated = true`.
