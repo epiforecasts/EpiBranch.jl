@@ -11,10 +11,11 @@
 # is resolved from that progression when the model is simulated.
 
 """
-    HomogeneousProcess(; transmission_rate, population_size,
+    HomogeneousProcess(; transmission_rate, population,
                        from = nothing, until = (:recovered, :died, :isolated))
 
-A closed population of `population_size` individuals that mix homogeneously:
+A closed population of individuals that mix homogeneously, given as
+`population = Population(n)` or as `population_size = n`:
 every infectious person exerts the same force of infection on every susceptible.
 It is simulated in continuous time as mass action, every pair meeting at the
 same rate, which reproduces the exact stochastic SIR final-size law.
@@ -79,7 +80,7 @@ model = ModelSpec(
 state = simulate(model; n_initial = 5)
 ```
 """
-struct HomogeneousProcess{T <: Real, R} <: TransmissionModel
+struct HomogeneousProcess{T <: Real, R} <: FixedPopulationProcess
     population_size::Int
     transmission_rate::R            # β, fixed or a calendar schedule
     from::Union{Symbol, Nothing}   # infectious-window start; nothing → derive
@@ -88,15 +89,16 @@ end
 
 function HomogeneousProcess(;
         transmission_rate,
-        population_size::Integer,
+        population = NoPopulation(),
+        population_size = NoPopulation(),
         from = nothing,
         until = (:recovered, :died, :isolated)
     )
-    population_size >= 1 || throw(ArgumentError("population_size must be ≥ 1"))
+    pop = _single_population(_closed_population(population, population_size), "HomogeneousProcess")
     rate = _prepared_transmission_rate(transmission_rate)
     T = _rate_time_type(rate)
     return HomogeneousProcess{T, typeof(rate)}(
-        Int(population_size), rate, from, Tuple(until)
+        pop.size, rate, from, Tuple(until)
     )
 end
 
@@ -134,17 +136,6 @@ _homogeneous_calendar(::Real) = nothing
 _homogeneous_calendar(schedule) = schedule
 
 population_size(m::HomogeneousProcess) = m.population_size
-
-# The race honours a `stopping_rules` entry, or a non-default `max_cases` or
-# `max_generations`, but leaves those two keywords' defaults off, so an
-# existing run over the fixed population keeps going to extinction or
-# `max_time` unless a cap is explicitly asked for (`_drop_default_shortcuts`).
-_honours_termination_controls(::HomogeneousProcess) = false
-
-# See `_warn_uncovered_terminal_states` in branching_process.jl.
-function _validate_process_windows(m::HomogeneousProcess, progression)
-    return _warn_uncovered_terminal_states(m.until, progression; from = m.from)
-end
 
 # The state's timing type follows β's type, so a dual β makes `Individual{Dual}`
 # members and gradients flow through the contact times.
@@ -187,7 +178,7 @@ end
                           recorder, rng)
 
 The race shared by the models that simulate as mass action among
-`model.population_size` members (`HomogeneousProcess`, `MixingProcess`). The
+the members of `population(model)` (`HomogeneousProcess`, `MixingProcess`). The
 model supplies only how members are grouped (`mixing_by`), the pairwise `rate`
 and the `calendar`; `new_state` and `transmission_risks` still dispatch on the
 concrete model type.
@@ -197,7 +188,8 @@ function _simulate_mass_action(
         interventions, attributes, progression, observation, recorder, rng
     )
     n_initial = sim_opts.n_initial
-    N = model.population_size
+    pop = population(model)
+    N = total_size(pop)
     n_initial >= 1 || throw(ArgumentError("n_initial must be ≥ 1"))
     n_initial <= N ||
         throw(ArgumentError("n_initial cannot exceed population_size"))
@@ -205,9 +197,10 @@ function _simulate_mass_action(
     from = something(model.from, infectious_from(progression))
 
     state = new_state(model, progression, attributes, rng)
+    state.scratch[:_mixing_by] = mixing_by
     add_individuals!(
         state, N, interventions;
-        setup = (ind, i) -> nothing
+        setup = (ind, i) -> nothing, assign = _group_assignment(pop, rng, mixing_by)
     )
 
     members = collect(1:N)
@@ -237,8 +230,5 @@ that first and falls back to this only when it is `nothing`, as
 `something(model.from, infectious_from(progression))`.
 """
 function infectious_from(progression)
-    return any(
-            t -> hasproperty(t, :state) && getfield(t, :state) === :infectious,
-            progression
-        ) ? :infectious : :infection
+    return any(t -> :infectious in produced_states(t), progression) ? :infectious : :infection
 end

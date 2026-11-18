@@ -15,16 +15,15 @@ using Random
 # simulator and pairwise likelihood consistent with the shared engine.
 import EpiBranch: new_state, add_individuals!, apply_observation!,
     simulate_once, SimOpts, infectious_from,
-    _honours_termination_controls, _validate_process_windows,
-    _warn_uncovered_terminal_states, offspring_law_unchanged
+    FixedPopulationProcess, supports_initial_cases, offspring_law_unchanged
 # The infection layer is built and read out of a simulation by EpiBranch's
 # helpers, which close each case's window where the simulator's race does.
-import EpiBranch: _infection_layer_columns, _infection_layer_fields,
-    _layer_host_times, _validate_removal_gap_keys
+import EpiBranch: infection_layer_columns, _infection_layer_fields,
+    layer_host_times, validate_removal_gap_keys
 # The within-household person-time calculation reads each intervention's own
 # removed stretches together with the fraction of transmission each one
 # blocks, merging stretches that different keys record for the same block
-# the way `_layer_host_times` does.
+# the way `layer_host_times` does.
 import EpiBranch: removal_gap_host_times, removal_block_probability, removal_stretches,
     _merge_stretches
 # The pairwise survival likelihood works for any contact structure and lives in

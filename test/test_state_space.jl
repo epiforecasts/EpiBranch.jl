@@ -20,9 +20,17 @@ import SSMProblems
     end
 
     @testset "a chain of steps agrees with one run straight through" begin
-        x0, xs, ys = SSMProblems.simulate(StableRNG(5), ssm, 6)
+        # Step the dynamics directly: SSMProblems 0.6 and 0.7 give the
+        # whole-trajectory call different names.
+        rng = StableRNG(5)
+        x = SSMProblems.simulate(rng, SSMProblems.prior(ssm))
+        xs = typeof(x)[]
+        for t in 1:6
+            x = SSMProblems.simulate(rng, SSMProblems.dyn(ssm), t, x)
+            push!(xs, x)
+        end
         direct = EpiBranch.simulate(model; max_time = 6.0, n_initial = 5, rng = StableRNG(5))
-        @test length(xs) == length(ys) == 6
+        @test length(xs) == 6
         @test xs[end].cumulative_cases == direct.cumulative_cases
         @test issorted(x.cumulative_cases for x in xs)
     end

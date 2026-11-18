@@ -1,3 +1,5 @@
+using DataFrames
+
 struct _AttributeTagger end
 (::_AttributeTagger)(rng, ind) = (ind.state[:tag] = ind.id)
 
@@ -16,9 +18,9 @@ end
                 ModelSpec(BranchingProcess(Poisson(0.0), Exponential(5.0)); attributes);
                 n_initial = 3, rng = StableRNG(1)
             )
-            @test length(state.individuals) == 3
-            @test all(ind.state[:tag] == ind.id for ind in state.individuals)
-            @test all(haskey(ind.state, :group) for ind in state.individuals)
+            @test length(individuals(state)) == 3
+            @test all(ind.state[:tag] == ind.id for ind in individuals(state))
+            @test all(haskey(ind.state, :group) for ind in individuals(state))
         end
     end
 
@@ -41,12 +43,12 @@ end
             );
             n_initial = 3, rng = StableRNG(1)
         )
-        @test all(ind.susceptibility == 0.4 for ind in run.individuals)
-        @test all(ind.infectiousness == 0.7 for ind in run.individuals)
-        @test all(ind.state[:vaccine_acceptance] == 0.6 for ind in run.individuals)
+        @test all(ind.susceptibility == 0.4 for ind in individuals(run))
+        @test all(ind.infectiousness == 0.7 for ind in individuals(run))
+        @test all(ind.state[:vaccine_acceptance] == 0.6 for ind in individuals(run))
         @test all(
             ind.state[:onset_time] == ind.infection_time + 2.0
-                for ind in run.individuals
+                for ind in individuals(run)
         )
     end
 
@@ -117,8 +119,8 @@ end
                 ModelSpec(BranchingProcess(Poisson(1.5), Exponential(5.0)); attributes = attrs);
                 max_cases = 30, rng = StableRNG(1)
             )
-            @test all(ind.susceptibility == 0.5 for ind in state.individuals)
-            @test all(ind.infectiousness == 0.8 for ind in state.individuals)
+            @test all(ind.susceptibility == 0.5 for ind in individuals(state))
+            @test all(ind.infectiousness == 0.8 for ind in individuals(state))
         end
 
         @testset "offspring_law_unchanged" begin
@@ -217,6 +219,39 @@ end
         end
     end
 
+    @testset "clinical_presentation incubation_period accepts a function" begin
+        attrs = clinical_presentation(
+            incubation_period = (rng, ind) -> rand(
+                rng, ind.state[:asymptomatic] ? Dirac(2.0) : Dirac(5.0)
+            ),
+            prob_asymptomatic = (rng, ind) -> iseven(ind.id) ? 1.0 : 0.0
+        )
+        for id in 1:6
+            ind = Individual(id = id, infection_time = 1.0)
+            attrs(StableRNG(id), ind)
+            if iseven(id)
+                @test ind.state[:asymptomatic]
+                @test ind.state[:incubation_period] == 2.0
+                @test isnan(ind.state[:onset_time])
+            else
+                @test !ind.state[:asymptomatic]
+                @test ind.state[:incubation_period] == 5.0
+                @test ind.state[:onset_time] == 6.0
+            end
+        end
+
+        @testset "closed forms that read the incubation period refuse it" begin
+            fn = clinical_presentation(
+                incubation_period = (rng, ind) -> rand(rng, LogNormal(1.5, 0.5))
+            )
+            bp = BranchingProcess(NegBin(2.0, 0.5), LogNormal(1.6, 0.5))
+            iso = Isolation(onset_to_isolation_delay = 1.0, duration = Inf)
+            @test_throws r"incubation period directly" extinction_probability(
+                ModelSpec(bp; interventions = [iso], attributes = fn)
+            )
+        end
+    end
+
     @testset "group_attribute shares reporting probabilities per run" begin
         attrs = [
             groups(2; key = :household),
@@ -228,10 +263,13 @@ end
         model = ModelSpec(
             BranchingProcess(Poisson(0.0), Exponential(5.0));
             attributes = attrs,
-            observation = PerCaseObservation(
-                detection_prob = (rng, ind) -> ind.state[:reporting_probability],
-                from = :infection_time
-            )
+            progression = [
+                Reporting(
+                    delay = Dirac(0.0),
+                    probability = (rng, ind) -> ind.state[:reporting_probability],
+                    from = :infection
+                ),
+            ]
         )
         serial = simulate(model, 10; n_initial = 30, rng = StableRNG(42))
         parallel = simulate(
@@ -241,7 +279,7 @@ end
         probabilities(states) = [
             [
                 ind.state[:reporting_probability]
-                    for ind in run.individuals
+                    for ind in individuals(run)
             ] for run in states
         ]
         @test probabilities(parallel) == probabilities(
@@ -257,7 +295,7 @@ end
                 unique(
                     [
                         ind.state[:reporting_probability]
-                            for ind in run.individuals
+                            for ind in individuals(run)
                             if ind.state[:household] == h
                     ]
                 ) for h in 1:2
@@ -276,7 +314,7 @@ end
             ModelSpec(BranchingProcess(Poisson(0.0), Exponential(5.0)); attributes = callback_attrs);
             n_initial = 3, rng = StableRNG(1)
         )
-        @test all(ind.state[:first_member] == 1 for ind in callback_state.individuals)
+        @test all(ind.state[:first_member] == 1 for ind in individuals(callback_state))
         @test_throws ArgumentError simulate(
             ModelSpec(
                 BranchingProcess(Poisson(0.0), Exponential(5.0));
@@ -377,6 +415,8 @@ end
             )
             people = EpiBranch.add_individuals!(state, 40, [])
             for ind in people
+                ind.infection_time = 0.0
+                ind.state[:infected] = true
                 ind.state[:test_positive] = true
                 set_isolated!(ind, 2.0; release_time = Inf)
             end
@@ -414,13 +454,13 @@ end
 
             traced = [
                 ind for state in states
-                    for ind in state.individuals
+                    for ind in individuals(state)
                     if is_traced(ind)
             ]
             @test !isempty(traced)
             for state in states
                 by_group = Dict{Int, Vector{Bool}}()
-                for ind in filter(is_traced, state.individuals)
+                for ind in filter(is_traced, individuals(state))
                     push!(get!(by_group, ind.state[:group], Bool[]), is_vaccinated(ind))
                 end
                 @test all(length(unique(v)) == 1 for v in values(by_group))
@@ -498,4 +538,58 @@ end
             @test ind.state[:group] == 1
         end
     end
+
+    @testset "group_attribute and vaccine_acceptance group by :type" begin
+        bp = BranchingProcess([1.2 0.4; 0.3 0.9], R -> Poisson(R), Exponential(5.0))
+        for (builder, key) in (
+                (group_attribute(:level; value = Uniform(), group_key = :type), :level),
+                (vaccine_acceptance(propensity = Beta(2, 2), group_key = :type), :vaccine_acceptance),
+            )
+            spec = ModelSpec(bp; attributes = [builder])
+            state = simulate(spec; n_initial = 20, max_cases = 200, rng = StableRNG(1))
+            cases = filter(is_infected, state.individuals)
+            for k in 1:2
+                values_k = Set(i.state[key] for i in cases if i.state[:type] == k)
+                @test length(values_k) == 1
+            end
+        end
+    end
+end
+
+@testset "age_bands" begin
+    ages = age_bands([0, 5, 18, 65, 90], [0.06, 0.16, 0.6, 0.18])
+    @test ages isa MixtureModel
+    @test all(c -> c isa Uniform, components(ages))
+    @test probs(ages) ≈ [0.06, 0.16, 0.6, 0.18]
+    @test minimum(ages) == 0
+    @test maximum(ages) == 90
+
+    # proportions are rescaled
+    @test probs(age_bands([0, 10, 20], [1, 3])) ≈ [0.25, 0.75]
+
+    df = DataFrame(lower = [0, 5, 18], upper = [5, 18, 90], proportion = [0.1, 0.2, 0.7])
+    @test age_bands(df) == age_bands([0, 5, 18, 90], [0.1, 0.2, 0.7])
+    renamed = rename(df, :lower => :from, :upper => :to, :proportion => :share)
+    @test age_bands(renamed; lower = :from, upper = :to, proportion = :share) == age_bands(df)
+
+    @test_throws ArgumentError age_bands([0, 5], [0.5, 0.5])
+    @test_throws ArgumentError age_bands([0, 5, 5], [0.5, 0.5])
+    @test_throws ArgumentError age_bands([0, 5, Inf], [0.5, 0.5])
+    @test_throws ArgumentError age_bands([0, 5, 10], [-0.5, 1.5])
+    @test_throws ArgumentError age_bands([0, 5, 10], [0, 0])
+    @test_throws ArgumentError age_bands(DataFrame(lower = [0, 6], upper = [5, 10], proportion = [1, 1]))
+    @test_throws ArgumentError age_bands(DataFrame(a = [0]))
+    @test_throws ArgumentError age_bands(
+        DataFrame(lower = Float64[], upper = Float64[], proportion = Float64[])
+    )
+
+    # works as the age distribution of demographics
+    state = simulate(
+        ModelSpec(
+            BranchingProcess(Poisson(0.0), Exponential(5.0));
+            attributes = demographics(age_distribution = age_bands([0, 10, 20], [1, 0]))
+        );
+        n_initial = 200, rng = StableRNG(1)
+    )
+    @test all(0 <= ind.state[:age] < 10 for ind in state.individuals)
 end

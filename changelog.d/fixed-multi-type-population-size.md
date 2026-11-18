@@ -1,1 +1,0 @@
-`simulate` now refuses a multi-type `BranchingProcess` with a finite `population_size`, which depleted every type against the whole population. Use `simulate_by_generation` with `population_by_type` instead.

@@ -1,0 +1,1 @@
+`linelist` takes `as_of` and `reported_only`. With `as_of` it gives the line list as known on that date: it keeps the cases reported by then and blanks later dates. With `reported_only` it keeps only reported cases. `censor_linelist` coarsens the date columns to weeks, months or any interval.

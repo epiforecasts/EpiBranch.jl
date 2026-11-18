@@ -37,7 +37,8 @@
 #   cov[t, t']     = ∂²K/∂u_t∂u_t' + δ_tt' · mean[t]
 #
 # the usual bridge from a probability generating function's factorial
-# moments to ordinary ones. `ForwardDiff` takes those derivatives; `K` is
+# moments to ordinary ones. `ForwardDiff` takes those derivatives (through
+# `_gradient_and_hessian`, defined by the extension that loads with it); `K` is
 # written generically in its argument's element type so a `Dual` offspring
 # or generation-time parameter still differentiates (nested automatic
 # differentiation), the same contract `_chain_length_ll_pgf` keeps for the
@@ -130,6 +131,21 @@ function _discretize_report_delay(
     b isa Real && return _bin_cdf(
         _censored_cdf(t -> cdf(a, t - b)), 0, tol, max_lag, "reporting delay"
     )
+    # A fixed first delay has no density for the quadrature to sample. It
+    # shifts the second delay instead.
+    if a isa Dirac
+        shift = a.value
+        return _bin_cdf(
+            _censored_cdf(t -> cdf(b, t - shift)), 0, tol, max_lag, "reporting delay"
+        )
+    end
+    # A fixed second delay shifts the first in the same way.
+    if b isa Dirac
+        shift = b.value
+        return _bin_cdf(
+            _censored_cdf(t -> cdf(a, t - shift)), 0, tol, max_lag, "reporting delay"
+        )
+    end
     # P(A + B ≤ t) = ∫ f_A(x) F_B(t - x) dx over x ≤ t, B being non-negative.
     lo = minimum(a)
     F(t) = t <= lo ? 0.0 : first(quadgk(x -> pdf(a, x) * cdf(b, t - x), lo, t))
@@ -143,6 +159,19 @@ end
 # type consistently and `Float64` is assumed here.
 _offspring_partype(offspring::Distribution) = Distributions.partype(offspring)
 _offspring_partype(::GeneratingFunctionOffspring) = Float64
+
+# The gradient and Hessian of `K` at `u`. The method lives in
+# `ext/EpiBranchForwardDiffExt.jl`, so `ForwardDiff` stays optional for users
+# who only simulate.
+function _gradient_and_hessian(K, u)
+    throw(
+        ArgumentError(
+            "incidence_moments and the incidence likelihood differentiate " *
+                "the generating function with ForwardDiff.jl; load it with " *
+                "`using ForwardDiff`."
+        )
+    )
+end
 
 """
     incidence_moments(offspring, generation_time::Distribution, n::Integer; seeds = 1,
@@ -166,6 +195,8 @@ too once a delay moves them into an observed step. Both default to every
 case counted in the step it is infected. The result is exact for
 independent reporting, and `reporting_probability` can be differentiated
 like the offspring parameters.
+
+Requires `using ForwardDiff` for the derivatives of the generating function.
 
 Returns a `(mean, cov)` named tuple: `mean[t]` is the expected count at step
 `t`, and `cov` is their `n × n` covariance matrix, both ignoring susceptible
@@ -324,6 +355,8 @@ cases. `approximation` chooses what [`incidence_moments`](@ref)'s mean and
 covariance are matched to; see [`NormalApproximation`](@ref) and
 [`LognormalApproximation`](@ref).
 
+Requires `using ForwardDiff` for the derivatives of the generating function.
+
 !!! warning "Limits"
     This ignores susceptible depletion, so it holds only while the
     population is effectively unsaturated. It models no interventions, and
@@ -457,8 +490,7 @@ end
 # variables, by the factorial-to-ordinary moment bridge described above.
 function _incidence_moments_from(K, N::Integer)
     u1 = ones(Float64, N)
-    μ = ForwardDiff.gradient(K, u1)
-    H = ForwardDiff.hessian(K, u1)
+    μ, H = _gradient_and_hessian(K, u1)
     return (mean = μ, cov = Symmetric(H + Diagonal(μ)))
 end
 
@@ -516,7 +548,7 @@ Log-likelihood of an incidence time series under a multi-type branching
 process, from the moments of [`incidence_moments`](@ref). `data` holds the
 counts by type, one column per type, or their total over types as a vector;
 its `seeds` give the index cases of each type. The limits are those of the
-single-type method.
+single-type method. Requires `using ForwardDiff`.
 
 # Examples
 
@@ -596,16 +628,23 @@ function _incidence_reporting(model)
         )
     )
     r = only(prog)
+    hasproperty(r, :delay) || throw(
+        ArgumentError(
+            "loglikelihood(IncidenceCounts, model) reads the delay of a " *
+                "reporting step from its `delay` field; $(typeof(r)) has none"
+        )
+    )
     r.delay isa Union{Real, Distribution} || throw(
         ArgumentError(
             "loglikelihood(IncidenceCounts, model) needs the Reporting delay to be a " *
                 "number or a distribution, not a per-case function"
         )
     )
-    reached, to_anchor = _infection_to(r.from, attributes(model))
+    reached, to_anchor = _infection_to(reporting_from(r), attributes(model))
+    anchor = to_anchor isa Real ? Dirac(float(to_anchor)) : to_anchor
     return (
         reporting_probability = _reporting_probability(prog) * reached,
-        reporting_delay = to_anchor === nothing ? r.delay : _DelaySum(to_anchor, r.delay),
+        reporting_delay = anchor === nothing ? r.delay : _DelaySum(anchor, r.delay),
     )
 end
 
@@ -636,24 +675,25 @@ end
 function _infection_to_onset(attrs)
     builders = attrs isa NoAttributes ? () :
         attrs isa Union{Tuple, AbstractVector} ? Tuple(attrs) : (attrs,)
-    presentations = filter(b -> b isa ClinicalPresentation, builders)
-    length(presentations) == 1 || throw(
+    laws = filter(!isnothing, map(onset_law, builders))
+    length(laws) == 1 || throw(
         ArgumentError(
             "The closed form reads the onset a Reporting step " *
-                "reports from from the model's clinical_presentation, and needs exactly " *
-                "one; this model has $(length(presentations))"
+                "reports from from the model's clinical_presentation (or another " *
+                "attribute that defines `onset_law`), and needs exactly " *
+                "one; this model has $(length(laws))"
         )
     )
     # Fresh copies, so the probe leaves the model's own builders as they were.
     _check_onset_builders(_fresh_attributes(builders))
-    cp = only(presentations)
+    cp = only(laws)
     cp.prob_asymptomatic isa Real || throw(
         ArgumentError(
             "The closed form needs a fixed prob_asymptomatic, not " *
                 "a per-case function"
         )
     )
-    return (1 - cp.prob_asymptomatic, cp.incubation_period)
+    return (1 - cp.prob_asymptomatic, _closed_form_incubation(cp, "The closed form"))
 end
 
 function _check_onset_builders(builders)
@@ -673,10 +713,9 @@ function _check_onset_builders(builders)
                 )
             )
         end
-        b isa ClinicalPresentation || isequal(onset(probe), before) || throw(
+        onset_law(b) !== nothing || isequal(onset(probe), before) || throw(
             ArgumentError(
-                "the closed form: an attribute builder other than " *
-                    "clinical_presentation records an onset, which this closed form cannot read"
+                "the closed form: an attribute builder that does not define `onset_law` records an onset, which this closed form cannot read"
             )
         )
     end
@@ -694,7 +733,7 @@ total). A [`Reporting`](@ref) step makes `data` a series of reported cases
 by report date: a report timed from infection uses the step's own
 probability and delay, and one timed from onset (the default) adds the
 model's [`clinical_presentation`](@ref) incubation period to the delay and
-counts only the cases that are not asymptomatic.
+counts only the cases that are not asymptomatic. Requires `using ForwardDiff`.
 
 Only defined for a model with no interventions, an unlimited
 `population_size`, a single infectiousness window with no `until`,

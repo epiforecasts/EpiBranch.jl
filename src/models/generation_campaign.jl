@@ -4,9 +4,7 @@
 # susceptibles of each type between generations instead. Its doses for a generation's
 # interval come from the budget of a `CapacityConstrained` (read, for a
 # schedule, at the start of each period) and the window of a `Scheduled`
-# around it, in either order. As in the individual-based engine once
-# `resource_key` splits `GroupVaccination` by type, every type has the whole
-# budget to itself.
+# around it, in either order. The types share one budget, as in every model.
 
 # A vaccination campaign `simulate_by_generation` can apply: the efficacy of
 # its dose, the days it may give doses between, and the budget limiting how
@@ -17,56 +15,36 @@ struct _Campaign{B}
     budget::B
 end
 
-# Walks the wrappers around a `GroupVaccination`, intersecting the windows of
-# any `Scheduled` and finding the one `CapacityConstrained`. Anything else, or
-# a `Scheduled` whose condition is not a calendar window, cannot be applied to
-# a count and is named in the error.
-_campaign(iv::AbstractIntervention, window, budget) = throw(
-    ArgumentError(
-        "simulate_by_generation cannot apply $(nameof(typeof(iv))); it applies " *
-            "GroupVaccination under CapacityConstrained and Scheduled"
-    )
-)
-function _campaign(s::Scheduled, window, budget)
-    s.window === nothing && throw(
-        ArgumentError(
-            "simulate_by_generation can only apply a Scheduled with a start_time and " *
-                "end_time: a case count or other condition has no clock between generations"
-        )
-    )
-    return _campaign(
-        s.intervention, (max(window[1], s.window.start), min(window[2], s.window.stop)), budget
-    )
-end
-function _campaign(cc::CapacityConstrained, window, budget)
-    budget === nothing || throw(
-        ArgumentError("simulate_by_generation needs a single CapacityConstrained per campaign")
-    )
-    return _campaign(cc.intervention, window, cc)
-end
-function _campaign(gv::GroupVaccination, window, budget)
+# Reads the wrappers around an intervention (the same ones the mixing
+# approximations read), then its effect on a group (`count_dosing`). Anything
+# else, or a `Scheduled` with a condition other than a calendar window, cannot be
+# applied to a count and is named in the error.
+function _campaign(iv::AbstractIntervention, window, budget)
+    engine = "simulate_by_generation"
+    leaf, window, budget = _unwrap_campaign(iv, window, budget, engine)
+    dosing = count_dosing(leaf)
+    dosing === nothing && _refuse_campaign(engine, nameof(typeof(leaf)))
     budget === nothing && throw(
         ArgumentError(
             "simulate_by_generation needs GroupVaccination wrapped in CapacityConstrained: " *
                 "without a dose budget there is no number of doses to give"
         )
     )
-    gv.group_key === :type || throw(
+    dosing.group_key === :type || throw(
         ArgumentError(
             "simulate_by_generation applies GroupVaccination to the types, so it needs " *
-                "group_key = :type, not :$(gv.group_key)"
+                "group_key = :type, not :$(dosing.group_key)"
         )
     )
-    eff = efficacy(gv)
-    eff isa Real || throw(
+    dosing.efficacy isa Real || throw(
         ArgumentError(
             "simulate_by_generation needs a numeric efficacy for GroupVaccination, " *
-                "not $(typeof(eff))"
+                "not $(typeof(dosing.efficacy))"
         )
     )
     for (name, value, none) in (
-            (:coverage, gv.coverage, 1), (:dose_delay, gv.dose_delay, 0),
-            (:delay_to_immunity, delay_to_immunity(gv), 0), (:waning, waning(gv), nothing),
+            (:coverage, dosing.coverage, 1), (:dose_delay, dosing.dose_delay, 0),
+            (:delay_to_immunity, dosing.delay_to_immunity, 0), (:waning, dosing.waning, nothing),
         )
         value === none || (value isa Real && none isa Real && value == none) || throw(
             ArgumentError(
@@ -75,7 +53,7 @@ function _campaign(gv::GroupVaccination, window, budget)
             )
         )
     end
-    return _Campaign(Float64(eff), window, budget)
+    return _Campaign(Float64(dosing.efficacy), window, budget)
 end
 
 # The campaigns a spec holds, or an error naming every intervention that
@@ -100,11 +78,23 @@ function _generation_campaigns(spec::ModelSpec, generation_length, finite_popula
     )
     finite_population || throw(
         ArgumentError(
-            "simulate_by_generation needs a finite population_size for the " *
+            "simulate_by_generation needs a finite population for the " *
                 "interventions $names to act on"
         )
     )
-    return [_campaign(iv, (0.0, Inf), nothing) for iv in ivs]
+    population = EpiBranch.population(process(spec))
+    return [_by_type(_campaign(iv, (0.0, Inf), nothing), population) for iv in ivs]
+end
+
+# A budget per group becomes one budget for each type, in the order of the
+# types, checked against the groups of the population. A budget shared by the types
+# stays as it is.
+_by_type(c::_Campaign, population) = _by_type(c, c.budget.budget_per_period, population)
+_by_type(c::_Campaign, ::Any, population) = c
+function _by_type(c::_Campaign, pg::PerGroup, population)
+    _group_budgets(pg, population)
+    budgets = [_for_resource(c.budget, name) for name in _group_names(population)]
+    return _Campaign(c.efficacy, c.window, budgets)
 end
 
 # The doses a campaign gives to each type between `t0` and `t1`. With
@@ -113,12 +103,11 @@ end
 # are the cumulative budget of the periods begun by then, none before the
 # window opens. Without it, each period's own budget is given in the period.
 # Only whole doses are given.
-function _interval_doses(c::_Campaign, t0::Real, t1::Real)
+function _interval_doses(c::_Campaign, t0::Real, t1::Real, cc = c.budget)
     s, e = c.window
     a = max(t0, s)
     b = min(t1, e)
     b > a || return 0
-    cc = c.budget
     if cc.carry_over || isinf(cc.period)
         before = a <= s ? 0.0 : _doses_by(cc, a)
         return max(0, floor(Int, _doses_by(cc, b)) - floor(Int, before))
@@ -144,16 +133,32 @@ function _doses_by(cc::CapacityConstrained, t)
     )
 end
 
+# The doses of `[t0, t1)` given to each type. A shared budget is a pool of doses
+# for everyone: each dose goes to a type in proportion to its population, as it
+# would to a person picked at random. A budget per group gives each type its own.
+function _doses_by_type(rng::AbstractRNG, c::_Campaign, t0, t1, sizes)
+    return _doses_by_type(rng, c, c.budget, t0, t1, sizes)
+end
+function _doses_by_type(rng::AbstractRNG, c::_Campaign, budgets::AbstractVector, t0, t1, sizes)
+    return [_interval_doses(c, t0, t1, b) for b in budgets]
+end
+function _doses_by_type(rng::AbstractRNG, c::_Campaign, ::CapacityConstrained, t0, t1, sizes)
+    doses = _interval_doses(c, t0, t1)
+    doses == 0 && return zeros(Int, length(sizes))
+    length(sizes) == 1 && return [doses]
+    return rand(rng, Multinomial(doses, Float64.(sizes) ./ sum(sizes)))
+end
+
 # Give a campaign's doses for `[t0, t1)` to the susceptibles. A dose reaches a
 # susceptible of a type with probability equal to the share of susceptibles in
 # the population of the type at the start of the interval, and protects with
 # probability `efficacy`. With no doses nothing is drawn.
 function _vaccinate!(rng::AbstractRNG, c::_Campaign, t0, t1, susceptibles, sizes)
-    doses = _interval_doses(c, t0, t1)
-    doses == 0 && return susceptibles
+    doses = _doses_by_type(rng, c, t0, t1, sizes)
     for i in eachindex(susceptibles)
+        doses[i] == 0 && continue
         (susceptibles[i] <= 0 || sizes[i] <= 0) && continue
-        reached = min(rand(rng, Binomial(doses, susceptibles[i] / sizes[i])), susceptibles[i])
+        reached = min(rand(rng, Binomial(doses[i], susceptibles[i] / sizes[i])), susceptibles[i])
         susceptibles[i] -= rand(rng, Binomial(reached, c.efficacy))
     end
     return susceptibles

@@ -54,14 +54,14 @@
             rng = rng
         )
 
-        @test count(is_isolated, state.individuals) > 0
+        @test count(is_isolated, individuals(state)) > 0
     end
 
     @testset "Generation tracking works" begin
         rng = StableRNG(55)
         model = BranchingProcess(Poisson(2.0), Exponential(5.0); population_size = 200)
         state = simulate(model; max_generations = 3, rng = rng)
-        max_gen = maximum(ind.generation for ind in state.individuals)
+        max_gen = maximum(ind.generation for ind in individuals(state))
         @test max_gen <= 3
     end
 
@@ -94,10 +94,10 @@
         model = BranchingProcess(Poisson(2.0), Exponential(5.0); population_size = 500)
         state = simulate(model; max_cases = 50, rng = rng)
 
-        for ind in filter(is_infected, state.individuals)
+        for ind in filter(is_infected, individuals(state))
             if ind.parent_id > 0
-                parent_idx = findfirst(i -> i.id == ind.parent_id, state.individuals)
-                parent = state.individuals[parent_idx]
+                parent_idx = findfirst(i -> i.id == ind.parent_id, individuals(state))
+                parent = individuals(state)[parent_idx]
                 @test ind.infection_time > parent.infection_time
             end
         end
@@ -106,8 +106,9 @@ end
 
 @testset "Finite population on a multi-type model" begin
     M = [2.5 0.05; 0.05 2.5]
+    # A total alone gives no size to deplete each type against.
     m = BranchingProcess(M, R -> Poisson(R), Exponential(5.0); population_size = 2000)
-    @test_throws ArgumentError simulate(m, 5; index_types = [1], rng = StableRNG(2))
+    @test_throws "size of each type" simulate(m, 5; index_types = [1], rng = StableRNG(2))
     ok = BranchingProcess(M, R -> Poisson(R), Exponential(5.0))
     @test length(simulate(ok, 5; index_types = [1], rng = StableRNG(2))) == 5
 end

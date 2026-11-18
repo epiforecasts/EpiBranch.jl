@@ -8,7 +8,7 @@
 # back to the existing `loglikelihood` methods so analytical fast
 # paths and simulation fallbacks are unchanged. `rand(d, n)` simulates
 # from the underlying model, applies the same reporting and observation
-# `logpdf` scores against, and projects to the relevant data type, so a
+# `logpdf` evaluates, and projects to the relevant data type, so a
 # prior or posterior predictive check draws from what the likelihood
 # evaluates rather than from the unobserved simulation. Each stored keyword
 # is forwarded only to the callee that accepts it: `rand` forwards only what
@@ -113,7 +113,7 @@ end
 # public single-outbreak `simulate`'s checks (and any `@warn` it raises) on
 # every attempt.
 function _rand_chain_size_setup(model::TransmissionModel, sim_kwargs::NamedTuple)
-    _validate_process_windows(model, progression(model))
+    validate_process_windows(model, progression(model))
     _warn_incomplete_terminal_coverage(progression(model))
     sim_opts = _build_sim_opts(
         model, get(sim_kwargs, :n_initial, nothing),
@@ -122,7 +122,7 @@ function _rand_chain_size_setup(model::TransmissionModel, sim_kwargs::NamedTuple
         get(sim_kwargs, :max_generations, _DEFAULT_MAX_GENERATIONS),
         get(sim_kwargs, :max_time, nothing), get(sim_kwargs, :stopping_rules, nothing)
     )
-    _validate_initial_cases(model, sim_opts)
+    validate_initial_cases(model, sim_opts)
     return (
         process = model, sim_opts = sim_opts, interventions = interventions(model),
         attributes = attributes(model), recorder = recorder(model),
@@ -140,7 +140,7 @@ function _rand_chain_size_setup(spec::ModelSpec, sim_kwargs::NamedTuple)
         get(sim_kwargs, :max_generations, _DEFAULT_MAX_GENERATIONS),
         get(sim_kwargs, :max_time, nothing), get(sim_kwargs, :stopping_rules, nothing)
     )
-    _validate_initial_cases(spec.process, sim_opts)
+    validate_initial_cases(spec.process, sim_opts)
     return (
         process = spec.process, sim_opts = sim_opts, interventions = spec.interventions,
         attributes = spec.attributes, recorder = spec.recorder,
@@ -193,7 +193,7 @@ struct _ChainLengthLaw{M, K} <:
     kwargs::K
 
     function _ChainLengthLaw(model::M, kwargs::K) where {M, K}
-        _chain_length_assert_full_reporting(progression(model))
+        _chain_length_assert_full_reporting(progression(model), attributes(model))
         return new{M, K}(model, kwargs)
     end
 end

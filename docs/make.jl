@@ -19,13 +19,16 @@ makedocs(;
         "Home" => "index.md",
         "Installation" => "installation.md",
         "Julia for R users" => "julia-for-r-users.md",
+        "Coming from R packages" => "from-r-packages.md",
         "Tutorials" => [
             "Getting started" => "tutorials/getting-started.md",
             "Interventions" => [
                 "Isolation and contact tracing" => "tutorials/interventions.md",
                 "Vaccination" => "tutorials/vaccination.md",
+                "What each model applies" => "tutorials/intervention-support.md",
             ],
             "Clinical transitions" => "tutorials/transitions.md",
+            "Making cases more or less infectious" => "tutorials/infectiousness.md",
             "Transmission models" => [
                 "Multi-type models" => "tutorials/multi-type.md",
                 "Network models" => "tutorials/networks.md",
