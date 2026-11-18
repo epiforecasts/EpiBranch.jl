@@ -33,15 +33,15 @@ function sir(delay)
     return [Transition(:recovered; from = :infection, delay = delay, terminal = true)]
 end
 
-# The attribute set most tests use: a log-normal incubation period, with the
-# default share of asymptomatic cases.
+# The attribute set most tests use: a log-normal incubation period. The share
+# of asymptomatic cases is `clinical_presentation`'s default of zero, so no
+# case is asymptomatic.
 const CLINICAL = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
 
 # Fraction of `n` simulated outbreaks that `containment_probability` counts as
-# contained, for a `spec` or for a model plus `ModelSpec` keywords. The defaults
-# are shared by the containment tests.
+# contained, for a `ModelSpec`. Extra keywords go to `simulate`.
 function contained(
-        spec::Union{ModelSpec, TransmissionModel}, n = 200;
+        spec::ModelSpec, n = 200;
         max_cases = 200, seed = 11, kwargs...
     )
     states = simulate(spec, n; max_cases, rng = StableRNG(seed), kwargs...)
