@@ -425,41 +425,53 @@ end
 
 function intervention_actions(gv::GroupVaccination, state, candidates)
     actions = InterventionAction[]
-    # `allowed` keeps a revised dose from reaching anyone outside this call's
-    # own `candidates`, such as a member already settled.
+    rec = _group_offers(gv, state)
+    groups_here = Any[]
+    for ind in candidates
+        group = get(ind.state, gv.group_key, nothing)
+        group === nothing && continue
+        _note_trigger!(rec, gv, state, ind, group)
+        group in groups_here || push!(groups_here, group)
+    end
+    # `allowed` keeps a revised dose from reaching a member outside this
+    # call's own `candidates` once it is settled.
     allowed = Set(ind.id for ind in candidates)
-    groups_here = Set(
-        get(ind.state, gv.group_key, nothing)
-            for ind in candidates
-            if haskey(ind.state, gv.group_key)
-    )
+    label = dose_label(gv)
     for group in groups_here
-        trigger = _group_trigger_time(gv, state, group)
+        trigger = get(rec.trigger, group, Inf)
         isfinite(trigger) || continue
-        for id in _group_members(state, gv.group_key, group)
+        queue = _queued_members(rec, gv, state, group)
+        kept = Int[]
+        for id in queue
             ind = individuals(state)[id]
             prior = get(action_cache(ind), _trigger_cache_key(gv), nothing)
-            if prior !== nothing || get(ind.state, _vaccinated_key(dose_label(gv)), false)
+            if prior !== nothing || get(ind.state, _vaccinated_key(label), false)
                 # A settled member's dose keeps its date; a member still
                 # pending in a continuous-time race (or the member currently
                 # being settled, mid-round) can still be reached by a
-                # genuinely earlier trigger. `ind.id in allowed` keeps this
-                # within the members this call actually received.
-                (ind.id in allowed && !is_settled(state, ind)) || continue
-                (prior !== nothing && may_revise(gv, prior, trigger)) || continue
+                # genuinely earlier trigger.
+                (prior !== nothing && !is_settled(state, ind) && may_revise(gv, prior, trigger)) ||
+                    continue
+                push!(kept, id)
+                id in allowed || continue
                 delay = _dose_delay!(gv, ind, state)
                 push!(actions, _revisable_dose_action(gv, ind, trigger, trigger + delay))
                 continue
             end
-            get(ind.state, _coverage_declined_key(dose_label(gv)), false) && continue
-            accepted = _accepts!(gv, ind, state)
-            if !accepted
-                ind.state[_coverage_declined_key(dose_label(gv))] = true
+            get(ind.state, _coverage_declined_key(label), false) && continue
+            # A settled member outside `candidates` is out of reach.
+            (id in allowed || !is_settled(state, ind)) || continue
+            if !_accepts!(gv, ind, state)
+                ind.state[_coverage_declined_key(label)] = true
                 continue
             end
+            # Kept until a dose is recorded, so a dose that was turned down
+            # (capacity, say) is offered again on a later call.
+            push!(kept, id)
             delay = _dose_delay!(gv, ind, state)
             push!(actions, _revisable_dose_action(gv, ind, trigger, trigger + delay))
         end
+        rec.queue[group] = kept
     end
     return actions
 end
@@ -571,7 +583,11 @@ function action_candidates(
     candidates = [current]
     group = get(current.state, gv.group_key, nothing)
     group === nothing && return candidates
-    for id in _group_members(state, gv.group_key, group)
+    rec = _group_offers(gv, state)
+    _note_trigger!(rec, gv, state, current, group)
+    isfinite(get(rec.trigger, group, Inf)) || return candidates
+    # Only the members still queued are visited, not the whole group.
+    for id in _queued_members(rec, gv, state, group)
         id == current.id && continue
         is_pending(id) || continue
         push!(candidates, individuals(state)[id])

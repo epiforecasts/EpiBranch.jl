@@ -1264,6 +1264,61 @@ function _group_trigger_time(gv::GroupVaccination, state, group)
     return t
 end
 
+# What `GroupVaccination` remembers of each group between calls, kept in the
+# run's `scratch` so a call costs time in the members it has not yet dealt
+# with rather than in the group's size: the group's trigger time so far, and a
+# queue of the members still to be offered a dose at that trigger. Only a case
+# settling can bring a trigger forward, so each call folds in the members it is
+# handed and nothing else. A member leaves the queue once it has nothing left
+# to be offered; a trigger that moves earlier puts the whole group back, since
+# a dose already given may then move (see `may_revise`).
+mutable struct _GroupOffers
+    gv::Any
+    trigger::Dict{Any, Float64}
+    queue::Dict{Any, Vector{Int}}
+    seen::Dict{Any, Int}
+end
+
+function _group_offers(gv::GroupVaccination, state)
+    key = (:group_offers, gv.group_key, dose_label(gv))
+    rec = get(state.scratch, key, nothing)
+    if rec === nothing || !(rec.gv === gv)
+        rec = _GroupOffers(
+            gv, Dict{Any, Float64}(), Dict{Any, Vector{Int}}(), Dict{Any, Int}()
+        )
+        state.scratch[key] = rec
+    end
+    return rec::_GroupOffers
+end
+
+# Fold `m`, a member of `group`, into the group's trigger time on the same
+# terms as `_group_trigger_time`. A trigger that moves earlier puts every
+# member of the group back in the queue.
+function _note_trigger!(rec::_GroupOffers, gv::GroupVaccination, state, m, group)
+    is_infected(m) || return nothing
+    is_eligible(gv.eligibility, m, m, state) || return nothing
+    tt = trigger_time(gv.eligibility, m, state)
+    isnan(tt) && return nothing
+    tt < get(rec.trigger, group, Inf) || return nothing
+    rec.trigger[group] = tt
+    empty!(get!(rec.queue, group, Int[]))
+    rec.seen[group] = 0
+    return nothing
+end
+
+# The group's queue, with the members the group has gained since the last
+# call added to it.
+function _queued_members(rec::_GroupOffers, gv::GroupVaccination, state, group)
+    ids = _group_members(state, gv.group_key, group)
+    queue = get!(rec.queue, group, Int[])
+    seen = get(rec.seen, group, 0)
+    for i in (seen + 1):length(ids)
+        push!(queue, ids[i])
+    end
+    rec.seen[group] = length(ids)
+    return queue
+end
+
 # ── MassVaccination ──────────────────────────────────────────────────
 
 """
