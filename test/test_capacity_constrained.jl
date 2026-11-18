@@ -313,7 +313,9 @@ end
         EpiBranch.trace_contacts!(cc, state, infector, [a], [9.0])
         # `b` is refused in the period `a` used up; the earlier repeat trace
         # of `a` neither adds an entry nor moves the use to the week before.
-        EpiBranch.trace_contacts!(cc, state, infector, [b, a], [10.0, 2.0])
+        other = Individual(id = 4)
+        set_isolated!(other, 0.0; release_time = Inf)
+        EpiBranch.trace_contacts!(cc, state, other, [b, a], [10.0, 2.0])
         @test EpiBranch.removal_stretches(a, EpiBranch.QUARANTINE_STRETCHES_KEY) == [(9.0, Inf)]
         @test a.state[:_quarantine_start] == 9.0
         @test !is_quarantined(b)

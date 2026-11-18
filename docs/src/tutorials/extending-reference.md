@@ -61,6 +61,7 @@ underscore are internal.
 | `:_isolation_handle` | `Int` | — | `Isolation` | `resolve_individual!`; internal. The handle of `Isolation`'s own entry, so `reset!` can withdraw exactly it |
 | `:_quarantine_removal_handles` | `Vector{Int}` | — | `ContactTracing`/`SourceTracing`'s `Quarantine` | `apply_trace!`; internal. The handles of every entry a quarantine has recorded, so a reset of the shared bookkeeping can withdraw each one. The `reset!` of a tracer withdraws only the entries listed under its own handles key |
 | `:_quarantine_start` | `Float64` | — | `ContactTracing`/`SourceTracing`'s `Quarantine` | `apply_trace!`; internal. The start of the earliest quarantine entry still standing, which is the day a capacity is charged on |
+| `:_trace_offered` | `Set{Tuple{UInt,Int}}` | — | `ContactTracing` | `trace_contacts!`; internal. The `(tracer, contact)` pairs already offered forward tracing. A later walk of the same contacts skips them and draws no new random numbers for them |
 | `:test_positive` | `Bool` | `false` | `Isolation` | `initialise_individual!` and `initialise_episode!` |
 | `:case_classification` | any | — | `ModelSpec`'s `case_definition` | After the run. The classification at the end of it, from the events up to `max_time` when the run has one; absent for a case never classified |
 | `:_case_classification_changes` | `Vector{Tuple{Float64,Any}}` | — | `ModelSpec`'s `case_definition` | After the run; internal. Each change of classification with its time, read by `case_classification_changes` |
