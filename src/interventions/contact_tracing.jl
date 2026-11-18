@@ -879,9 +879,9 @@ function _trace_pair!(
     # `_ring_hop`, so it is traced from as a ring member only, rather than
     # reseeding a second time.
     if ring
-        # Without a recorded trace time the member's own isolation stands in,
-        # capped at its infection as `trigger_time` is: a quarantine from
-        # before the infection does not start the ring's growth.
+        # Without a recorded trace time the isolation time of the member stands
+        # in, capped at its infection time as in `trigger_time`. A quarantine
+        # from before the infection therefore cannot start ring growth.
         base = _state_real(
             infector.state, :trace_time, trigger_time(TraceEveryone(), infector, state)
         )

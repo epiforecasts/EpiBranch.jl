@@ -1,1 +1,1 @@
-A `ContactTracing` ring no longer grows from a member's isolation time when that precedes the member's own infection. A ring member quarantined before it was infected, and with no recorded trace time, now traces its contacts from its infection at the earliest.
+A `ContactTracing` ring no longer grows from a member's isolation time when that precedes the member's own infection. A ring member quarantined before it was infected and with no recorded trace time now traces its contacts from its infection time at the earliest.
