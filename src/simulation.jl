@@ -870,11 +870,18 @@ function seed!(state::SimulationState, ids, interventions, transitions)
     end
     if !isempty(ids)
         first_ind = individuals(state)[first(ids)]
-        _validate_required_fields(first_ind, interventions)
         # Building the probe costs a copy of the case's state on every outbreak,
-        # so it is built only when a transition has a field to check.
-        if any(t -> !isempty(required_fields(t)), transitions)
-            _validate_required_fields(_transition_probe(first_ind, transitions, state), transitions)
+        # so it is built only if a transition has a field to check, or an
+        # intervention reads a field missing from the case that a transition
+        # could write (`Isolation` reads the keys of `Testing`).
+        lacking = _first_lacking_field(first_ind, interventions)
+        if !isempty(transitions) &&
+                (lacking !== nothing || any(t -> !isempty(required_fields(t)), transitions))
+            probe = _transition_probe(first_ind, transitions, state)
+            _validate_required_fields(probe, interventions)
+            _validate_required_fields(probe, transitions)
+        elseif lacking !== nothing
+            _throw_lacking_field(lacking...)
         end
     end
     state.cumulative_cases = length(ids)
@@ -1889,10 +1896,9 @@ attributes = [
 
 For rules this function does not cover, an `attributes` entry can set the
 fields directly, as in `(rng, ind) -> (ind.susceptibility = ...)`. Such a
-closure sends `loglikelihood(::ChainSizes, model)`, `chain_size_distribution`
-and the closed-form incidence likelihood to simulation rather than their
-analytical path, since [`EpiBranch.offspring_law_unchanged`](@ref) cannot
-tell what a bare function does; wrap it in its own callable type with a
+closure sends `loglikelihood(::ChainSizes, model)` and `chain_size_distribution`
+to simulation rather than their analytical path, since
+[`EpiBranch.offspring_law_unchanged`](@ref) cannot tell what a bare function does; wrap it in its own callable type with a
 method on that trait to get the analytical path back.
 
 See also [`clinical_presentation`](@ref), [`demographics`](@ref).
@@ -2029,16 +2035,21 @@ required_fields(::AbstractIntervention) = Symbol[]
 """Check that a person has all the information the interventions or
 natural-history steps need (their [`required_fields`](@ref EpiBranch.required_fields)),
 and raise an error naming the missing one and how to provide it."""
-function _validate_required_fields(individual, items)
-    for item in items
-        for field in required_fields(item)
-            if !haskey(individual.state, field)
-                itype = typeof(item)
-                hint = _field_hint(field)
-                error("$itype requires field :$field on individuals. $hint")
-            end
-        end
+function _first_lacking_field(individual, items)
+    for item in items, field in required_fields(item)
+        haskey(individual.state, field) || return (item, field)
     end
+    return nothing
+end
+
+function _throw_lacking_field(item, field)
+    hint = _field_hint(field)
+    return error("$(typeof(item)) requires field :$field on individuals. $hint")
+end
+
+function _validate_required_fields(individual, items)
+    lacking = _first_lacking_field(individual, items)
+    lacking === nothing || _throw_lacking_field(lacking...)
     return
 end
 

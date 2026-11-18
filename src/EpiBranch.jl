@@ -4,7 +4,7 @@ using DataAPI: DataAPI
 using DataFrames
 using Dates
 using Distributions
-using LinearAlgebra: LinearAlgebra, Diagonal, I, Symmetric, cholesky, diag, eigvals, issuccess
+using LinearAlgebra: LinearAlgebra, Diagonal, I, Symmetric, eigvals
 using QuadGK
 using Random
 using SpecialFunctions
@@ -161,7 +161,7 @@ include("analytical/poisson_mixtures.jl")
 include("analytical/generating_function_offspring.jl")
 include("analytical/isolation_offspring.jl")
 include("analytical/end_of_outbreak_probability.jl")
-include("analytical/incidence_likelihood.jl")
+include("analytical/incidence_moments.jl")
 include("analytical/signal_likelihood.jl")
 
 # Contact-matrix inputs: stratified arrays, mixing rates and file readers.
@@ -207,6 +207,7 @@ export SimOpts
 export AbstractStoppingRule, Extinction, MaxCases, MaxGenerations, MaxTime, should_stop
 export AbstractIntervention, Isolation, ContactTracing, SourceTracing
 export IsolationEligibility, SymptomaticOnly, AllCases
+export IsolationTrigger, AfterSymptomOnset, AfterPositiveTest
 export is_eligible_for_isolation
 export TraceEligibility, SymptomaticParent
 export OnSymptomOnset, OnLabConfirmation, OnIsolation, TraceEveryone, TraceNobody
@@ -287,10 +288,9 @@ export proportion_cases_individual, proportion_cases_offspring
 export probability_contain
 
 # Exports — unified inference interface
-export OffspringCounts, ChainSizes, ChainSizeClasses, ChainLengths, IncidenceCounts
+export OffspringCounts, ChainSizes, ChainSizeClasses, ChainLengths
 export SignalSeries, SignalData
 export incidence_moments
-export IncidenceApproximation, NormalApproximation, LognormalApproximation
 # Entry points returning a Distribution that wraps a model; use with
 # Turing's `~`. `chain_size_distribution` is already exported above.
 export chain_length_distribution, offspring_distribution

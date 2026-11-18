@@ -203,6 +203,9 @@ Isolation
 IsolationEligibility
 SymptomaticOnly
 AllCases
+IsolationTrigger
+AfterSymptomOnset
+AfterPositiveTest
 ```
 
 ### Contact tracing
@@ -502,7 +505,6 @@ OffspringCounts
 ChainSizes
 ChainSizeClasses
 ChainLengths
-IncidenceCounts
 ```
 
 ### Several signals from one simulated path
@@ -546,7 +548,6 @@ loglikelihood(ChainSizes(data), NegBin(0.8, 0.5))
 loglikelihood(ChainSizeClasses(lower, upper, counts), NegBin(0.8, 0.5))
 loglikelihood(ChainLengths(data), Poisson(0.5))
 loglikelihood(ChainSizes(data), model)   # interventions/observation read from model
-loglikelihood(IncidenceCounts(data), NegBin(0.8, 0.5), LogNormal(1.6, 0.5))
 ```
 
 The dot in `NegBin.(μ, 0.5)` applies `NegBin` to each element of `μ`, like
@@ -575,18 +576,14 @@ chain_length_distribution
 offspring_distribution
 ```
 
-### Incidence time-series likelihood
+### Incidence forecast
 
-A closed-form, moment-matched likelihood for case or admission counts per
-step (day, week, ...), built from the offspring and generation-time
-distributions rather than simulated. See its "Limits" note for what it
-ignores.
+The mean and covariance of case counts per step (day, week, ...) under a
+branching process, from the offspring and generation-time distributions
+rather than simulated.
 
 ```@docs
 incidence_moments
-IncidenceApproximation
-NormalApproximation
-LognormalApproximation
 ```
 
 ### Observation models
@@ -842,7 +839,7 @@ EpiBranch.proposes_actions
 EpiBranch.has_competing_risk
 EpiBranch.supplies_contacts
 EpiBranch.keep_active
-InterventionWrapper
+EpiBranch.InterventionWrapper
 EpiBranch.competing_risk
 Risk
 EpiBranch.HostSusceptibility
@@ -853,6 +850,7 @@ EpiBranch.HostImmunity
 EpiBranch.infectious_removal_time
 EpiBranch.risk_applies
 EpiBranch.standing_block
+EpiBranch.may_lapse
 EpiBranch.prevents_contact
 EpiBranch.infinite_draw_is_final
 intervention_time
@@ -871,6 +869,7 @@ EpiBranch.traced_isolation_time
 
 ```@docs
 is_eligible_for_isolation
+EpiBranch.isolation_reference_time
 EpiBranch.records_isolation
 EpiBranch.is_eligible
 EpiBranch.trigger_time
