@@ -368,6 +368,17 @@ function _revisable_dose_action(v::AbstractVaccination, ind, trigger, time)
     return InterventionAction(ind, time, (person, at, state) -> nothing, claim!)
 end
 
+# A dose is proposed as an action: there is no `intervention_time` to undo
+# and no effect written in `resolve_individual!`. Each type declares these
+# rather than `AbstractVaccination`, because a vaccination written outside the
+# package is checked against its own methods.
+for T in (RingVaccination, GroupVaccination, MassVaccination)
+    @eval time_aware(::$T) = false
+    @eval resolves_under_capacity(::$T) = false
+    @eval discovers_actions(::$T) = true
+    @eval has_competing_risk(::$T) = true
+end
+
 # The delay before a dose and whether it is accepted are drawn once per person
 # and cached. A revisited dose reuses the same draw.
 _dose_delay!(v, ind, state) =
@@ -605,7 +616,7 @@ function _apply_case_actions!(
     # cases — `action_candidates` is what keeps each intervention within
     # that boundary while choosing its own, much smaller, set of people to
     # visit. The caller passes only the interventions that propose actions
-    # (`_proposes_actions`).
+    # (`proposes_actions`).
     for iv in interventions
         # `needs_contacts` rather than `contacts !== nothing` alone, so an
         # intervention that needs no contacts (`GroupVaccination`) still
@@ -630,14 +641,6 @@ function _apply_case_actions!(
     # a trigger `current` itself just supplied) still sees it as pending.
     current.state[:_settled] = true
     return nothing
-end
-
-# Whether an intervention proposes actions per settled case: it has an
-# `intervention_actions` method of its own, found past any wrapper that only
-# forwards it, and is not one offered the whole population at once instead.
-function _proposes_actions(iv::AbstractIntervention)
-    acts_on_population(iv) && return false
-    return _discovers_actions(_hook_owner(intervention_actions, iv))
 end
 
 # Offer every intervention declaring `acts_on_population` its actions once,

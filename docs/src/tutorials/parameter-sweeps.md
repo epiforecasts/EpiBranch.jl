@@ -26,11 +26,11 @@ addprocs(4; exeflags = "--project")   # four workers, using the current project
     model = ModelSpec(
         BranchingProcess(NegBin(R, 0.5), LogNormal(1.6, 0.5));
         interventions = [
-            Isolation(onset_to_isolation_delay = Exponential(delay), duration = 7.0),
+            Isolation(delay = Exponential(delay), duration = 7.0),
         ],
         attributes = clinical_presentation(incubation_period = LogNormal(1.6, 0.5))
     )
-    p = containment_probability(model, 1000; max_cases = 500, rng = Xoshiro(seed))
+    p = containment_probability(model, 1000; max_cases = 500, rng = Xoshiro(seed)).proportion
     return (; R, delay, containment = p)
 end
 

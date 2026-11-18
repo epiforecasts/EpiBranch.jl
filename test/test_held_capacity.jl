@@ -16,6 +16,7 @@ struct _Bed2 <: EpiBranch.AbstractIntervention
 end
 EpiBranch.capacity_key(::_Bed2) = :bed
 EpiBranch.capacity_time_key(::_Bed2) = :bed_time
+EpiBranch.discovers_actions(::_Bed2) = true
 function EpiBranch.intervention_actions(b::_Bed2, state, candidates)
     return [
         InterventionAction(
@@ -36,6 +37,7 @@ end
 
 struct _Ward <: EpiBranch.AbstractIntervention end
 EpiBranch.capacity_key(::_Ward) = :ward_bed
+EpiBranch.discovers_actions(::_Ward) = true
 EpiBranch.resource_key(::_Ward, ind, state) = ind.state[:ward]
 EpiBranch.intervention_actions(::_Ward, state, candidates) = [
     InterventionAction(ind, 1.0, (p, t, s) -> (p.state[:ward_bed] = true))
@@ -81,7 +83,7 @@ EpiBranch.intervention_actions(::_Ward, state, candidates) = [
         @test_throws ArgumentError CapacityConstrained(
             rv; budget_per_period = 1.0, on_refusal = DeferRefused()
         )
-        iso = Isolation(onset_to_isolation_delay = Dirac(0.0), duration = Inf)
+        iso = Isolation(delay = Dirac(0.0), duration = Inf)
         @test_throws ArgumentError CapacityConstrained(
             iso; budget_per_period = 1.0, period = 1.0, on_refusal = DeferRefused()
         )
@@ -214,6 +216,8 @@ end
 
         deferring = HeldCapacity(ct; capacity = 1, hold = 4.0, on_refusal = DeferRefused())
         state = empty_state()
+        infector = Individual(id = 1)
+        set_isolated!(infector, 0.0; release_time = Inf)
         contacts = [Individual(id = i) for i in 2:4]
         append!(individuals(state), contacts)
         EpiBranch.trace_contacts!(deferring, state, infector, contacts, [1.0, 2.0, 3.0])
@@ -239,7 +243,7 @@ end
     end
 
     @testset "Caps how many are isolated at once" begin
-        iso = Isolation(onset_to_isolation_delay = Dirac(0.0), duration = 5.0)
+        iso = Isolation(delay = Dirac(0.0), duration = 5.0)
         hc = HeldCapacity(iso; capacity = 1)
         state = empty_state()
         people = [
@@ -266,7 +270,7 @@ end
             BranchingProcess(Poisson(3.0), Exponential(3.0));
             interventions = [
                 HeldCapacity(
-                    Isolation(onset_to_isolation_delay = Exponential(1.0), duration = 6.0);
+                    Isolation(delay = Exponential(1.0), duration = 6.0);
                     capacity = cap
                 ),
             ],
@@ -377,13 +381,61 @@ end
             @test length(occ.starts) == length(occ.ends) == length(stays) - 1
         end
     end
+    @testset "Each group follows its own capacity schedule" begin
+        rv = RingVaccination(efficacy = 0.9)
+        capacity = PerGroup(
+            :a => Steps([5.0], [2.0, 1.0]),
+            :b => Steps([5.0], [1.0, 3.0])
+        )
+        hc = HeldCapacity(rv; capacity, hold = 2.0)
+        state = empty_state(
+            BranchingProcess(
+                [1.0 0.0; 0.0 1.0], R -> Poisson(R), Exponential(5.0);
+                population = Population([100, 100]; groups = [:a, :b])
+            )
+        )
+        days_a = [1.0, 2.0, 3.0, 6.0, 6.5]
+        days_b = [1.0, 1.5, 6.0, 6.5, 7.0, 7.5]
+        contacts = [
+            [_held_contact(rv, i, d) for (i, d) in enumerate(days_a)];
+            [
+                begin
+                    c = _held_contact(rv, length(days_a) + i, d)
+                    c.state[:type] = 2
+                    c
+                end for (i, d) in enumerate(days_b)
+            ]
+        ]
+        append!(individuals(state), contacts)
+        state.max_infection_time = 1.0
+        EpiBranch.apply_actions!(hc, state, contacts)
+
+        # Group `a` has two places until day 5 and one after; group `b` has
+        # one place until day 5 and three after.
+        @test [c.id for c in contacts if is_vaccinated(c)] == [1, 2, 3, 4, 6, 8, 9, 10]
+        for (group, per_day) in (
+                (:a, [(1.5, 1, 2), (2.5, 2, 2), (4.5, 1, 2), (6.2, 1, 1), (6.7, 1, 1)]),
+                (:b, [(1.2, 1, 1), (1.7, 1, 1), (6.2, 1, 3), (7.2, 3, 3), (7.7, 3, 3), (8.2, 2, 3)]),
+            )
+            for (t, held, cap) in per_day
+                usage = held_usage(hc, state, t, group)
+                @test usage.held == held
+                @test usage.capacity == cap
+            end
+        end
+        @test all(
+            t -> held_usage(hc, state, t, :a).held <= held_usage(hc, state, t, :a).capacity &&
+                held_usage(hc, state, t, :b).held <= held_usage(hc, state, t, :b).capacity,
+            0.0:0.25:12.0
+        )
+    end
 
     @testset "Constructor validates its arguments" begin
         rv = RingVaccination(efficacy = 0.9)
         @test_throws ArgumentError HeldCapacity(rv; capacity = -1)
         @test_throws ArgumentError HeldCapacity(rv; capacity = 1, hold = -1.0) |>
             x -> EpiBranch.apply_actions!(x, empty_state(), [_held_contact(rv, 1, 1.0)])
-        iso = Isolation(onset_to_isolation_delay = Dirac(0.0), duration = Inf)
+        iso = Isolation(delay = Dirac(0.0), duration = Inf)
         @test_throws ArgumentError HeldCapacity(iso; capacity = 1, on_refusal = DeferRefused())
     end
 end

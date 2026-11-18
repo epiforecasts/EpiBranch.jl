@@ -156,14 +156,14 @@ const _SUPPORT_CASES = [
     (
         name = "Isolation under CapacityConstrained, shared budget",
         build = e -> CapacityConstrained(
-            Isolation(onset_to_isolation_delay = 1.0, duration = 7.0); budget_per_period = 10.0
+            Isolation(delay = 1.0, duration = 7.0); budget_per_period = 10.0
         ),
         applies = (:individual,),
     ),
     (
         name = "Isolation under CapacityConstrained, budget per group",
         build = e -> CapacityConstrained(
-            Isolation(onset_to_isolation_delay = 1.0, duration = 7.0);
+            Isolation(delay = 1.0, duration = 7.0);
             budget_per_period = PerGroup(1 => 10.0, 2 => 5.0)
         ),
         applies = (:individual,),
@@ -171,7 +171,7 @@ const _SUPPORT_CASES = [
     (
         name = "Isolation under HeldCapacity, places per group",
         build = e -> HeldCapacity(
-            Isolation(onset_to_isolation_delay = 1.0, duration = 7.0);
+            Isolation(delay = 1.0, duration = 7.0);
             capacity = PerGroup(1 => 10, 2 => 5)
         ),
         applies = (:individual,),
@@ -227,7 +227,7 @@ end
         @test EpiBranch.count_dosing(_support_gv(_SUPPORT_ENGINES.individual)) isa
             EpiBranch.GroupDosing
         @test EpiBranch.count_dosing(RingVaccination(efficacy = 0.9)) === nothing
-        @test EpiBranch.count_dosing(Isolation(onset_to_isolation_delay = 1.0, duration = 7.0)) ===
+        @test EpiBranch.count_dosing(Isolation(delay = 1.0, duration = 7.0)) ===
             nothing
     end
 

@@ -239,7 +239,7 @@ end
         clinical = clinical_presentation(
             incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.0
         )
-        iso = Isolation(onset_to_isolation_delay = Exponential(0.5), duration = Inf)
+        iso = Isolation(delay = Exponential(0.5), duration = Inf)
         gv = GroupVaccination(
             efficacy = 0.9, eligibility = OnLabConfirmation(),
             dose_delay = 1.0
@@ -343,7 +343,7 @@ end
         clinical = clinical_presentation(
             incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.0
         )
-        iso = Isolation(onset_to_isolation_delay = Exponential(0.5), duration = Inf)
+        iso = Isolation(delay = Exponential(0.5), duration = Inf)
         ct = ContactTracing(
             probability = 1.0, isolation_to_trace_delay = Exponential(0.5),
             action = Quarantine(duration = Inf)
@@ -384,7 +384,7 @@ end
         clinical = clinical_presentation(
             incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.0
         )
-        iso = Isolation(onset_to_isolation_delay = Exponential(0.5), duration = Inf)
+        iso = Isolation(delay = Exponential(0.5), duration = Inf)
         ct = ContactTracing(
             probability = 0.3, isolation_to_trace_delay = Exponential(0.5),
             action = Quarantine(duration = Inf)
@@ -557,7 +557,7 @@ end
             ModelSpec(model; interventions = ivs, attributes), 200;
             max_cases = 200, rng = StableRNG(11)
         )
-        return containment_probability(states; max_cases = 200)
+        return containment_probability(states; max_cases = 200).proportion
     end
     @test contained([gv]) > contained(AbstractIntervention[]) + 0.5
 end

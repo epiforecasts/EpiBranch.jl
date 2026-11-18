@@ -28,6 +28,7 @@ makedocs(;
                 "What each model applies" => "tutorials/intervention-support.md",
             ],
             "Clinical transitions" => "tutorials/transitions.md",
+            "Asymptomatic cases and infectiousness" => "tutorials/asymptomatic.md",
             "Making cases more or less infectious" => "tutorials/infectiousness.md",
             "Transmission models" => [
                 "Multi-type models" => "tutorials/multi-type.md",

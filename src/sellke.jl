@@ -91,26 +91,7 @@ function _has_own_method(f, T::Type, base::Type, n::Union{Int, Nothing} = nothin
     end
 end
 
-# The intervention whose own method for `f` would actually run: an
-# `InterventionWrapper` that does not override `f` only inherits its blanket
-# forwarding to `w.intervention` (that method is declared on
-# `InterventionWrapper` itself, not the concrete wrapper). Judging ownership
-# against the wrapper's type would therefore credit it with a method it never
-# wrote; unwrapping reaches the wrapped intervention's own method instead.
-function _hook_owner(f, iv::AbstractIntervention)
-    while iv isa InterventionWrapper && !_has_own_method(f, typeof(iv), InterventionWrapper)
-        iv = iv.intervention
-    end
-    return iv
-end
-
 _innermost(iv::AbstractIntervention) = iv
-
-# Whether an intervention discovers actions of its own, which the race offers
-# per settled case.
-function _discovers_actions(iv::AbstractIntervention)
-    return _has_own_method(intervention_actions, typeof(iv), AbstractIntervention)
-end
 
 # The `route` of the opening a chosen initial case is seeded through.
 const _SEEDED_ROUTE = -1
@@ -349,6 +330,23 @@ end
 function _intervention_removal_time(ind::Individual{T}, interventions) where {T}
     t = T(Inf)
     for iv in interventions
+        t = min(t, convert(T, infectious_removal_time(iv, ind))::T)
+    end
+    return t
+end
+
+# The same over the typed tuple of every intervention, using only those
+# `applies` marks, with each intervention read at its own concrete type.
+# Filtering the interventions per route would leave a vector of the abstract
+# type, and `infectious_removal_time` would dispatch at run time.
+function _intervention_removal_time(
+        ind::Individual{T}, interventions::Tuple, applies::AbstractVector{Bool}
+    ) where {T}
+    t = T(Inf)
+    k = 0
+    for iv in interventions
+        k += 1
+        applies[k] || continue
         t = min(t, convert(T, infectious_removal_time(iv, ind))::T)
     end
     return t
@@ -642,6 +640,16 @@ function _route_close(ind, keys, removable::Bool, interventions)
     return min(t, infection_aborted_time(ind))
 end
 
+# The race's form of the above: every intervention as a typed tuple, with
+# `applies` marking the ones that reach this route.
+function _route_close(
+        ind, keys, removable::Bool, interventions::Tuple, applies::AbstractVector{Bool}
+    )
+    t = _close_at(ind, keys)
+    removable && (t = min(t, _intervention_removal_time(ind, interventions, applies)))
+    return min(t, infection_aborted_time(ind))
+end
+
 # The one window of `_sellke_race!`'s `from`/`until`/`targets` shorthand. Reading
 # a single-route model's infectious windows back out of a simulation for the
 # likelihood uses the same window, and the simulator and the likelihood then
@@ -689,7 +697,7 @@ function _warn_contactless(model, interventions)
         String[
             string(nameof(typeof(_innermost(iv))))
                 for iv in interventions
-                if traces_contacts(iv) || (_proposes_actions(iv) && needs_contacts(iv))
+                if traces_contacts(iv) || (proposes_actions(iv) && needs_contacts(iv))
         ]
     )
     isempty(names) && return nothing
@@ -1018,6 +1026,7 @@ function _sellke_race_typed!(
         filter(iv -> risk_applies(iv, w), interventions)
             for (w, _) in rts
     ]
+    route_applies = [Bool[risk_applies(iv, w) for iv in typed_interventions] for (w, _) in rts]
     close_keys = map(
         ((w, _),) -> Symbol[_time_keys(filter(!=(INTERVENTION_REMOVAL), w.until))...], rts
     )
@@ -1085,12 +1094,7 @@ function _sellke_race_typed!(
     # a member that another case may still reach.
     may_block = live || reinfects || (
         (introduction !== nothing || _proposal_fallback(members)) && (
-            !isempty(risks) || any(
-                iv -> _has_own_method(
-                    competing_risk, typeof(iv),
-                    AbstractIntervention
-                ), interventions
-            )
+            !isempty(risks) || any(has_competing_risk, interventions)
         )
     ) || (_proposal_fallback(members) && any(((_, rt),) -> _route_may_block(rt), rts))
     # A route whose contacts the race checks against built-in risks of its own
@@ -1124,7 +1128,7 @@ function _sellke_race_typed!(
     # Whether `_apply_case_actions!` is worth calling on a model that
     # names no contacts: an intervention declaring `needs_contacts = false`
     # (`GroupVaccination`) still has candidates to offer it there.
-    acting = filter(_proposes_actions, interventions)
+    acting = filter(proposes_actions, interventions)
     # Those a person a route creates as it goes is offered on creation.
     creating = filter(iv -> !acts_on_population(iv) && !needs_contacts(iv), acting)
     contactless_actions = any(iv -> !needs_contacts(iv), acting)
@@ -1467,7 +1471,7 @@ function _sellke_race_typed!(
         open_ctx = (;
             race, ind, members, openings, j, max_generation, close_keys,
             removable, watch, live, live_route, route_projections,
-            full_snapshot, traits, route_interventions,
+            full_snapshot, traits, interventions = typed_interventions, route_applies,
         )
         self_proposing && (
             capped_generation = _open_routes!(rts, open_ctx, capped_generation, true)
@@ -1771,7 +1775,7 @@ function _open_route!(w, route_targets::R, ri, ctx, capped, only_proposing) wher
     (;
         race, ind, members, openings, j, max_generation, close_keys, removable,
         watch, live, live_route, route_projections, full_snapshot, traits,
-        route_interventions,
+        interventions, route_applies,
     ) = ctx
     # Read from the state. Stored in `ctx` as a value, the type is only a
     # `DataType` and the `convert` below would dispatch at run time.
@@ -1784,7 +1788,7 @@ function _open_route!(w, route_targets::R, ri, ctx, capped, only_proposing) wher
     # route it censors.
     ind.generation >= max_generation && return true
     close_t = convert(
-        T, _route_close(ind, close_keys[ri], removable[ri], route_interventions[ri])
+        T, _route_close(ind, close_keys[ri], removable[ri], interventions, route_applies[ri])
     )
     opening_id = _store_opening!(members, openings, members[j], ri, open_t, close_t)
     live && _watch_opening!(watch, j, live_route[ri])

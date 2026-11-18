@@ -94,7 +94,7 @@ SUITE["simulation: branching process"] = @benchmarkable simulate(
 
 const BP_CLINICAL = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
 const BP_ISOLATION = Isolation(
-    onset_to_isolation_delay = LogNormal(1.0, 0.5), duration = Inf
+    delay = LogNormal(1.0, 0.5), duration = Inf
 )
 const BP_CONTACT_TRACING = ContactTracing(
     probability = 0.5, isolation_to_trace_delay = Exponential(2.0),
@@ -183,3 +183,13 @@ const CHAIN_LAW = chain_size_distribution(BranchingProcess(Poisson(0.8)))
 SUITE["evaluation: chain size loglikelihood"] = @benchmarkable loglikelihood(
     $CHAIN_LAW, $(collect(1:50))
 )
+
+# The Poisson mixtures have no closed-form mass function, so each count costs
+# a quadrature. A large count is timed as well as a small one because the
+# integrand is narrower there.
+const POIS_LOGNORMAL = PoissonLognormal(-0.5, 1.0)
+const POIS_WEIBULL = PoissonWeibull(0.7, 1.0)
+SUITE["evaluation: PoissonLognormal pdf"] = @benchmarkable pdf($POIS_LOGNORMAL, 5)
+SUITE["evaluation: PoissonLognormal pdf, large count"] = @benchmarkable pdf($POIS_LOGNORMAL, 500)
+SUITE["evaluation: PoissonWeibull pdf"] = @benchmarkable pdf($POIS_WEIBULL, 5)
+SUITE["evaluation: PoissonWeibull pdf, large count"] = @benchmarkable pdf($POIS_WEIBULL, 500)

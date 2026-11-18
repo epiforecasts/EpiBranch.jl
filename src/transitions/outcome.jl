@@ -61,7 +61,9 @@ function _competing_outcome_time(individual::Individual, target::Symbol)
     return outcome_time(individual)
 end
 
-function transition_loglik(r::Recovery, individual::Individual; followup_end = Inf)
+function transition_loglik(
+        r::Recovery, individual::Individual; followup_end = Inf, truncated = false
+    )
     anchor = _state_time(individual, r.from)
     isfinite(anchor) || return 0.0
     t = individual.state[:recovery_candidate_time]
@@ -81,7 +83,7 @@ function transition_loglik(r::Recovery, individual::Individual; followup_end = I
     end
     t <= followup_end ||
         return transition_term(1.0, r.delay, individual, anchor, false; censor = censor)
-    return _delay_loglik(r.delay, t - anchor)
+    return _delay_loglik(r.delay, t - anchor, individual)
 end
 
 """
@@ -180,7 +182,9 @@ function terminal_event(::Death, individual::Individual{T}) where {T}
     return isfinite(t) ? (t, :died) : nothing
 end
 
-function transition_loglik(d::Death, individual::Individual; followup_end = Inf)
+function transition_loglik(
+        d::Death, individual::Individual; followup_end = Inf, truncated = false
+    )
     anchor = _state_time(individual, d.from)
     isfinite(anchor) || return 0.0
     t = individual.state[:death_candidate_time]
@@ -193,5 +197,5 @@ function transition_loglik(d::Death, individual::Individual; followup_end = Inf)
         censor = min(competing, infection_aborted_time(individual), followup_end)
     )
     candidate || return ll
-    return ll + _delay_loglik(d.delay, t - anchor)
+    return ll + _delay_loglik(d.delay, t - anchor, individual)
 end

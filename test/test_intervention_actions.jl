@@ -1,6 +1,7 @@
 struct AppointmentAction <: EpiBranch.AbstractIntervention end
 EpiBranch.capacity_key(::AppointmentAction) = :attended
 EpiBranch.capacity_time_key(::AppointmentAction) = :appointment_time
+EpiBranch.discovers_actions(::AppointmentAction) = true
 function EpiBranch.intervention_actions(iv::AppointmentAction, state, candidates)
     return [
         EpiBranch.InterventionAction(
@@ -15,6 +16,7 @@ end
 # clock it actually runs on (`state.max_infection_time`) rather than the one
 # in force when it was admitted, and returns a further action of its own.
 struct DeferredCheckIn <: EpiBranch.AbstractIntervention end
+EpiBranch.discovers_actions(::DeferredCheckIn) = true
 function EpiBranch.intervention_actions(::DeferredCheckIn, state, candidates)
     return [
         EpiBranch.InterventionAction(
@@ -137,7 +139,7 @@ end
     @test calls[] == 3
     @test !is_vaccinated(other)
     @test_throws ArgumentError EpiBranch.apply_actions!(
-        Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf), state, [other]
+        Isolation(delay = Exponential(1.0), duration = Inf), state, [other]
     )
 end
 
@@ -366,6 +368,7 @@ end
 
 struct _UndeclaredAction <: AbstractIntervention end
 EpiBranch.intervention_actions(::_UndeclaredAction, state, candidates) = nothing
+EpiBranch.discovers_actions(::_UndeclaredAction) = true
 
 @testset "Continuous-time candidates scale with the ring or group, not the population" begin
     # A settled case's own ring or group is tiny; most of the population is
@@ -569,7 +572,7 @@ end
     # An intervention with no method of its own gets the no-op default, so the
     # engine needs no knowledge of which types take part.
     for iv in (
-            Isolation(onset_to_isolation_delay = Dirac(0.0), duration = Inf),
+            Isolation(delay = Dirac(0.0), duration = Inf),
             ContactTracing(OnIsolation(), 1.0, Dirac(0.0), Quarantine(duration = Inf)),
             AppointmentAction(),
         )
