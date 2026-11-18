@@ -370,8 +370,8 @@ end
         state.max_infection_time = 1.0
         EpiBranch.apply_actions!(hc, state, contacts)
 
-        # In `a` the second place is free until day 5 and the single one after
-        # it; in `b` the single place is replaced by three after day 5.
+        # Group `a` has two places until day 5 and one after; group `b` has
+        # one place until day 5 and three after.
         @test [c.id for c in contacts if is_vaccinated(c)] == [1, 2, 3, 4, 6, 8, 9, 10]
         for (group, per_day) in (
                 (:a, [(1.5, 1, 2), (2.5, 2, 2), (4.5, 1, 2), (6.2, 1, 1), (6.7, 1, 1)]),
