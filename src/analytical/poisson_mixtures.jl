@@ -3,7 +3,8 @@
 # Weibull distribution and then a Poisson count at that rate: alternatives to
 # the negative binomial (a Poisson-gamma mixture) for individual variation in
 # transmission. Neither has a closed-form mass function. Quantities are
-# integrals over the rate, taken on the probability scale of the mixing law.
+# integrals over the rate, taken over the log of the rate because the
+# probability scale of the mixing law cannot resolve large counts.
 
 """
     PoissonLognormal(μ, σ)
