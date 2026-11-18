@@ -63,8 +63,8 @@ Columns always present:
 
 Further columns depend on the model alone: a column the model can produce is
 always present, with `missing` where a case has no value. A run in which every
-case is asymptomatic still has `date_onset`, so line lists of runs of one model
-have the same columns. Examples are `date_onset` and `asymptomatic` from
+case is asymptomatic still has `date_onset`. Line lists of runs of one model
+therefore have the same columns. Examples are `date_onset` and `asymptomatic` from
 [`clinical_presentation`](@ref), `age` and `sex` from [`demographics`](@ref),
 `isolated` and `date_isolation` from [`Isolation`](@ref) (with
 `date_isolation_release` when isolation or quarantine has a finite

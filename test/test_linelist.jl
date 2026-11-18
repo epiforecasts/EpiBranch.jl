@@ -440,7 +440,7 @@ end
     )
     states = simulate(m, 200; rng = StableRNG(5))
     per_run = linelist.(states)
-    # Some runs have no symptomatic case, and so no onset.
+    # Some runs have no symptomatic case and hence no onset.
     @test any(ll -> all(ismissing, ll.date_onset), per_run)
     @test any(ll -> !all(ismissing, ll.date_onset), per_run)
     @test length(unique(names.(per_run))) == 1

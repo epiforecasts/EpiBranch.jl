@@ -1,1 +1,1 @@
-The columns of `linelist` depend on the model alone. A column the model can produce is always present, with `missing` where a case has no value, so a run in which every case is asymptomatic still has `date_onset` and line lists of runs of one model have the same columns.
+The columns of `linelist` depend on the model alone. A column the model can produce is always present, with `missing` where a case has no value. A run in which every case is asymptomatic still has `date_onset`, and line lists of runs of one model have the same columns.
