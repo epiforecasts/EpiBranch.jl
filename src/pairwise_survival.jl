@@ -90,8 +90,8 @@ function pairwise_surv_loglik(kernel, data::PairwiseSurvivalData)
     end
     for r in eachindex(data.stop)
         kr = _rowkernel(kernel, r)
-        ll -= cumhazard(kr, data.stop[r])
-        data.start[r] > 0 && (ll += cumhazard(kr, data.start[r]))
+        ll -= _cumhazard(kr, data.stop[r])
+        data.start[r] > 0 && (ll += _cumhazard(kr, data.start[r]))
     end
     return ll
 end
@@ -350,11 +350,16 @@ function _withdrawn_removal_gap_keys(model::ModelSpec)
     )
 end
 
-# Every key a simulated `state` recorded a lapsing stretch under must be named
-# by some component (a complete removal or a leaky one) or withdrawn by one, or
-# the likelihood would silently fit on the whole exposure where the simulation
-# blocked part of it.
-function _validate_removal_gap_keys(state::SimulationState, model::ModelSpec)
+"""
+    validate_removal_gap_keys(state::SimulationState, model::ModelSpec)
+
+Check that every key a simulated `state` recorded a lapsing removal stretch under
+is named by some component of `model` (a complete removal or a leaky one) or
+withdrawn by one, and throw an `ArgumentError` otherwise: the likelihood would
+fit on the whole exposure where the simulation blocked part of it.
+[`layer_host_times`](@ref EpiBranch.layer_host_times) calls it.
+"""
+function validate_removal_gap_keys(state::SimulationState, model::ModelSpec)
     lapsing = _lapsing_removal_keys(state)
     isempty(lapsing) && return nothing
     accounted = union(
@@ -379,7 +384,7 @@ end
 # the hazard outright, `leaky`'s scale it by a surviving fraction instead.
 # `nothing` in either when the layer recorded none of that kind. Several
 # removals' keys are already merged into one column apiece (see
-# `_layer_host_times`), a host removed by either being removed.
+# `layer_host_times`), a host removed by either being removed.
 function _removal_gaps(data)
     times = host_times(data)
     complete = get(times, REMOVAL_STRETCHES_KEY, nothing)
@@ -389,7 +394,7 @@ function _removal_gaps(data)
 end
 
 # A leaky stretch, unlike a complete one, carries its own surviving fraction,
-# since `_layer_host_times` merges every leaky key sharing one into a single
+# since `layer_host_times` merges every leaky key sharing one into a single
 # column and the hot loop needs no further lookup to use it.
 const _NO_LEAKY_STRETCHES = Tuple{Float64, Float64, Float64}[]
 
@@ -538,26 +543,34 @@ end
 function _host_time_columns(state::SimulationState, keys)
     names = Tuple(Symbol(key) for key in keys)
     columns = map(names) do key
-        [get(ind.state, key, missing) for ind in state.individuals]
+        [get(ind.state, key, missing) for ind in individuals(state)]
     end
     return NamedTuple{names}(columns)
 end
 
-# The per-host columns of an infection layer, read out of a `state` simulated
-# from `model`, whose process runs one Sellke race with a `from` state and
-# `until` states (as `HouseholdProcess` and `NetworkProcess` do). Each window is
-# the one that race used, closed by the model's interventions as well, which
-# makes the `simulate → loglikelihood` round trip exact.
-function _infection_layer_columns(state::SimulationState, model::ModelSpec)
-    process = model.process
-    from = something(process.from, infectious_from(model.progression))
-    window = _shorthand_window(from, process.until)
-    n = length(state.individuals)
+"""
+    infection_layer_columns(state::SimulationState, model::ModelSpec)
+
+The per-host columns of an [`InfectionLayer`](@ref) read out of a `state`
+simulated from `model`, as a named tuple of `infection_time`, `infectious_time`,
+`removal_time` and `is_index`. The process runs one Sellke race with a window
+that opens at a `from` state and closes at `until` states, which it gives through
+[`process_window`](@ref EpiBranch.process_window) (the fields `from` and `until`
+for a [`FixedPopulationProcess`](@ref EpiBranch.FixedPopulationProcess)). Each
+window is the one the race used, closed by the model's interventions as well,
+which makes the `simulate → loglikelihood` round trip exact. Hosts never infected
+have `NaN` times and an infinite removal time.
+"""
+function infection_layer_columns(state::SimulationState, model::ModelSpec)
+    process_from, until = process_window(model.process)
+    from = something(process_from, infectious_from(model.progression))
+    window = _shorthand_window(from, until)
+    n = length(individuals(state))
     infection_time = fill(NaN, n)
     infectious_time = fill(NaN, n)
     removal_time = fill(Inf, n)
     is_index = falses(n)
-    for (k, ind) in enumerate(state.individuals)
+    for (k, ind) in enumerate(individuals(state))
         get(ind.state, :infected, false) || continue
         infection_time[k] = ind.infection_time
         infectious_time[k] = window_open(ind, window)
@@ -835,19 +848,29 @@ function _merged_gap_column(columns, keys, individuals)
     end
 end
 
-# The host-time columns an infection layer reads out of a simulated `state`,
-# with every completely-blocking removal's stretches merged into one column
-# and every leaky one's into another, apart, so the likelihood can tell them
-# apart (see `removal_block_probability`). A host removed by either of two
-# removals of the same kind is removed, so each merge is a union.
-function _layer_host_times(state::SimulationState, model::ModelSpec, host_times)
-    _validate_removal_gap_keys(state, model)
+"""
+    layer_host_times(state::SimulationState, model::ModelSpec, host_times)
+
+The named per-host time columns an infection layer reads out of a simulated
+`state`: those named in `host_times` plus the removal stretches of `model`'s
+interventions, under `EpiBranch.REMOVAL_STRETCHES_KEY` for the completely
+blocking removals (merged into one column) and `EpiBranch.LEAKY_REMOVAL_STRETCHES_KEY`
+for the leaky ones (merged into another, apart, so the likelihood can tell them
+apart; see [`removal_block_probability`](@ref EpiBranch.removal_block_probability)).
+A host removed by either of two removals of the same kind is removed, so each
+merge is a union. A layer built without these columns is scored as if nothing
+were ever removed, so a structure whose layer holds host times passes them on
+under those keys. Calls [`validate_removal_gap_keys`](@ref
+EpiBranch.validate_removal_gap_keys) first.
+"""
+function layer_host_times(state::SimulationState, model::ModelSpec, host_times)
+    validate_removal_gap_keys(state, model)
     columns = _host_time_columns(state, _layer_host_time_keys(model, host_times))
     gap_keys = _removal_gap_keys(model)
     leaky_keys = _leaky_gap_keys(model)
     result = columns
     if !isempty(gap_keys)
-        merged = _merged_gap_column(columns, gap_keys, state.individuals)
+        merged = _merged_gap_column(columns, gap_keys, individuals(state))
         result = merge(result, NamedTuple{(REMOVAL_STRETCHES_KEY,)}((merged,)))
     end
     if !isempty(leaky_keys)
@@ -859,7 +882,7 @@ function _layer_host_times(state::SimulationState, model::ModelSpec, host_times)
                     "supported by the pairwise likelihood"
             )
         )
-        merged = _merged_gap_column(columns, first.(leaky_keys), state.individuals)
+        merged = _merged_gap_column(columns, first.(leaky_keys), individuals(state))
         leak = leaks[1]
         tagged = [[(a, b, leak) for (a, b) in host] for host in merged]
         result = merge(result, NamedTuple{(LEAKY_REMOVAL_STRETCHES_KEY,)}((tagged,)))
@@ -867,7 +890,16 @@ function _layer_host_times(state::SimulationState, model::ModelSpec, host_times)
     return result
 end
 
-function _validate_infection_likelihood(model::ModelSpec)
+"""
+    validate_infection_likelihood(model::ModelSpec)
+
+Throw an `ArgumentError` unless the attributes, progression and every
+intervention of `model` declare [`infection_likelihood_compatible`](@ref). A
+`loglikelihood` method for an [`InfectionLayer`](@ref) calls it before scoring,
+since the likelihood would otherwise take no account of an effect it cannot
+represent.
+"""
+function validate_infection_likelihood(model::ModelSpec)
     for component in (model.attributes, model.progression, model.interventions)
         infection_likelihood_compatible(component) && continue
         throw(
@@ -1172,15 +1204,15 @@ end
     seeded_hosts(data::InfectionLayer) -> Union{Nothing, AbstractVector{Bool}}
 
 The hosts chosen as initial cases, which the likelihood takes as given even
-when a community hazard explains every other infection. `nothing`, the default,
-is a layer recording none. A layer type that records them returns a vector
-shaped like `data.is_index`.
+when a community hazard explains every other infection. The default returns
+`nothing`, for a layer that records none. A layer type that records them
+returns a vector with the same shape as `data.is_index`.
 """
 seeded_hosts(::InfectionLayer) = nothing
 
 # Which of a simulation's people were chosen initial cases.
 _seeded_column(state::SimulationState) =
-    Bool[get(ind.state, :seeded, false) for ind in state.individuals]
+    Bool[get(ind.state, :seeded, false) for ind in individuals(state)]
 
 # A layer's `seeded` column over `n` hosts, none seeded where it is not given.
 _seeded_mask(::Nothing, n) = fill(false, n)
@@ -1314,7 +1346,7 @@ _ext_survival(source) = _calendar_external_survival(source)
 
 # Person `j`'s survival distribution under the community hazard, or `nothing`
 # when they face none. A calendar schedule is the same for everyone, like a
-# shared distribution; `_CalendarScaledKernel` is its own prepared form.
+# shared distribution. A `_CalendarScaledKernel` is itself a distribution.
 _ext_survival_of(::Nothing, j) = nothing
 _ext_survival_of(d::ContinuousUnivariateDistribution, j) = d
 _ext_survival_of(α::Real, j) = _ext_active(α) ? _ext_survival(α) : nothing
@@ -1323,7 +1355,6 @@ function _ext_survival_of(f::Function, j)
     s = _check_person_external(f(j), j)
     return _ext_survival_of(s, j)
 end
-_ext_survival_of(k::_CalendarScaledKernel, j) = k
 _ext_survival_of(source, j) = _calendar_external_survival(source)
 
 # The source with each rate turned into its survival distribution once, for
@@ -1342,7 +1373,6 @@ _ext_prepare(source, data) = _ext_prepare(source)
 # The parameter type of the community hazard over the `n` people, so that AD
 # values in a fitted rate survive the reduction.
 _ext_partype(d::ContinuousUnivariateDistribution, n) = Distributions.partype(d)
-_ext_partype(k::_CalendarScaledKernel, n) = Distributions.partype(k)
 function _ext_partype(source, n)
     T = Union{}
     for j in 1:n
@@ -1400,6 +1430,10 @@ household or network structure, the infectious household members of a
 susceptible are counted in `I(t)` as well as in their own pairwise rows, as in
 [`HomogeneousProcess`](@ref) with households. Keep this in mind when
 interpreting `transmission_rate`.
+
+For a sample, give the community force of infection directly as the
+`external_hazard` instead of using `MassActionHazard`. It is a `Steps` schedule
+over calendar time, for instance from surveillance incidence.
 
 A person is counted in `I(t)` over `(infectious_time, removal_time]`, the same
 convention a pairwise row's own exposure uses, so a secondary infected at the
@@ -2012,11 +2046,11 @@ end
 # `origin` plus that), under a modifier. A constant factor splits the integral
 # exactly at `start`, since `cumhazard` is itself an integral of the hazard; a
 # factor that varies is integrated numerically against the kernel's hazard.
-_scaled_cumhazard(::Nothing, kernel, origin, stop) = cumhazard(kernel, stop)
+_scaled_cumhazard(::Nothing, kernel, origin, stop) = _cumhazard(kernel, stop)
 function _scaled_cumhazard(m::HazardScaling{<:Real, <:Real}, kernel, origin, stop)
     boundary = clamp(m.start - origin, zero(stop), stop)
-    before = cumhazard(kernel, boundary)
-    tail = cumhazard(kernel, stop) - before
+    before = _cumhazard(kernel, boundary)
+    tail = _cumhazard(kernel, stop) - before
     # An infinite tail under a zero factor contributes nothing, where the
     # product would give NaN. A finite tail stays in the product so that the
     # derivative with respect to the factor survives a factor of exactly zero.
@@ -2025,7 +2059,7 @@ function _scaled_cumhazard(m::HazardScaling{<:Real, <:Real}, kernel, origin, sto
 end
 function _scaled_cumhazard(m::HazardScaling, kernel, origin, stop)
     boundary = clamp(m.start - origin, zero(stop), stop)
-    before = cumhazard(kernel, boundary)
+    before = _cumhazard(kernel, boundary)
     # A bounded profile's survival reaches zero at the top of its support, past
     # which its hazard is undefined, so the cumulative hazard is infinite there,
     # as the kernel's own `cumhazard` has it.
@@ -2091,7 +2125,7 @@ function _component_loglik(
             (tj >= 0 && tj <= data.obs_end) || continue
             extdist = _ext_survival_of(extsrc, layout.sus[r])
             extdist === nothing && continue
-            _push!(acc, _scaled_loghazard(modifier, loghazard(extdist, tj), tj))
+            _push!(acc, _scaled_loghazard(modifier, _fast_loghazard(extdist, tj), tj))
         else
             i = infector[r]
             oi = data.infectious_time[i]

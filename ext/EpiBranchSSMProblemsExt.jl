@@ -8,7 +8,7 @@ module EpiBranchSSMProblemsExt
 using EpiBranch
 using EpiBranch: TransmissionModel, ModelSpec, SimulationState
 using Random: AbstractRNG
-using SSMProblems: StatePrior, LatentDynamics, StateSpaceModel, DistributionObservation
+using SSMProblems: StatePrior, LatentDynamics, ObservationProcess, StateSpaceModel
 import SSMProblems
 
 # A bare process or a `ModelSpec` is a model for `simulate`.
@@ -26,6 +26,20 @@ end
 struct OutbreakDynamics{M <: _Model, T <: Real} <: LatentDynamics
     model::M
     dt::T
+end
+
+# The distribution of the data at a step comes from the caller's
+# `observe(t, state)`. A `distribution` method on our own type works on SSMProblems
+# 0.6, which has no `DistributionObservation`, and on 0.7. The keywords are those
+# that 0.6 forwards.
+struct OutbreakObservation{F} <: ObservationProcess
+    observe::F
+end
+
+function SSMProblems.distribution(
+        obs::OutbreakObservation, t::Integer, x::SimulationState; kwargs...
+    )
+    return obs.observe(t, x)
 end
 
 function SSMProblems.simulate(rng::AbstractRNG, prior::OutbreakPrior)
@@ -49,7 +63,7 @@ function EpiBranch.outbreak_state_space(
     return StateSpaceModel(
         OutbreakPrior(model, NamedTuple(simulate_kwargs)),
         OutbreakDynamics(model, dt),
-        DistributionObservation(observe)
+        OutbreakObservation(observe)
     )
 end
 

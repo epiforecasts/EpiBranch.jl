@@ -4,8 +4,8 @@ struct MaxChainLengthRule <: AbstractStoppingRule
     n::Int
 end
 function EpiBranch.should_stop(r::MaxChainLengthRule, state::SimulationState)
-    isempty(state.individuals) && return false
-    return maximum(ind.generation for ind in state.individuals) >= r.n
+    isempty(individuals(state)) && return false
+    return maximum(ind.generation for ind in individuals(state)) >= r.n
 end
 
 # A user-defined time-bounding rule, used below to check that `time_bound`
@@ -65,7 +65,7 @@ EpiBranch.time_bound(r::TimeOrCasesRule) = r.t
             rng = rng
         )
         @test 15.0 < state.max_infection_time <= 20.0
-        @test all(ind -> ind.infection_time <= 20.0, filter(is_infected, state.individuals))
+        @test all(ind -> ind.infection_time <= 20.0, filter(is_infected, individuals(state)))
         @test !state.extinct
     end
 
@@ -85,7 +85,7 @@ EpiBranch.time_bound(r::TimeOrCasesRule) = r.t
             stopping_rules = [Extinction(), MaxChainLengthRule(3)],
             rng = rng
         )
-        @test maximum(ind.generation for ind in state.individuals) <= 3
+        @test maximum(ind.generation for ind in individuals(state)) <= 3
     end
 
     @testset "time_bound lets a custom rule end a Sellke run" begin
@@ -107,7 +107,7 @@ EpiBranch.time_bound(r::TimeOrCasesRule) = r.t
             spec; n_initial = 3,
             stopping_rules = [Extinction(), CustomTimeBoundRule(2.0)], rng = StableRNG(4)
         )
-        @test count(is_infected, cut.individuals) < count(is_infected, full.individuals)
+        @test count(is_infected, individuals(cut)) < count(is_infected, individuals(full))
         @test !is_extinct(cut)
     end
 
@@ -132,7 +132,7 @@ EpiBranch.time_bound(r::TimeOrCasesRule) = r.t
             spec; n_initial = 3,
             stopping_rules = [Extinction(), TimeOrCasesRule(2.0, 5)], rng = StableRNG(4)
         )
-        @test count(is_infected, cut.individuals) < count(is_infected, full.individuals)
+        @test count(is_infected, individuals(cut)) < count(is_infected, individuals(full))
         @test !is_extinct(cut)
         # An explicit `MaxCases`, with no time bound at all, now stops the
         # race exactly at the cap instead of being ignored.
@@ -157,7 +157,7 @@ EpiBranch.time_bound(r::TimeOrCasesRule) = r.t
             spec; n_initial = 3,
             stopping_rules = [Extinction(), MaxGenerations(3)], rng = StableRNG(4)
         )
-        @test maximum(ind.generation for ind in capped.individuals if is_infected(ind)) <= 3
+        @test maximum(ind.generation for ind in individuals(capped) if is_infected(ind)) <= 3
         # Capping depth is not the same as stopping the race the instant that
         # depth is seen: cases below the cap, settling later in time than a
         # capped one, still arise and are counted.
@@ -243,13 +243,13 @@ end
     @test_throws ArgumentError SimOpts(; initial_cases = [0])
     @test_throws ArgumentError SimOpts(; initial_cases = [-1])
     @test_throws ArgumentError SimOpts(; initial_cases = [3], n_initial = 1)
-    @test EpiBranch._validate_initial_case_ids(opts, 9) === nothing
-    @test_throws ArgumentError EpiBranch._validate_initial_case_ids(opts, 8)
-    @test EpiBranch._validate_initial_case_ids(SimOpts(), 9) === nothing
+    @test EpiBranch.validate_initial_case_ids(opts, 9) === nothing
+    @test_throws ArgumentError EpiBranch.validate_initial_case_ids(opts, 8)
+    @test EpiBranch.validate_initial_case_ids(SimOpts(), 9) === nothing
     @test_throws ArgumentError simulate(BranchingProcess(Poisson(0.0)); initial_cases = [3])
     # Race positions differ from population IDs, as they do within households.
     best = fill(Inf, 3)
-    EpiBranch._seed_initial_cases!(best, [9, 3, 6], opts.initial_cases)
+    EpiBranch.seed_initial_cases!(best, [9, 3, 6], opts.initial_cases)
     @test best == [0.0, 0.0, Inf]
     empty_opts = SimOpts(; initial_cases = Int[], stopping_rules = [MaxCases(10)])
     @test empty_opts.n_initial == 0
@@ -260,7 +260,7 @@ end
 function seed_household_population!(best, chosen, n_households)
     for household in 1:n_households
         fill!(best, Inf)
-        EpiBranch._seed_initial_cases!(best, (2household - 1, 2household), chosen)
+        EpiBranch.seed_initial_cases!(best, (2household - 1, 2household), chosen)
     end
     return nothing
 end

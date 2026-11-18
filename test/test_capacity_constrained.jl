@@ -62,7 +62,7 @@ end
         state = empty_state()
 
         contacts = [_traced_contact(rv, i, t) for (i, t) in enumerate([3.0, 1.0, 2.0, 4.0])]
-        append!(state.individuals, contacts)
+        append!(individuals(state), contacts)
         state.max_infection_time = 3.0
 
         EpiBranch.apply_actions!(cc, state, contacts)
@@ -78,7 +78,7 @@ end
         state = empty_state()
 
         contacts = [_traced_contact(rv, i, Float64(i)) for i in 1:3]
-        append!(state.individuals, contacts)
+        append!(individuals(state), contacts)
         state.max_infection_time = 3.0
 
         EpiBranch.apply_actions!(cc, state, contacts)
@@ -92,7 +92,7 @@ end
 
         # First period: 1 dose used out of an allowance of 2, 1 left unused.
         first = [_traced_contact(rv, 1, 1.0)]
-        append!(state.individuals, first)
+        append!(individuals(state), first)
         state.max_infection_time = 1.0
         EpiBranch.apply_actions!(cc, state, first)
         @test count(is_vaccinated, first) == 1
@@ -100,7 +100,7 @@ end
         # Second period (t >= 5): the unused dose from the first period carries
         # over, so 3 (1 leftover + 2 new) are available for the 3 new contacts.
         second = [_traced_contact(rv, i, Float64(i)) for i in 6:8]
-        append!(state.individuals, second)
+        append!(individuals(state), second)
         state.max_infection_time = 6.0
         EpiBranch.apply_actions!(cc, state, second)
         @test count(is_vaccinated, second) == 3
@@ -112,7 +112,7 @@ end
         state = empty_state()
 
         first = [_traced_contact(rv, 1, 1.0)]
-        append!(state.individuals, first)
+        append!(individuals(state), first)
         state.max_infection_time = 1.0
         EpiBranch.apply_actions!(cc, state, first)
         @test count(is_vaccinated, first) == 1
@@ -120,7 +120,7 @@ end
         # Second period: only this period's own allowance of 2 is available,
         # the unused dose from the first period does not carry over.
         second = [_traced_contact(rv, i, Float64(i)) for i in 6:8]
-        append!(state.individuals, second)
+        append!(individuals(state), second)
         state.max_infection_time = 6.0
         EpiBranch.apply_actions!(cc, state, second)
         @test count(is_vaccinated, second) == 2
@@ -136,7 +136,7 @@ end
         state = empty_state()
 
         contacts = [_traced_contact(rv, i, Float64(i)) for i in 1:3]
-        append!(state.individuals, contacts)
+        append!(individuals(state), contacts)
         state.max_infection_time = 3.0
 
         EpiBranch.apply_actions!(cc, state, contacts)
@@ -156,14 +156,14 @@ end
         # contact (`infection_time = NaN`), as on a network or household race.
         first = _traced_contact(rv, 1, 5.0)
         first.infection_time = NaN
-        append!(state.individuals, [first])
+        append!(individuals(state), [first])
         state.max_infection_time = 5.0
         EpiBranch.apply_actions!(cc, state, [first])
         @test is_vaccinated(first)
 
         second = _traced_contact(rv, 2, 6.0)
         second.infection_time = NaN
-        append!(state.individuals, [second])
+        append!(individuals(state), [second])
         state.max_infection_time = 6.0
         EpiBranch.apply_actions!(cc, state, [second])
         @test !is_vaccinated(second)
@@ -184,7 +184,7 @@ end
         state = empty_state()
 
         contacts = [_traced_contact(rv, i, Float64(i)) for i in 1:4]
-        append!(state.individuals, contacts)
+        append!(individuals(state), contacts)
         state.max_infection_time = 3.0
         EpiBranch.apply_actions!(cc, state, contacts)
 
@@ -199,7 +199,7 @@ end
         state = empty_state()
 
         contact = _traced_contact(rv, 1, 1.0)
-        append!(state.individuals, [contact])
+        append!(individuals(state), [contact])
         state.max_infection_time = 1.0
         EpiBranch.apply_actions!(cc, state, [contact])
 
@@ -236,7 +236,7 @@ end
                 :test_positive => true, :onset_time => 2.0, :asymptomatic => false
             )
         )
-        append!(state.individuals, [earlier, later])
+        append!(individuals(state), [earlier, later])
 
         EpiBranch.resolve_individual!(cc, earlier, state)
         EpiBranch.resolve_individual!(cc, later, state)
@@ -271,7 +271,7 @@ end
                 :asymptomatic => false
             )
         )
-        append!(state.individuals, [a, b])
+        append!(individuals(state), [a, b])
 
         EpiBranch.resolve_individual!(cc, b, state)
         EpiBranch.resolve_individual!(cc, a, state)
@@ -290,7 +290,7 @@ end
         set_isolated!(infector, 0.0; release_time = Inf)
         earlier = Individual(id = 2)
         later = Individual(id = 3)
-        append!(state.individuals, [earlier, later])
+        append!(individuals(state), [earlier, later])
 
         @test EpiBranch.traces_contacts(cc)
         EpiBranch.trace_contacts!(cc, state, infector, [earlier, later], [1.0, 2.0])
@@ -309,7 +309,7 @@ end
         infector = Individual(id = 1)
         set_isolated!(infector, 0.0; release_time = Inf)
         a, b = Individual(id = 2), Individual(id = 3)
-        append!(state.individuals, [a, b])
+        append!(individuals(state), [a, b])
         EpiBranch.trace_contacts!(cc, state, infector, [a], [9.0])
         # `b` is refused in the period `a` used up; the earlier repeat trace
         # of `a` neither adds an entry nor moves the use to the week before.
@@ -338,7 +338,7 @@ end
         )
         state = simulate(model; max_cases = 20, rng = StableRNG(2))
 
-        traced = filter(is_traced, state.individuals)
+        traced = filter(is_traced, individuals(state))
         @test !isempty(traced)
         @test count(is_quarantined, traced) < length(traced)
     end
@@ -362,10 +362,10 @@ end
                     )
                 )
                 EpiBranch.initialise_individual!(gv, ind, state)
-                push!(state.individuals, ind)
+                push!(individuals(state), ind)
             end
-            EpiBranch.apply_actions!(iv, state, [state.individuals[1]])
-            @test count(is_vaccinated, state.individuals) == 1
+            EpiBranch.apply_actions!(iv, state, [individuals(state)[1]])
+            @test count(is_vaccinated, individuals(state)) == 1
         end
     end
 
@@ -376,7 +376,7 @@ end
 
         earlier = _traced_contact(rv, 1, 1.0)
         later = _traced_contact(rv, 2, 2.0)
-        append!(state.individuals, [earlier, later])
+        append!(individuals(state), [earlier, later])
         state.max_infection_time = 2.0
         EpiBranch.apply_actions!(cc, state, [later, earlier])
 
@@ -427,7 +427,7 @@ end
         # All five doses fall due on day 3, though the call that admits them
         # runs on day 6.2.
         contacts = [_traced_contact(rv, i, 3.0 + i / 10) for i in 1:5]
-        append!(state.individuals, contacts)
+        append!(individuals(state), contacts)
         state.max_infection_time = 6.2
         EpiBranch.apply_actions!(cc, state, contacts)
 
@@ -452,13 +452,13 @@ end
         # propose a dose dated to day 10: the budget for that single day must
         # still hold, however far apart the calls that propose it are.
         first = [_traced_contact(rv, 1, 10.0)]
-        append!(state.individuals, first)
+        append!(individuals(state), first)
         state.max_infection_time = 1.0
         EpiBranch.apply_actions!(cc, state, first)
         @test count(is_vaccinated, first) == 1
 
         second = [_traced_contact(rv, 2, 10.5)]
-        append!(state.individuals, second)
+        append!(individuals(state), second)
         state.max_infection_time = 50.0
         EpiBranch.apply_actions!(cc, state, second)
         @test count(is_vaccinated, second) == 0
@@ -473,7 +473,7 @@ end
         state = empty_state()
 
         contacts = [_traced_contact(rv, i, 5.0) for i in 1:5]
-        append!(state.individuals, contacts)
+        append!(individuals(state), contacts)
         state.max_infection_time = 5.0
         EpiBranch.apply_actions!(cc, state, contacts)
 
@@ -487,16 +487,16 @@ end
         rv = RingVaccination(efficacy = 0.9)
         cc = CapacityConstrained(rv; budget_per_period = 1.0, period = 1.0)
         state = empty_state()
-        append!(state.individuals, [Individual(id = i) for i in 1:500])
+        append!(individuals(state), [Individual(id = i) for i in 1:500])
 
         for day in 1:20
             contact = _traced_contact(rv, 500 + day, Float64(day))
-            append!(state.individuals, [contact])
+            append!(individuals(state), [contact])
             state.max_infection_time = Float64(day)
             EpiBranch.apply_actions!(cc, state, [contact])
         end
 
-        dosed = filter(is_vaccinated, state.individuals)
+        dosed = filter(is_vaccinated, individuals(state))
         @test length(dosed) == 20
         @test capacity_usage(cc, state).used == 20
     end
@@ -514,7 +514,7 @@ end
         first = _traced_contact(rv_a, 1, 1.0)
         second = _traced_contact(rv_b, 2, 2.0)
         third = _traced_contact(rv_a, 3, 3.0)
-        append!(state.individuals, [first, second, third])
+        append!(individuals(state), [first, second, third])
         state.max_infection_time = 3.0
 
         EpiBranch.apply_actions!(cc_a, state, [first])
@@ -533,7 +533,7 @@ end
         cc = CapacityConstrained(rv; budget_per_period = 1.0, period = 1.0, carry_over = false)
         state = empty_state()
         revised = _traced_contact(rv, 1, 5.0)
-        append!(state.individuals, [revised])
+        append!(individuals(state), [revised])
         state.max_infection_time = 5.0
         EpiBranch.apply_actions!(cc, state, [revised])
         @test revised.state[:vaccination_time] == 5.0
@@ -544,7 +544,7 @@ end
 
         same_day = _traced_contact(rv, 2, 3.0)
         freed_day = _traced_contact(rv, 3, 5.0)
-        append!(state.individuals, [same_day, freed_day])
+        append!(individuals(state), [same_day, freed_day])
         EpiBranch.apply_actions!(cc, state, [same_day])
         EpiBranch.apply_actions!(cc, state, [freed_day])
         @test !is_vaccinated(same_day)
@@ -561,7 +561,7 @@ end
         first = _traced_contact(rv, 1, 1.0)
         second = _traced_contact(rv, 2, 2.0)
         third = _traced_contact(rv, 3, 3.0)
-        append!(state.individuals, [first, second, third])
+        append!(individuals(state), [first, second, third])
         state.max_infection_time = 3.0
 
         EpiBranch.apply_actions!(cc, state, [first])
@@ -585,7 +585,7 @@ end
         first = _traced_contact(rv, 1, 1.0)
         second = _traced_contact(other, 2, 2.0)
         third = _traced_contact(rv, 3, 3.0)
-        append!(state.individuals, [first, second, third])
+        append!(individuals(state), [first, second, third])
         state.max_infection_time = 3.0
 
         EpiBranch.apply_actions!(cc, state, [first])
@@ -606,7 +606,7 @@ end
         cc = CapacityConstrained(rv; budget_per_period = 2.0)
         state = empty_state()
         first = _traced_contact(rv, 1, 1.0)
-        append!(state.individuals, [first])
+        append!(individuals(state), [first])
         state.max_infection_time = 3.0
         EpiBranch.apply_actions!(cc, state, [first])
 
@@ -617,10 +617,10 @@ end
             )
         )
         EpiBranch.initialise_individual!(rv, prior, state)
-        append!(state.individuals, [prior])
+        append!(individuals(state), [prior])
 
         third = _traced_contact(rv, 3, 3.0)
-        append!(state.individuals, [third])
+        append!(individuals(state), [third])
         EpiBranch.apply_actions!(cc, state, [third])
         @test !is_vaccinated(third)
         @test capacity_usage(cc, state).used == 2
@@ -634,7 +634,7 @@ end
         cc = CapacityConstrained(_ClinicVisit(); budget_per_period = 2.0)
         state = empty_state()
         visitors = [Individual(id = i) for i in 1:3]
-        append!(state.individuals, visitors)
+        append!(individuals(state), visitors)
         state.max_infection_time = 1.0
 
         deferred = Any[]
@@ -668,7 +668,7 @@ end
         case = Individual(id = 4, parent_id = 3, infection_time = 1.0)
         set_isolated!(case, 2.0; release_time = Inf)
         third = Individual(id = 5)
-        append!(state.individuals, [infector, forward, source, case, third])
+        append!(individuals(state), [infector, forward, source, case, third])
         state.max_infection_time = 3.0
 
         EpiBranch.trace_contacts!(cc, state, infector, [forward], [1.0])
@@ -693,7 +693,7 @@ end
         case = Individual(id = 4, parent_id = 3, infection_time = 1.0)
         set_isolated!(case, 2.0; release_time = Inf)
         third = Individual(id = 5)
-        append!(state.individuals, [infector, forward, source, case, third])
+        append!(individuals(state), [infector, forward, source, case, third])
         state.max_infection_time = 3.0
 
         EpiBranch.trace_contacts!(cc, state, infector, [forward], [1.0])
@@ -710,7 +710,7 @@ end
         cc = CapacityConstrained(_ClinicVisit(); budget_per_period = 2.0)
         state = empty_state()
         first = Individual(id = 1)
-        append!(state.individuals, [first])
+        append!(individuals(state), [first])
         state.max_infection_time = 1.0
         EpiBranch.apply_actions!(cc, state, [first])
 
@@ -718,10 +718,10 @@ end
             id = 2, state = Dict{Symbol, Any}(:attended => true, :appointment_time => -10.0)
         )
         EpiBranch.initialise_individual!(cc, prior, state)
-        append!(state.individuals, [prior])
+        append!(individuals(state), [prior])
 
         third = Individual(id = 3)
-        append!(state.individuals, [third])
+        append!(individuals(state), [third])
         state.max_infection_time = 5.0
         EpiBranch.apply_actions!(cc, state, [third])
         @test !get(third.state, :attended, false)
@@ -736,7 +736,7 @@ end
         infector = Individual(id = 1)
         set_isolated!(infector, 0.0; release_time = Inf)
         contacts = [Individual(id = i) for i in 2:4]
-        append!(state.individuals, [infector; contacts])
+        append!(individuals(state), [infector; contacts])
         state.max_infection_time = 3.0
 
         EpiBranch.trace_contacts!(cc, state, infector, contacts[1:1], [1.0])
@@ -757,7 +757,7 @@ end
         infector = Individual(id = 1)
         set_isolated!(infector, 0.0; release_time = Inf)
         contacts = [Individual(id = i) for i in 2:4]
-        append!(state.individuals, [infector; contacts])
+        append!(individuals(state), [infector; contacts])
         state.max_infection_time = 3.0
 
         EpiBranch.trace_contacts!(cc, state, infector, contacts[1:1], [1.0])
@@ -798,13 +798,13 @@ end
         # Demand (5 candidates) exceeds the schedule's own allowance on both
         # days, so what is given matches the schedule exactly.
         first_day = [_traced_contact(rv, i, 1.0 + i / 10) for i in 1:5]
-        append!(state.individuals, first_day)
+        append!(individuals(state), first_day)
         state.max_infection_time = 1.9
         EpiBranch.apply_actions!(cc, state, first_day)
         @test count(is_vaccinated, first_day) == 1
 
         second_day = [_traced_contact(rv, 10 + i, 2.0 + i / 10) for i in 1:5]
-        append!(state.individuals, second_day)
+        append!(individuals(state), second_day)
         state.max_infection_time = 2.9
         EpiBranch.apply_actions!(cc, state, second_day)
         @test count(is_vaccinated, second_day) == 3
@@ -824,7 +824,7 @@ end
         # Day 0's allowance is 0, day 1's own allowance of 1 goes unused, and
         # day 2 adds its own 3: an available total of 4 by the end of day 2.
         later = [_traced_contact(rv, i, 2.0 + i / 10) for i in 1:5]
-        append!(state.individuals, later)
+        append!(individuals(state), later)
         state.max_infection_time = 2.9
         EpiBranch.apply_actions!(cc, state, later)
         @test count(is_vaccinated, later) == 4
@@ -851,7 +851,7 @@ end
             EpiBranch.initialise_individual!(rv, ind, nothing)
         end
         contacts = vcat(untraced, traced)
-        append!(state.individuals, contacts)
+        append!(individuals(state), contacts)
         state.max_infection_time = 4.0
 
         EpiBranch.apply_actions!(cc, state, contacts)
@@ -872,7 +872,7 @@ end
                 :vaccinated => true, :vaccination_time => 1.0
             )
         )
-        append!(state.individuals, [contact])
+        append!(individuals(state), [contact])
         state.max_infection_time = 1.0
 
         EpiBranch.apply_actions!(cc, state, [contact])
@@ -885,7 +885,7 @@ end
         state = empty_state()
 
         contacts = [_traced_contact(rv, i, Float64(i)) for i in 1:5]
-        append!(state.individuals, contacts)
+        append!(individuals(state), contacts)
         state.max_infection_time = 5.0
 
         EpiBranch.apply_actions!(cc, state, contacts)
@@ -902,7 +902,7 @@ end
         state = empty_state()
 
         contacts = [_traced_contact(rv, i, Float64(i)) for i in 1:5]
-        append!(state.individuals, contacts)
+        append!(individuals(state), contacts)
         state.max_infection_time = 5.0
 
         EpiBranch.apply_actions!(cc, state, contacts)
@@ -915,12 +915,12 @@ end
         state = empty_state()
 
         first = [_traced_contact(rv, 1, 1.0)]
-        append!(state.individuals, first)
+        append!(individuals(state), first)
         state.max_infection_time = 1.0
         EpiBranch.apply_actions!(cc, state, first)
 
         second = [_traced_contact(rv, i, Float64(i)) for i in 6:7]
-        append!(state.individuals, second)
+        append!(individuals(state), second)
         state.max_infection_time = 6.0
         EpiBranch.apply_actions!(cc, state, second)
 
@@ -945,13 +945,13 @@ end
         # Both doses are dated day 3, inside period [0, 5), though the calls
         # that admit them run on days 12 and 13, well into a later period.
         first = [_traced_contact(rv, 1, 3.1)]
-        append!(state.individuals, first)
+        append!(individuals(state), first)
         state.max_infection_time = 12.0
         EpiBranch.apply_actions!(cc, state, first)
         @test count(is_vaccinated, first) == 1
 
         second = [_traced_contact(rv, 2, 3.2)]
-        append!(state.individuals, second)
+        append!(individuals(state), second)
         state.max_infection_time = 13.0
         EpiBranch.apply_actions!(cc, state, second)
         @test count(is_vaccinated, second) == 0
@@ -968,7 +968,7 @@ end
         cc1 = CapacityConstrained(Scheduled(rv; start_time = 10.0); budget_per_period = 5.0)
         state1 = empty_state()
         contacts1 = [_traced_contact(rv, i, Float64(i)) for i in 1:3]
-        append!(state1.individuals, contacts1)
+        append!(individuals(state1), contacts1)
         state1.max_infection_time = 5.0
         EpiBranch.apply_actions!(cc1, state1, contacts1)
         @test count(is_vaccinated, contacts1) == 0
@@ -976,7 +976,7 @@ end
         cc2 = Scheduled(CapacityConstrained(rv; budget_per_period = 5.0); start_time = 10.0)
         state2 = empty_state()
         contacts2 = [_traced_contact(rv, i, Float64(i)) for i in 1:3]
-        append!(state2.individuals, contacts2)
+        append!(individuals(state2), contacts2)
         state2.max_infection_time = 5.0
         EpiBranch.apply_actions!(cc2, state2, contacts2)
         @test count(is_vaccinated, contacts2) == 0
@@ -1008,7 +1008,7 @@ end
         a1 = Individual(id = 1, state = Dict{Symbol, Any}(:district => :A, :time => 1.0))
         a2 = Individual(id = 2, state = Dict{Symbol, Any}(:district => :A, :time => 2.0))
         b1 = Individual(id = 3, state = Dict{Symbol, Any}(:district => :B, :time => 1.0))
-        append!(state.individuals, [a1, a2, b1])
+        append!(individuals(state), [a1, a2, b1])
         state.max_infection_time = 2.0
 
         EpiBranch.apply_actions!(cc, state, [a1, a2, b1])
@@ -1045,8 +1045,8 @@ end
             condition = 50:300, max_cases = 300, rng = MersenneTwister(1)
         )
 
-        @test count(is_vaccinated, state_capped.individuals) <
-            count(is_vaccinated, state_uncapped.individuals)
+        @test count(is_vaccinated, individuals(state_capped)) <
+            count(is_vaccinated, individuals(state_uncapped))
     end
 end
 
@@ -1079,4 +1079,21 @@ end
         end
     end
     @test over == 0
+end
+
+@testset "gates_on_population_clock is found through wrappers" begin
+    iso = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
+    routes = (:transmission,)
+    @test !EpiBranch.gates_on_population_clock(iso)
+    @test !EpiBranch.gates_on_population_clock(OnRoutes(iso, routes))
+    @test EpiBranch.gates_on_population_clock(Scheduled(iso; start_time = 5.0))
+    @test EpiBranch.gates_on_population_clock(
+        OnRoutes(Scheduled(iso; start_time = 5.0), routes)
+    )
+    cc = CapacityConstrained(iso; budget_per_period = 3)
+    @test EpiBranch.gates_on_population_clock(cc)
+    @test EpiBranch.gates_on_population_clock(OnRoutes(cc, routes))
+    hc = HeldCapacity(iso; capacity = 2)
+    @test EpiBranch.gates_on_population_clock(hc)
+    @test EpiBranch.gates_on_population_clock(OnRoutes(hc, routes))
 end
