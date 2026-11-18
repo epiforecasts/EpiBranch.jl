@@ -23,9 +23,9 @@ using StableRNGs
     @testset "Mass function matches superspreading" begin
         # `dpoislnorm(x, meanlog, sdlog)` and `dpoisweibull(x, shape, scale)`
         # from superspreading 0.4.0. Its integration is accurate to about 1e-8
-        # at these counts, except for the (-0.5, 1.0) lognormal at count 20,
-        # where it returns 5.86e-5 and direct integration gives 6.404e-5; that
-        # count is left out.
+        # at these counts. The exception is the (-0.5, 1.0) lognormal at count
+        # 20, where it returns 5.86e-5 against 6.404e-5 from direct
+        # integration; that count is left out.
         xs = [0, 1, 5, 20]
         lnorm_ref = Dict(
             (-0.5, 1.0) => [
@@ -65,8 +65,8 @@ using StableRNGs
 
     @testset "Large counts match direct integration over the log rate" begin
         # superspreading underflows to zero or loses accuracy beyond a count
-        # of about 20, so these are checked against a fine grid in the log of
-        # the rate instead.
+        # of about 20. These cases are checked against a fine grid in the log
+        # of the rate instead.
         grid = range(-15, 15; length = 1001)
         function direct(rate, x)
             f = t -> (λ = exp(t); exp(logpdf(Poisson(λ), x) + logpdf(rate, λ) + t))

@@ -165,7 +165,7 @@ SUITE["evaluation: chain size loglikelihood"] = @benchmarkable loglikelihood(
 )
 
 # The Poisson mixtures have no closed-form mass function, so each count costs
-# a quadrature. A large count is timed as well as a small one, since the
+# a quadrature. A large count is timed as well as a small one because the
 # integrand is narrower there.
 const POIS_LOGNORMAL = PoissonLognormal(-0.5, 1.0)
 const POIS_WEIBULL = PoissonWeibull(0.7, 1.0)

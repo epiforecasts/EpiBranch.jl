@@ -114,11 +114,11 @@ end
 
 # Expectation of `f(Poisson(λ), x)` over the rate, integrated over the log of
 # the rate. For large `x` the mass sits in the far tail of the rate law, where
-# the probability scale cannot resolve it, and it is a narrow peak, of width
-# at most `1 / √x` in log rate, at the mode of the integrand of the mass
-# function. The integral is split around that mode and around `log(x)`, where
+# the probability scale cannot resolve it. It forms a narrow peak at the mode
+# of the integrand of the mass function, with a width in log rate of at most
+# `1 / √x`. The integral is split around that mode and around `log(x)`, where
 # the Poisson cumulative distribution changes. The range covers all but 1e-300
-# of the rate law in each tail, within the range of a double.
+# of the rate law in each tail, which is within the range of a double.
 function _poisson_mixture_expectation(f, d::_PoissonMixture, x::Real)
     rate = _rate_law(d)
     integrand = function (t)
