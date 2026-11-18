@@ -65,6 +65,40 @@ using StableRNGs
         @test isapprox(mean(children), expected; atol = 4 * sqrt(expected / n))
     end
 
+    @testset "later contacts do not depend on the number already listed" begin
+        # With Poisson offspring the contacts after `now` are independent of
+        # those before it, so the mean is R * P(T > now) whatever is listed.
+        R, mean_gt, now = 0.8, 2.0, 1.0
+        m = BranchingProcess(Poisson(R), Exponential(mean_gt))
+        expected = R * exp(-now / mean_gt)
+        for listed in (1, 3)
+            listed_cases = DataFrame(
+                infection_time = fill(0.5, listed + 1) .* [0.0; ones(listed)],
+                parent_id = [missing; fill(1, listed)]
+            )
+            rng = StableRNG(10 + listed)
+            n = 4000
+            later = map(1:n) do _
+                state = initialise_state(m, listed_cases; now, rng)
+                simulate(m, state; max_time = 1000.0, rng)
+                count(
+                    i -> is_infected(state.individuals[i]) &&
+                        state.individuals[i].parent_id == 1,
+                    (listed + 2):length(state.individuals)
+                )
+            end
+            @test isapprox(mean(later), expected; atol = 4 * sqrt(expected / n))
+        end
+    end
+
+    @testset "listed offspring the model makes very unlikely are an error" begin
+        many = DataFrame(
+            infection_time = [0.0; fill(0.5, 12)], parent_id = [missing; fill(1, 12)]
+        )
+        m = BranchingProcess(Poisson(0.05), Exponential(2.0))
+        @test_throws ArgumentError initialise_state(m, many; rng = StableRNG(1))
+    end
+
     @testset "an isolated case infects no one after isolation" begin
         iso = DataFrame(
             infection_time = [0.0, 1.0], isolation_time = [1.5, missing],

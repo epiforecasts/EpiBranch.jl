@@ -61,10 +61,12 @@ function (w::_ObservedOffspring)(rng, ind, state)
         seen == known && return OffspringTimes(later)
     end
     throw(
-        ErrorException(
-            "case $(ind.id) has $known known offspring by time $(w.now), which the " *
-                "model's offspring law and generation time made no draw of in " *
-                "$_MAX_CONDITIONING_ATTEMPTS attempts"
+        ArgumentError(
+            "case $(ind.id) has $known known offspring by time $(w.now), which is " *
+                "implausible under the model: its offspring law and generation time " *
+                "gave no draw with that many in $_MAX_CONDITIONING_ATTEMPTS attempts. " *
+                "Check the `parent_id` column, or use an offspring law or generation " *
+                "time that allows it"
         )
     )
 end
@@ -272,7 +274,9 @@ on the observed data.
 Only a [`BranchingProcess`](@ref) with a single [`Infectiousness`](@ref)
 window and a single type is supported, bare or inside a [`ModelSpec`](@ref),
 and its offspring must draw a number of contacts rather than their times.
-Natural-history draws that the table gives no value for, such as the onset of
+A case whose listed offspring the model makes very unlikely, such as many
+more than its offspring law readily gives, raises an `ArgumentError` after
+100,000 rejected draws. Natural-history draws that the table gives no value for, such as the onset of
 a case with no `onset_time`, are made from the model as usual.
 
 ```julia
