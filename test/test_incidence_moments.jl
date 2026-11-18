@@ -252,7 +252,7 @@ using ForwardDiff
         function simulate_continuous(rng)
             counts = zeros(n)
             report!(t) =
-                if rand(rng) < ρ
+            if rand(rng) < ρ
                 tr = t + rand(rng, delay)
                 0 < tr <= n && (counts[ceil(Int, tr)] += 1)
             end
