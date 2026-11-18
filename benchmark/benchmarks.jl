@@ -111,6 +111,26 @@ SUITE["simulation: branching process, interventions"] = @benchmarkable simulate(
     ); n_initial = 5, max_cases = 2000, rng = StableRNG(1)
 )
 
+# A large outbreak whose traced contacts far outnumber the places, so most are
+# refused and each deferral searches the stays held on the resource. The
+# isolation only reaches some cases, so the outbreak keeps growing.
+const BP_HELD_ISOLATION = Isolation(
+    onset_to_isolation_delay = LogNormal(1.0, 0.5), duration = 14.0, test_sensitivity = 0.3
+)
+const BP_HELD_TRACING = HeldCapacity(
+    ContactTracing(OnSymptomOnset(), 0.4, Exponential(2.0), Quarantine(duration = 14.0));
+    capacity = 50, hold = 14.0, on_refusal = DeferRefused()
+)
+
+SUITE["simulation: branching process, HeldCapacity with DeferRefused"] = @benchmarkable simulate(
+    $(
+        ModelSpec(
+            BranchingProcess(NegBin(12.0, 0.5), BP_GT); progression = PROGRESSION,
+            interventions = [BP_HELD_ISOLATION, BP_HELD_TRACING], attributes = BP_CLINICAL
+        )
+    ); n_initial = 20, max_cases = 1000, rng = StableRNG(1)
+)
+
 # A `PairKernel` with a projection re-reads host records as the outbreak runs.
 # Its cost depends on how often a record moves, so it is benchmarked with and
 # without an intervention that moves one.
