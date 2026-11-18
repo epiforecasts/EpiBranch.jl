@@ -41,8 +41,8 @@ using StableRNGs
         @test mixed.cumulative_cases == homog.cumulative_cases
         @test mixed.extinct == homog.extinct
         @test isequal(
-            [i.infection_time for i in mixed.individuals],
-            [i.infection_time for i in homog.individuals]
+            [i.infection_time for i in individuals(mixed)],
+            [i.infection_time for i in individuals(homog)]
         )
     end
 
@@ -71,8 +71,8 @@ using StableRNGs
         )
         @test mixed.cumulative_cases == homog.cumulative_cases
         @test isequal(
-            [i.infection_time for i in mixed.individuals],
-            [i.infection_time for i in homog.individuals]
+            [i.infection_time for i in individuals(mixed)],
+            [i.infection_time for i in individuals(homog)]
         )
     end
 
@@ -93,8 +93,8 @@ using StableRNGs
             );
             n_initial = 10, rng = StableRNG(1)
         )
-        band1 = [ind for ind in state.individuals if ind.state[:age_band] == 1]
-        band2 = [ind for ind in state.individuals if ind.state[:age_band] == 2]
+        band1 = [ind for ind in individuals(state) if ind.state[:age_band] == 1]
+        band2 = [ind for ind in individuals(state) if ind.state[:age_band] == 2]
         @test count(is_infected, band1) / length(band1) >
             count(is_infected, band2) / length(band2)
     end
@@ -124,7 +124,7 @@ using StableRNGs
             );
             n_initial = 5, rng = StableRNG(1)
         )
-        @test any(is_vaccinated, state.individuals)
+        @test any(is_vaccinated, individuals(state))
     end
 
     @testset "from override and derivation from progression" begin
@@ -153,7 +153,7 @@ using StableRNGs
         @test !is_extinct(capped)
         # No termination keyword set → no warning, and the default stays off.
         @test_logs simulate(spec; n_initial = 3, rng = StableRNG(1))
-        @test !EpiBranch._honours_termination_controls(
+        @test !EpiBranch.honours_termination_controls(
             MixingProcess(; population_size = 10, rate)
         )
     end

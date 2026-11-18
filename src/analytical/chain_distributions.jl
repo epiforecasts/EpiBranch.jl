@@ -44,11 +44,6 @@ end
 
 Distributions.logpdf(d::Borel, n::Integer) = _borel_logpdf(d.μ, n)
 
-Distributions.pdf(d::Borel, n::Integer) = exp(logpdf(d, n))
-Distributions.minimum(::Borel) = 1
-Distributions.maximum(::Borel) = Inf
-Distributions.insupport(::Borel, n::Integer) = n >= 1
-
 function Distributions.mean(d::Borel)
     d.μ >= 1.0 && return Inf
     return 1.0 / (1.0 - d.μ)
@@ -156,11 +151,6 @@ end
 
 Distributions.logpdf(d::GammaBorel, n::Integer) = _gammaborel_logpdf(d.k, d.R, n)
 
-Distributions.pdf(d::GammaBorel, n::Integer) = exp(logpdf(d, n))
-Distributions.minimum(::GammaBorel) = 1
-Distributions.maximum(::GammaBorel) = Inf
-Distributions.insupport(::GammaBorel, n::Integer) = n >= 1
-
 # Expected total progeny of a subcritical branching process depends only on
 # the mean offspring number R, so this matches `mean(::Borel)`.
 function Distributions.mean(d::GammaBorel)
@@ -232,10 +222,6 @@ end
 function Distributions.logpdf(d::PoissonGammaChainSize, n::Integer)
     return _poisson_gamma_logpdf(d.k, d.R, n)
 end
-Distributions.pdf(d::PoissonGammaChainSize, n::Integer) = exp(logpdf(d, n))
-Distributions.minimum(::PoissonGammaChainSize) = 1
-Distributions.maximum(::PoissonGammaChainSize) = Inf
-Distributions.insupport(::PoissonGammaChainSize, n::Integer) = n >= 1
 
 # The mean is infinite for all parameters: the Gamma rate always places density
 # at and above 1, where the conditional chain size `1/(1-λ)` diverges, so the
@@ -300,26 +286,54 @@ function _independent_chain_size_logpdf(d, x::Integer, s::Integer)
 end
 
 """
+    _chain_size_log_infinite_mass(d, s)
+
+Internal: `log` of the probability that a chain started by `s` index cases
+never ends (`-Inf` when it always does), or `nothing` where there is no
+closed form for it. It is `log(1 - q^s)` for the extinction probability `q`.
+"""
+_chain_size_log_infinite_mass(d, s::Integer) = nothing
+function _chain_size_log_infinite_mass(d::Borel, s::Integer)
+    d.μ <= 1 && return oftype(float(d.μ), -Inf)
+    q = extinction_probability(Poisson(d.μ))
+    return _log1mexp(s * log(q))
+end
+function _chain_size_log_infinite_mass(d::GammaBorel, s::Integer)
+    d.R <= 1 && return oftype(float(d.R), -Inf)
+    q = extinction_probability(d.R, d.k)
+    return _log1mexp(s * log(q))
+end
+
+"""
     _chain_size_right_tail_logprob(d, x, s)
 
 Internal: multi-seed log-survival of a chain size distribution `d`,
-`log P(X ≥ x | s)`, computed as `log(1 − Σ_{j=s}^{x-1} P(X = j | s))`.
-For super-critical processes the missing mass `1 − Σ_{j ≥ s} P(X = j)`
-is the "chain takes off" probability and is included automatically.
+`log P(X ≥ x | s)`. While the tail `1 − Σ_{j=s}^{x-1} P(X = j | s)` stays
+above `1e-4` the complement itself is used. It is accurate there and, unlike
+a truncated upward sum, also for near-critical laws with a heavy tail. Below
+that the complement loses relative precision, and all of it once the tail
+falls below machine epsilon. The tail is then summed
+upwards from `x` in log space, with the infinite-chain mass added for a
+supercritical process. Distributions with no closed form for that mass
+(see `_chain_size_log_infinite_mass`) keep the complement throughout, and
+return `-Inf` when the partial sum reaches 1.
 
-Returns `0.0` when `x ≤ s` (trivially `P(X ≥ s) = 1`) and `-Inf` when
-the partial sum reaches or exceeds 1 (numerical underflow of the tail).
-Used by the real-time mixture likelihood in
-`loglikelihood(::ChainSizes, ...)`.
+Returns `0.0` when `x ≤ s` (trivially `P(X ≥ s) = 1`). Used by the real-time
+mixture likelihood in `loglikelihood(::ChainSizes, ...)`.
 """
 function _chain_size_right_tail_logprob(d, x::Integer, s::Integer)
     (s < 1 || x < 1) && return -Inf
     x <= s && return zero(_chain_size_logpdf(d, s, s))
     cum = zero(exp(_chain_size_logpdf(d, s, s)))
+    log_inf = _chain_size_log_infinite_mass(d, s)
     for j in s:(x - 1)
         cum += exp(_chain_size_logpdf(d, j, s))
-        cum >= one(cum) && return oftype(cum, -Inf)
+        if one(cum) - cum < 1.0e-4 && log_inf !== nothing
+            log_finite = _streaming_logsumexp(n -> _chain_size_logpdf(d, n, s), x; max_n = max(100_000, 10 * x))
+            return _logsumexp2(log_finite, log_inf)
+        end
     end
+    cum >= one(cum) && return oftype(cum, -Inf)
     p = one(cum) - cum
     return p > zero(p) ? log(p) : oftype(cum, -Inf)
 end
@@ -346,17 +360,15 @@ end
 # fallback and overflows the stack. Defining `cdf` here breaks the cycle
 # and, through Distributions' own `ccdf`/`logcdf` defaults, gives those for
 # free; `logccdf` is reused from `_chain_size_right_tail_logprob`, already
-# written to avoid cancellation in the tail.
-Distributions.cdf(d::Borel, n::Integer) = _chain_size_cdf(d, n)
-Distributions.logccdf(d::Borel, n::Integer) = _chain_size_right_tail_logprob(d, n + 1, 1)
-
-Distributions.cdf(d::GammaBorel, n::Integer) = _chain_size_cdf(d, n)
-function Distributions.logccdf(d::GammaBorel, n::Integer)
-    return _chain_size_right_tail_logprob(d, n + 1, 1)
-end
-
-Distributions.cdf(d::PoissonGammaChainSize, n::Integer) = _chain_size_cdf(d, n)
-function Distributions.logccdf(d::PoissonGammaChainSize, n::Integer)
+# written to avoid cancellation in the tail. These are defaults on the
+# parent type. A user-written `ChainSizeLaw` with only a `logpdf` inherits
+# them, and a law with a cheaper or more accurate form overrides them.
+Distributions.pdf(d::ChainSizeLaw, n::Integer) = exp(logpdf(d, n))
+Distributions.minimum(::ChainSizeLaw) = 1
+Distributions.maximum(::ChainSizeLaw) = Inf
+Distributions.insupport(d::ChainSizeLaw, n::Integer) = n >= minimum(d)
+Distributions.cdf(d::ChainSizeLaw, n::Integer) = _chain_size_cdf(d, n)
+function Distributions.logccdf(d::ChainSizeLaw, n::Integer)
     return _chain_size_right_tail_logprob(d, n + 1, 1)
 end
 
@@ -504,10 +516,6 @@ struct HittingTimeChainSize{D} <: ChainSizeLaw
     offspring::D
 end
 
-Distributions.minimum(::HittingTimeChainSize) = 1
-Distributions.maximum(::HittingTimeChainSize) = Inf
-Distributions.insupport(::HittingTimeChainSize, n::Integer) = n >= 1
-
 function _chain_size_logpdf(d::HittingTimeChainSize, x::Integer, s::Integer)
     (s < 1 || x < s) && return oftype(float(_law_mean(d.offspring)), -Inf)
     p = (s / x) * _hitting_time_coefficient(d.offspring, x, x - s)
@@ -515,7 +523,6 @@ function _chain_size_logpdf(d::HittingTimeChainSize, x::Integer, s::Integer)
 end
 
 Distributions.logpdf(d::HittingTimeChainSize, n::Integer) = _chain_size_logpdf(d, n, 1)
-Distributions.pdf(d::HittingTimeChainSize, n::Integer) = exp(logpdf(d, n))
 
 # Expected total progeny of a subcritical branching process is 1/(1-R)
 # whatever the offspring law (see the comment on GammaBorel's mean above).
@@ -649,10 +656,6 @@ struct IndexChainSize{J <: DiscreteUnivariateDistribution, S <: DiscreteUnivaria
     end
 end
 
-Distributions.minimum(::IndexChainSize) = 1
-Distributions.maximum(::IndexChainSize) = Inf
-Distributions.insupport(::IndexChainSize, n::Integer) = n >= 1
-
 """
     _multi_seed_pdfs(dist, x::Integer)
 
@@ -693,13 +696,6 @@ function Distributions.logpdf(d::IndexChainSize, n::Integer)
         total += pj * probs[j]
     end
     return total > zero(total) ? log(total) : oftype(total, -Inf)
-end
-
-Distributions.pdf(d::IndexChainSize, n::Integer) = exp(logpdf(d, n))
-
-Distributions.cdf(d::IndexChainSize, n::Integer) = _chain_size_cdf(d, n)
-function Distributions.logccdf(d::IndexChainSize, n::Integer)
-    return _chain_size_right_tail_logprob(d, n + 1, 1)
 end
 
 # E[N] = P(J=0)·1 + Σ_{j≥1} P(J=j)·E[1 + size(j seeds)]
@@ -745,7 +741,6 @@ struct TruncatedChainSize{D <: DiscreteUnivariateDistribution} <:
 end
 
 Distributions.minimum(d::TruncatedChainSize) = d.min_size
-Distributions.maximum(::TruncatedChainSize) = Inf
 Distributions.insupport(d::TruncatedChainSize, n::Integer) = n >= d.min_size
 Distributions.logpdf(d::TruncatedChainSize, n::Integer) = _chain_size_logpdf(d, n, 1)
 
@@ -767,9 +762,4 @@ function _chain_size_right_tail_logprob(d::TruncatedChainSize, x::Integer, s::In
     x <= d.min_size && return zero(denom)
     isfinite(denom) || return oftype(denom, -Inf)
     return _chain_size_right_tail_logprob(d.base, max(x, d.min_size), s) - denom
-end
-
-Distributions.cdf(d::TruncatedChainSize, n::Integer) = _chain_size_cdf(d, n)
-function Distributions.logccdf(d::TruncatedChainSize, n::Integer)
-    return _chain_size_right_tail_logprob(d, n + 1, 1)
 end

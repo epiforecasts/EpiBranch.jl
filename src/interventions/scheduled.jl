@@ -114,6 +114,9 @@ struct Scheduled{I <: AbstractIntervention, F, T <: Tuple, W} <: InterventionWra
     window::W
 end
 
+# The start condition reads the clock or case count of the population.
+gates_on_population_clock(::Scheduled) = true
+
 # The days between which a `Scheduled` built from `start_time` and
 # `end_time` alone acts.
 struct ClockWindow
@@ -290,7 +293,7 @@ function opened_at(t::Infections, state::SimulationState)
     T = typeof(state.max_infection_time)
     cached === nothing || return cached::T
     times = T[]
-    for ind in state.individuals
+    for ind in individuals(state)
         for episode in ind.episodes
             push!(times, episode.infection_time)
         end
@@ -316,7 +319,7 @@ end
 function _confirmed_report_log(state::SimulationState)
     T = typeof(state.max_infection_time)
     log = get!(() -> _report_log(state), state.scratch, (:report_log,))
-    _confirm_reports!(log::_ReportLog{T}, state.individuals)
+    _confirm_reports!(log::_ReportLog{T}, individuals(state))
     return log
 end
 
@@ -539,17 +542,28 @@ recorded and their dates, returning `nothing` before any effect is recorded.
 persistent_competing_risks(::AbstractIntervention) = false
 persistent_competing_risks(::AbstractVaccination) = true
 
-# Whether `iv`'s risk, once it has fired, could later be withdrawn by a
-# schedule's active window closing rather than standing for good. Only
-# `Scheduled` can withdraw a risk that has already fired, and only when the
-# intervention it wraps has not declared `persistent_competing_risks` — a
-# vaccination's protection has, since it derives from a recorded dose rather
-# than the schedule's own clock, so a `Scheduled` vaccination cannot lapse
-# either. Used by the continuous-time race to tell a standing block from one
-# that merely happens to be in force right now (see `_standing_risk`).
-_may_lapse(::AbstractIntervention) = false
-function _may_lapse(s::Scheduled)
-    return persistent_competing_risks(s.intervention) ? _may_lapse(s.intervention) : true
+"""
+    may_lapse(intervention) -> Bool
+
+Whether a block `intervention` has composed could later be lifted, so that a
+continuous-time race must not treat it as certain for good however sure it
+looks at one proposal. The default is `false`. A [`Scheduled`](@ref) answers
+`true` unless the intervention it wraps declares
+[`persistent_competing_risks`](@ref EpiBranch.persistent_competing_risks),
+since protection derived from a recorded dose does not depend on the
+clock of the schedule. A subtype of
+[`InterventionWrapper`](@ref EpiBranch.InterventionWrapper) forwards the
+answer of the intervention it wraps.
+
+For extension authors: a wrapper that can lift a block the intervention it
+wraps would keep, such as a seasonal closure, returns `true`. Without that, it
+inherits [`standing_block`](@ref EpiBranch.standing_block) from what it wraps
+and the race may stop proposing contacts for a pair although the block will
+later lift.
+"""
+may_lapse(::AbstractIntervention) = false
+function may_lapse(s::Scheduled)
+    return persistent_competing_risks(s.intervention) ? may_lapse(s.intervention) : true
 end
 
 # A schedule that cannot close again honours the inner removal's releases for
@@ -563,7 +577,6 @@ function removal_gap_host_times(s::Scheduled)
     s.can_lapse && return ()
     return removal_gap_host_times(s.intervention)
 end
-removal_block_probability(s::Scheduled) = removal_block_probability(s.intervention)
 
 function competing_risk(s::Scheduled, parent, contact, state)
     (persistent_competing_risks(s.intervention) || is_active(s, state)) || return nothing

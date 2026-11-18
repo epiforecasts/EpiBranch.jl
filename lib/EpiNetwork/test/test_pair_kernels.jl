@@ -19,8 +19,8 @@ test_stateful_simulation(
         interventions = [TickEveryCase()]
     )
     state = simulate(model; initial_cases = [1], rng = StableRNG(1))
-    @test all(is_infected, state.individuals)
-    @test state.individuals[3].infection_time == state.individuals[4].infection_time ==
+    @test all(is_infected, individuals(state))
+    @test individuals(state)[3].infection_time == individuals(state)[4].infection_time ==
         0.7 + 0.1
 end
 
@@ -66,7 +66,7 @@ end
     n = 2000
     at_one = count(1:n) do seed
         state = simulate(model; initial_cases = [1], rng = StableRNG(seed))
-        state.individuals[4].infection_time == 1.0
+        individuals(state)[4].infection_time == 1.0
     end
     @test isapprox(at_one / n, 0.5; atol = 0.04)
 end
@@ -85,7 +85,7 @@ end
         interventions = [TickEveryCase()]
     )
     state = simulate(model; initial_cases = [1], rng = StableRNG(1))
-    @test [i.infection_time for i in state.individuals] == [0.0, 1.0, 1.0, 1.0, 1.0]
+    @test [i.infection_time for i in individuals(state)] == [0.0, 1.0, 1.0, 1.0, 1.0]
 end
 
 @testset "Simultaneous contacts go to the infector whose opening came first" begin
@@ -112,8 +112,8 @@ end
             interventions = [TickEveryCase()]
         )
         state = simulate(model; initial_cases = [1], rng = StableRNG(1))
-        @test state.individuals[4].infection_time == 3.0
-        @test state.individuals[4].parent_id == 2
+        @test individuals(state)[4].infection_time == 3.0
+        @test individuals(state)[4].parent_id == 2
     end
 end
 
@@ -145,7 +145,7 @@ end
     n = 1500
     by_three = count(1:n) do seed
         state = simulate(model; initial_cases = [1], rng = StableRNG(seed))
-        is_infected(state.individuals[3]) && state.individuals[3].infection_time <= 3.0
+        is_infected(individuals(state)[3]) && individuals(state)[3].infection_time <= 3.0
     end
     @test by_three / n ≈ 1 - exp(-0.1 * 1.5 - 1.0 * 1.5) atol = 0.04
 end

@@ -44,7 +44,7 @@ end
 
 function (sig::TransitionCount)(state::SimulationState, interval::Tuple{<:Real, <:Real})
     lo, hi = interval
-    return count(state.individuals) do ind
+    return count(individuals(state)) do ind
         is_infected(ind) || return false
         t = _state_time(ind, sig.at)
         return isfinite(t) && lo < t <= hi
@@ -78,7 +78,7 @@ Prevalence(enter) = Prevalence(enter, :outcome)
 
 function (sig::Prevalence)(state::SimulationState, interval::Tuple{<:Real, <:Real})
     _, hi = interval
-    return count(state.individuals) do ind
+    return count(individuals(state)) do ind
         is_infected(ind) || return false
         enter_t = _state_time(ind, sig.enter)
         (isfinite(enter_t) && enter_t <= hi) || return false

@@ -315,6 +315,32 @@ affect protection set by the model itself.
 """
 risk_applies(::AbstractIntervention, route) = true
 
+"""
+    prevents_contact(source) -> Bool
+
+Whether an infection that this intervention blocks was never a contact at
+all, as opposed to a contact that did not transmit. `source` is the
+intervention, or any other risk source a model composes through
+[`transmission_risks`](@ref EpiBranch.transmission_risks).
+
+A measure that stops the infection while people still meet, such as a mask or
+a partly effective vaccine, leaves the blocked contact in the outbreak: it is
+listed by [`contacts`](@ref) and tracing can reach it. A measure that stops the
+meeting itself, such as isolation in hospital or a closed school, has no
+contact to list or trace, so the models drop the contact instead. Return
+`true` for the second kind. The default is `false`, the cautious answer: the
+contact is kept.
+
+If several sources block the same contact, it is dropped when any source that
+returns `true` blocks it, wherever that source sits in the stack. The
+built-in [`Isolation`](@ref) and [`Quarantine`](@ref) take this as a keyword
+(`prevents_contact`, default `true`). Isolation at home, where household
+contacts continue, is `Isolation(...; prevents_contact = false)`.
+[`Scheduled`](@ref), [`CapacityConstrained`](@ref) and [`OnRoutes`](@ref)
+answer for the intervention they contain.
+"""
+prevents_contact(source) = false
+
 # A removal's duration, drawn or given. A negative or `NaN` one puts the
 # release before its own start, which would read as a permanent removal, so
 # it is refused here. Zero is allowed and means no removal:

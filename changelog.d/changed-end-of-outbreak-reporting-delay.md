@@ -1,0 +1,1 @@
+The `end_of_outbreak_probability` docstrings now state that the result assumes full reporting with no reporting delay. When reports lag infection, it overstates the probability that a cluster is over. With a delay, measure `τ` to the last date by which reports are complete, or simulate.

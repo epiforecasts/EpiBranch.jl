@@ -14,7 +14,7 @@ An intervention is a `struct` that subtypes `AbstractIntervention`. You write
 methods only for the hooks it needs; every other hook leaves the simulation
 unchanged.
 
-## What happens to each case
+## Handling of each case
 
 Every built-in model, the branching process as much as the network,
 household, homogeneous and mixing models, settles one case at a time, in
@@ -95,6 +95,8 @@ many people each case infects](@ref).
 | `on_infection_settled!(iv, individual, state, rng)` | Every built-in model: once a case's infection time is fixed, before its onset or clinical transitions read it | The case, and the random number generator to use | `nothing`; sets values on the case (default: does nothing) |
 | `risk_applies(iv, route)` | Every built-in model choosing the risks for a route or infectiousness window | The route's `RouteWindow`, or `nothing` for an introduction from outside | `Bool`; default `true` |
 | `standing_block(iv)` | Fixed-population models deciding whether a certain block ends a pair's contacts for good | Nothing | `Bool`; default `false` |
+| `may_lapse(iv)` | Fixed-population models deciding whether a certain block ends a pair's contacts for good | Nothing | `Bool`; default `false`. A wrapper that can lift a block, such as a seasonal closure, returns `true`; `Scheduled` does and the rest of the wrappers forward it |
+| `prevents_contact(iv)` | Every built-in model, when an infection the intervention blocks is decided: whether the contact is kept or dropped | Nothing | `Bool`: whether a contact this intervention blocks never happened, so is left out of [`contacts`](@ref) and out of the reach of tracing. Default `false`; [`Isolation`](@ref) and [`Quarantine`](@ref) default to `true` and take it as a keyword |
 | `analytic_offspring_effect(iv, offspring)`, `analytic_offspring_effect(iv, offspring, spec)` | When an analytical function such as [`extinction_probability`](@ref) is called on a `ModelSpec` holding the intervention | The offspring distribution without the intervention (the three-argument form also receives the `ModelSpec`, for an effect that needs more than the offspring law) | The offspring distribution a case has under the intervention. Without a method of either arity the function stops with an error |
 
 `analytic_offspring_effect` is for the rare intervention whose effect on the
@@ -122,7 +124,7 @@ The [`AbstractIntervention`](@ref) docstring and the
 [Extension reference](@ref "Continuous-time models: further details") have the
 remaining details for the continuous-time models.
 
-## Which hooks run on which model
+## Hooks by model
 
 Every model, built in or written against `generate_offspring` or
 `contacts_of`, decides each potential infection, a drawn time for an infector
@@ -278,7 +280,7 @@ function resolve_individual!(iso::Isolation, individual, state)
     end
     # A contact traced before its onset was known has only the bare trace
     # time, so hold it back to the onset.
-    traced_time = max(get(individual.state, :_traced_isolation_time, Inf), onset)
+    traced_time = max(EpiBranch.traced_isolation_time(individual), onset)
     start = min(test_time, traced_time)
     isfinite(start) || return nothing
     duration = _removal_duration(
@@ -315,6 +317,20 @@ end
 The last call tells a `CapacityConstrained` sharing the action's resource that
 it was used, and does nothing when none is.
 
+A tracer of another shape works with the built-in ones through three public
+functions. To have a [`CapacityConstrained`](@ref) or [`HeldCapacity`](@ref)
+around it ration what it does, it collects its follow-up actions in a vector of
+[`EpiBranch.InterventionAction`](@ref) and ends its `trace_contacts!` with
+[`EpiBranch.admit_trace_actions!`](@ref)`(tracer, state, actions)`, which
+admits them against the budget of the wrapper when there is one. When a ring of
+contact tracing passes through an already-infected neighbour, it calls the
+`trace_contacts!` of every intervention from that neighbour, and
+[`EpiBranch.is_ring_hop`](@ref)`(infector)` is `true` there: a tracer that
+starts a trace from each eligible case reads it to trace from the neighbour as
+a ring member only. To have [`Isolation`](@ref) isolate a traced contact when
+symptoms begin, as `FlagOnly` does, call
+[`EpiBranch.flag_for_isolation!`](@ref)`(contact, time)`.
+
 `competing_risk`: see [A custom intervention: closing a border](@ref).
 
 ## Checking your intervention
@@ -338,7 +354,7 @@ missing a hook it needs. Three checks for the rest:
 - Declare the values your intervention needs with `required_fields` (see
   [Requiring values on each person](@ref)), so the simulation stops with an
   error at the start when nothing sets them.
-- After a small run, look at `state.individuals[1].state` to confirm your hook
+- After a small run, look at `individuals(state)[1].state` to confirm your hook
   wrote the values that later steps read.
 
 ## Combining with built-in interventions
@@ -386,7 +402,7 @@ Adding the closure raises the proportion of outbreaks contained, because from
 day 10 most transmission between regions is blocked on top of what isolation
 prevents.
 
-## Who triggers contact tracing
+## Eligibility for contact tracing
 
 [`ContactTracing`](@ref) decides which cases have their contacts traced
 through an eligibility policy, such as `OnSymptomOnset()` or
@@ -413,7 +429,7 @@ attrs = [clinical_presentation(incubation_period = LogNormal(1.5, 0.5)),
     demographics(age_distribution = Normal(50, 20))]
 iso = Isolation(onset_to_isolation_delay = Exponential(2.0), duration = 7.0)
 process = BranchingProcess(NegBin(2.5, 0.16), Exponential(5.0))
-n_traced(runs) = sum(s -> count(ind -> get(ind.state, :traced, false), s.individuals), runs)
+n_traced(runs) = sum(s -> count(ind -> get(ind.state, :traced, false), individuals(s)), runs)
 
 everyone = ContactTracing(OnSymptomOnset(), 0.7, Exponential(1.0), Quarantine(duration = Inf))
 older_only = ContactTracing(SymptomaticOver65(), 0.7, Exponential(1.0), Quarantine(duration = Inf))
@@ -538,7 +554,7 @@ model = ModelSpec(
     ],
     attributes = clinical)
 state = simulate(model; n_initial = 1, max_generations = 1, rng = StableRNG(1))
-contact = state.individuals[2]
+contact = individuals(state)[2]
 (infected_at = contact.infection_time, traced_at = contact.state[:trace_time],
  released_at = only(EpiBranch.removal_stretches(contact, TEST_RELEASE_STRETCHES))[2])
 ```
@@ -783,7 +799,7 @@ struct TwentyOnsets <: EpiBranch.AbstractTrigger end
 function EpiBranch.is_triggered!(::TwentyOnsets, state)
     return count(
         ind -> is_infected(ind) && onset_time(ind) <= state.max_infection_time,
-        state.individuals
+        individuals(state)
     ) >= 20
 end
 EpiBranch.required_fields(::TwentyOnsets) = [:onset_time]
@@ -822,7 +838,15 @@ placed in their group again from their recorded state alone, with nothing of
 the original proposal kept around. `capacity_usage(cc, state, key)` reads
 one group's own usage.
 
-### What happens to a refused action
+To limit an intervention by the groups of the population, pass
+`budget_per_period = PerGroup(...)` to `CapacityConstrained` (or `capacity =
+PerGroup(...)` to `HeldCapacity`). The wrapper finds each person's group
+itself, so your intervention needs no `resource_key` method for it. A model
+that keeps counts or compartments rather than individuals applies an
+intervention only if it defines `EpiBranch.count_dosing`; see [What each model
+applies](@ref).
+
+### Refused actions
 
 An action `CapacityConstrained` turns away is dropped by default. Pass
 `on_refusal = DeferRefused()` to book it into the first later period with room
@@ -931,8 +955,8 @@ older = OlderAdultVaccination(min_age = 60, campaign_time = 10.0,
 older_model = ModelSpec(BranchingProcess(NegBin(2.5, 0.16), Exponential(5.0));
     interventions = [older], attributes = demographics())
 older_results = simulate(older_model, 50; max_cases = 200, rng = StableRNG(1))
-n_people = sum(s -> length(s.individuals), older_results)
-n_vaccinated = sum(s -> count(is_vaccinated, s.individuals), older_results)
+n_people = sum(s -> length(individuals(s)), older_results)
+n_vaccinated = sum(s -> count(is_vaccinated, individuals(s)), older_results)
 (vaccinated = n_vaccinated, people = n_people)
 ```
 
@@ -1023,7 +1047,7 @@ model = ModelSpec(process; interventions = [campaign])
 state = simulate(model; max_generations = 1, rng = Xoshiro(42))
 
 (cases = state.cumulative_cases,
- doses = count(is_vaccinated, state.individuals))
+ doses = count(is_vaccinated, individuals(state)))
 ```
 
 The result is one case and three doses: the index case remains infected despite
@@ -1039,7 +1063,7 @@ limited_model = ModelSpec(process; interventions = [limited])
 limited_state = simulate(limited_model; max_generations = 1, rng = Xoshiro(42))
 
 (cases = limited_state.cumulative_cases,
- doses = count(is_vaccinated, limited_state.individuals))
+ doses = count(is_vaccinated, individuals(limited_state)))
 ```
 
 This gives three cases and one dose. Population-wide actions are proposed
@@ -1090,7 +1114,7 @@ model = ModelSpec(BranchingProcess(Dirac(2), Dirac(20.0));
     interventions = [appointments])
 state = simulate(model; max_generations = 1, rng = Xoshiro(42))
 
-[person.state[:appointment_time] for person in state.individuals
+[person.state[:appointment_time] for person in individuals(state)
  if get(person.state, :attended, false)]
 ```
 
@@ -1161,7 +1185,7 @@ model = ModelSpec(BranchingProcess(Poisson(2.0), Exponential(5.0));
     progression = [testing, reporting_after_test], attributes = clinical)
 state = simulate(model; max_cases = 100, rng = StableRNG(42))
 
-ind = state.individuals[end]
+ind = individuals(state)[end]
 (onset = onset_time(ind), tested = ind.state[:test_time],
  reported = ind.state[:reporting_time])
 ```
@@ -1223,7 +1247,7 @@ model = ModelSpec(BranchingProcess(Poisson(2.0), Exponential(5.0));
     progression = progression, attributes = clinical)
 state = simulate(model; max_cases = 200, rng = StableRNG(42))
 
-outcomes = [ind.state[:outcome] for ind in state.individuals if haskey(ind.state, :outcome)]
+outcomes = [ind.state[:outcome] for ind in individuals(state) if haskey(ind.state, :outcome)]
 (died = count(==(:died), outcomes), recovered = count(==(:recovered), outcomes),
  lost = count(==(:lost), outcomes))
 ```

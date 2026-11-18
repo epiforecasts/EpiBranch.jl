@@ -160,7 +160,7 @@ modelling assumption. A few that map onto common assumptions, for `n` people:
 The contact-interval distribution, the disease timeline and population
 characteristics attach in the same way whatever the source of the graph.
 
-## Which interventions work on a network
+## Interventions on a network
 
 | Intervention | What it does on a network |
 |:-- | :-- |
@@ -453,7 +453,7 @@ The basic reproduction number, what a case would achieve if never isolated, is
 the same in all three scenarios. Isolation changes the number of people each
 case actually infects, by an amount that depends on which routes it stops.
 
-### Which contacts can be traced
+### Traceable contacts
 
 Routes also differ in which contacts a case can name to contact tracers. A
 case can name everyone in their household, but most community contacts are
@@ -562,7 +562,11 @@ up to isolation.
     data as a stretch of reduced hazard rather than a gap, and both
     `pairwise_surv_loglik` and `loglikelihood(data, model)` evaluate it. A
     vaccine's efficacy against infection is allowed for by
-    `loglikelihood(data, model)` with the vaccination in `model`.
+    `loglikelihood(data, model)` with the vaccination in `model`. A fitted
+    leaky `efficacy` `e` is a hazard ratio: it multiplies the hazard per
+    contact by `1 - e`. A person whose risk of infection would be `1 - S`
+    then has risk `1 - S^(1 - e)`. A published efficacy against the attack rate is
+    a different quantity.
 
 !!! warning "Removals must not depend on who infected whom"
     The likelihood takes each person's removal time and vaccination dates as

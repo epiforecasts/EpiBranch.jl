@@ -20,6 +20,15 @@ public initialise_episode!
 public resolve_individual!
 public on_infection_settled!
 public trace_contacts!
+# What a tracer written outside the package needs to work with the built-in
+# ones: ration its follow-up actions through whatever wraps it, learn that it
+# is called for a ring member, and hand a traced contact over to `Isolation`.
+public admit_trace_actions!
+public is_ring_hop
+public flag_for_isolation!
+public traced_isolation_time
+# How the line list reports a state key.
+public reported_value
 public traces_contacts
 public traces_source
 public has_effect
@@ -31,6 +40,8 @@ public required_fields
 public infectious_removal_time
 public risk_applies
 public standing_block
+public may_lapse
+public prevents_contact
 # The built-in risk sources the guides link to, and the kernel trait for a
 # kernel with mass at infinity.
 public HostImmunity
@@ -40,6 +51,15 @@ public analytic_offspring_effect
 # End an infection early from any intervention hook, and read when it ended.
 public abort_infection!
 public infection_aborted_time
+
+# Prevent symptoms from any intervention hook, and read from when.
+public prevent_symptoms!
+public symptoms_prevented_time
+
+# Testing: `trajectory_value` reads the within-host trajectory stored by
+# `within_host`. A new `AbstractAssay` defines `measure`.
+public trajectory_value
+public measure
 
 # Isolation eligibility: whether an isolation time counts as a detection.
 public records_isolation
@@ -99,6 +119,10 @@ public model_generation_time
 # within-host progression and the transmission model it wraps.
 public progression
 public process
+public case_definition
+# The two hooks of a case definition written outside the package.
+public classify_case
+public relevant_events
 #   - `transmission_risks` to contribute per-pair competing risks (e.g. a
 #     network's per-edge probability), resolved alongside the built-ins.
 public transmission_risks
@@ -147,6 +171,9 @@ public pair_kernel
 public calendar_multiplier, next_calendar_break, calendar_shape,
     PiecewiseConstantCalendar, SmoothCalendar
 public infection_likelihood_compatible
+# Traits the closed forms ask instead of matching `Reporting` and
+# `clinical_presentation` by type.
+public reporting_probability, reporting_from, onset_law
 public susceptibility_components, susceptibility_host_times, HazardScaling
 public binding_release
 public removal_gap_host_times, removal_gap_host_times_withdrawn
@@ -154,7 +181,8 @@ public removal_block_probability
 public record_removal!, revise_removal!, withdraw_removal!
 public removal_stretches
 public InterventionAction, intervention_actions, action_draw!, action_cache,
-    apply_actions!, action_candidates, acts_on_population, needs_contacts,
+    apply_actions!, action_candidates, acts_on_population, gates_on_population_clock,
+    needs_contacts,
     may_revise, is_settled
 
 # Pairwise survival likelihood: how its two accumulation passes group rows
@@ -220,6 +248,32 @@ public sellke_race!
 # progression.
 public infectious_from
 
+# A fixed-population structure written outside the package: subtype
+# `FixedPopulationProcess` for the shared defaults, say through `process_window`
+# which states open and close its window, whether it takes `initial_cases` and
+# seeds them with `seed_initial_cases!`, and whether the `max_cases` and
+# `max_generations` defaults apply.
+public FixedPopulationProcess
+public process_window
+public supports_initial_cases
+public validate_initial_cases
+public validate_initial_case_ids
+public seed_initial_cases!
+public honours_termination_controls
+public validate_process_windows
+public warn_uncovered_terminal_states
+
+# Building and checking an infection layer from a simulated outbreak: the
+# per-host columns, the removal-stretch columns the likelihood reads under
+# `REMOVAL_STRETCHES_KEY` and `LEAKY_REMOVAL_STRETCHES_KEY`, and the checks that
+# refuse a model the layer cannot represent.
+public infection_layer_columns
+public layer_host_times
+public validate_infection_likelihood
+public validate_removal_gap_keys
+public REMOVAL_STRETCHES_KEY
+public LEAKY_REMOVAL_STRETCHES_KEY
+
 # Hooks the extending guides ask a package to define for its own
 # intervention, trace rate, delay or action.
 #   - `keep_active` says which targets an intervention still acts on;
@@ -236,6 +290,8 @@ public capacity_key
 public capacity_time_key
 public resource_key
 public held_until
+public count_dosing
+public GroupDosing
 public refused_action
 public InterventionWrapper
 

@@ -36,7 +36,7 @@ end
         infected = findall(!isnan, data.infection_time)
         @test !isempty(infected)
         for (r, w) in enumerate(windows), i in infected
-            ind = state.individuals[i]
+            ind = individuals(state)[i]
             @test data.infectious_time[r][i] == window_open(ind, w)
             @test data.removal_time[r][i] == window_close(ind, w, ())
         end
@@ -119,8 +119,8 @@ end
         )
         a = simulate(shared; rng = StableRNG(4))
         b = simulate(per_node; rng = StableRNG(4))
-        @test [i.infection_time for i in a.individuals] ==
-            [i.infection_time for i in b.individuals]
+        @test [i.infection_time for i in individuals(a)] ==
+            [i.infection_time for i in individuals(b)]
         data = routed_network_infections(a, shared)
         @test loglikelihood(data, per_node) ≈ loglikelihood(data, shared)
         # a node without a community hazard has no external term
@@ -313,6 +313,30 @@ end
                 :nonexistent, MassActionHazard(; transmission_rate = N, population_size = N)
             )
         )
+    end
+
+    @testset "seeded hosts are conditioned on" begin
+        empty_contacts = [Int[], Int[]]
+        windows = [
+            RouteWindow(:household; until = (:recovered,), kernel = Exponential(1.0), reach = empty_contacts),
+            RouteWindow(:community; until = (:recovered,), kernel = Exponential(1.0), reach = empty_contacts),
+        ]
+        args = (
+            [:household, :community], [empty_contacts, empty_contacts],
+            [[0.0, NaN], [0.0, NaN]], [[3.0, Inf], [3.0, Inf]],
+            [0.0, 3.0], [true, false],
+        )
+        plain = RoutedNetworkInfections(args...; obs_end = 5.0)
+        seeded = RoutedNetworkInfections(args...; obs_end = 5.0, seeded = [false, true])
+        @test !any(EpiBranch.seeded_hosts(plain))
+        @test EpiBranch.seeded_hosts(seeded) == [false, true]
+        hazard = RoutedMassActionHazard(
+            :community, MassActionHazard(; transmission_rate = 5, population_size = 5)
+        )
+        # a seeded host is taken as given and adds no term
+        @test pairwise_surv_loglik(windows, seeded; external_hazard = hazard) >
+            pairwise_surv_loglik(windows, plain; external_hazard = hazard)
+        @test_throws ArgumentError RoutedNetworkInfections(args...; seeded = [true])
     end
 
     @testset "RoutedMassActionHazard rejected as a process's own external_hazard" begin

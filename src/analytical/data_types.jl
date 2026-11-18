@@ -501,7 +501,7 @@ end
 
 function IncidenceCounts(state::SimulationState; by::Symbol = :onset, step::Integer = 7)
     times = filter(
-        isfinite, [_weekly_time(by, ind) for ind in state.individuals if is_infected(ind)]
+        isfinite, [_weekly_time(by, ind) for ind in individuals(state) if is_infected(ind)]
     )
     isempty(times) && throw(ArgumentError("no case has a finite `$by` time"))
     return _incidence_from_days(floor.(Int, times .- minimum(times)), step)

@@ -29,7 +29,7 @@
         # A case draws its contacts when it settles, with the case count at
         # its own place in infection order, so every case from the 20th on
         # emits at most 2 contacts.
-        cases = sort(filter(is_infected, state.individuals); by = ind -> ind.infection_time)
+        cases = sort(filter(is_infected, individuals(state)); by = ind -> ind.infection_time)
         @test length(cases) > 40
         for ind in cases[20:end]
             @test length(ind.secondary_case_ids) <= 2
@@ -190,7 +190,7 @@
         # but none had immunity in time, so the risk never blocks.
         @test all(
             ind.state[:vaccination_time] ≈ 1.0e6
-                for ind in state.individuals if ind.parent_id != 0
+                for ind in individuals(state) if ind.parent_id != 0
         )
     end
 
@@ -214,7 +214,7 @@
             max_cases = 200, rng = rng
         )
         # No infected case should have age >= 65 (those got blocked).
-        for ind in state.individuals
+        for ind in individuals(state)
             ind.parent_id == 0 && continue
             is_infected(ind) || continue
             @test ind.state[:age] < 65
@@ -240,7 +240,7 @@
         )
         effs = [
             ind.state[:vaccine_efficacy]
-                for ind in state.individuals if ind.parent_id != 0
+                for ind in individuals(state) if ind.parent_id != 0
         ]
         @test !isempty(effs)
         @test all(0 .<= effs .<= 1)
@@ -267,7 +267,7 @@
         )
         delays = [
             immunity_time(ind) - ind.state[:vaccination_time]
-                for ind in state.individuals if ind.parent_id != 0
+                for ind in individuals(state) if ind.parent_id != 0
         ]
         @test !isempty(delays)
         @test all(7.0 .<= delays .<= 21.0)
@@ -291,7 +291,7 @@
             max_cases = 100,
             rng = StableRNG(2)
         )
-        for ind in state.individuals
+        for ind in individuals(state)
             ind.parent_id == 0 && continue
             expected = ind.state[:age] >= 65 ? 0.3 : 0.95
             @test ind.state[:vaccine_efficacy] == expected
@@ -319,7 +319,7 @@
         )
         # The default :vaccinated key is untouched; dose-labelled
         # keys carry the state.
-        for ind in state.individuals
+        for ind in individuals(state)
             ind.parent_id == 0 && continue
             @test !haskey(ind.state, :vaccinated)
             @test ind.state[:vaccinated_prime] == true
@@ -355,7 +355,7 @@
             );
             max_cases = 200, rng = rng
         )
-        for ind in state.individuals
+        for ind in individuals(state)
             ind.parent_id == 0 && continue
             is_infected(ind) || continue
             @test ind.state[:age] < 50
@@ -399,7 +399,7 @@
                 ModelSpec(BranchingProcess((rng, ind) -> 6, Exponential(5.0)); attributes = attrs);
                 n_initial = 50, max_generations = 1, rng = StableRNG(seed)
             )
-            kids = filter(i -> i.parent_id != 0, s.individuals)
+            kids = filter(i -> i.parent_id != 0, individuals(s))
             push!(frac, count(is_infected, kids) / length(kids))
         end
         @test 0.2 < sum(frac) / length(frac) < 0.4

@@ -236,7 +236,7 @@ exact distribution, which is not Poisson:
 Take R\* from either, and the extinction probability from
 [`household_offspring`](@ref).
 
-### When households differ in who lives in them
+### Households that differ in composition
 
 If transmission differs between people, two households of the same size need
 not behave alike. The contact-interval distribution can then be a function of
@@ -295,8 +295,9 @@ Interventions apply here too. Isolating a case for good
 (`duration = Inf`) ends their infectious period early. That reduces both the housemates they infect and their community
 contacts, and lowers R\*. Here every case isolates after a delay with a mean
 of 1 day from symptom onset, which comes 1 day after infection. `AllCases()`
-makes every case eligible for isolation; the default isolates only cases with
-symptoms, which needs a [`clinical_presentation`](@ref).
+makes every case eligible for a test result; the default isolates only cases with
+symptoms, which needs a [`clinical_presentation`](@ref). Isolation is timed from
+onset, so a case without symptoms is not isolated under either rule.
 
 ```@example households
 isolated = ModelSpec(HouseholdProcess(fill(4, 300), Weibull(1.5, 3.0));
@@ -470,7 +471,11 @@ The estimate is close to the 4 days the outbreak was simulated with.
     `1 - p`. Fitting then estimates that lower rate instead of the rate the
     model was given. Fitting with `loglikelihood(data, model)`, where `model`
     includes the vaccination, allows for a vaccine's efficacy against
-    infection. Isolation or quarantine that stops all transmission is
+    infection. A fitted leaky `efficacy` `e` is a hazard ratio: it
+    multiplies the hazard per contact by `1 - e`. A person whose risk of
+    infection would be `1 - S` then has risk `1 - S^(1 - e)`. The fall in the
+    household secondary attack rate is smaller than `e`. A published
+    efficacy against the attack rate is a different quantity. Isolation or quarantine that stops all transmission is
     recorded in the data, and the likelihood allows for it. Isolation that
     still lets some transmission through is recorded too, as a stretch of
     reduced rather than zero hazard, which both `pairwise_surv_loglik` and
@@ -490,7 +495,7 @@ The estimate is close to the 4 days the outbreak was simulated with.
 The contact-interval distribution can also depend on who infects whom, for
 example adults transmitting faster than children, through a function
 `(infector, susceptible) -> Distribution` of the two people's numbers, as in
-[the example above](#When-households-differ-in-who-lives-in-them). The same
+[the example above](#Households-that-differ-in-composition). The same
 function works for simulating and for fitting, and fitting a simulated
 outbreak recovers each of its parameters.
 [Covariates and time-varying transmission](@ref) covers contact intervals
@@ -737,7 +742,7 @@ final_state = simulate(
         progression = [Transition(:recovered; from = :infection, delay = 6.0,
             terminal = true)]);
     rng = StableRNG(11))
-statuses = [is_infected(ind) for ind in final_state.individuals]
+statuses = [is_infected(ind) for ind in individuals(final_state)]
 
 # log-likelihood of an exponential contact interval with mean `scale` days
 ll(scale) = loglikelihood(

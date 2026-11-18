@@ -73,7 +73,7 @@ function incubation_linked_generation_time(;
     alpha = _truncated_skewness(float(presymptomatic_fraction), rel)
 
     return function (individual)
-        inc_period = _latent_incubation_period(individual)
+        inc_period = incubation_period(individual)
         (isnan(inc_period) || inc_period <= 0.0) && throw(
             ArgumentError(
                 "incubation_linked_generation_time needs a positive incubation " *
@@ -266,14 +266,19 @@ function load_curve(rng)
         peak_height * exp(-clearance * (t - peak_time))
 end
 
-attributes = (rng, ind) -> ind.state[:trajectory] = load_curve(rng)
+attributes = within_host((rng, ind) -> load_curve(rng))
 # The load has cleared long before 100 days, so the integration stops there.
 community = Infectiousness(
     NegBin(1.2, 0.5);
-    kernel = ind -> HazardKernel(t -> 0.1 * ind.state[:trajectory](t); upper = 100.0)
+    kernel = ind -> HazardKernel(t -> 0.1 * EpiBranch.trajectory_value(ind, t); upper = 100.0)
 )
 model = ModelSpec(BranchingProcess(community); attributes)
 ```
+
+[`within_host`](@ref) stores the trajectory as a function of the days since
+infection, so `t` here is that time when the window opens at infection.
+[`Testing`](@ref) samples the same trajectory. A Ct value and a test result
+therefore follow from the load that drives infectiousness.
 
 The trajectory and its links to each clinical event determine the generation
 time, incubation period and serial interval. These quantities are no longer
