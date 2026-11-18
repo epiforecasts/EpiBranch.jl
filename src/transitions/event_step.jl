@@ -29,7 +29,9 @@ function censor_after_outcome!(x::_EventStep, individual)
     return nothing
 end
 
-function transition_loglik(x::_EventStep, individual::Individual; followup_end = Inf)
+function transition_loglik(
+        x::_EventStep, individual::Individual; followup_end = Inf, truncated = false
+    )
     anchor = _state_time(individual, x.from, _event_from_key(x))
     isfinite(anchor) || return 0.0
     flag_key, time_key = _event_keys(x)
@@ -45,5 +47,14 @@ function transition_loglik(x::_EventStep, individual::Individual; followup_end =
         censor = min(infection_aborted_time(individual), cap)
     )
     occurred || return ll
+    # Cases are in the data because the step happened by `followup_end`, so the
+    # density is conditioned on that: the gate cancels, leaving the delay
+    # density over the probability the delay is at most `followup_end - anchor`.
+    # A terminal step competes with other outcomes, so it is not corrected.
+    if truncated && !is_terminal(x)
+        delay = _resolved_delay(x.delay, individual)
+        return _delay_loglik(delay, time - anchor) -
+            _delay_logcdf(delay, followup_end - anchor)
+    end
     return ll + _delay_loglik(x.delay, time - anchor, individual)
 end

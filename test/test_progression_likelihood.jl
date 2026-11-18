@@ -574,6 +574,95 @@ struct _UntrackedTransition <: EpiBranch.AbstractClinicalTransition end
         )
     end
 
+    reported_ind(start, d) = Individual(
+        id = 1, infection_time = start,
+        state = Dict(:reported => true, :reporting_time => start + d)
+    )
+
+    @testset "truncated conditions observed steps on followup_end" begin
+        delay = Exponential(2.0)
+        spec = ModelSpec(
+            BranchingProcess(Poisson(1.0));
+            progression = [Reporting(delay = delay, probability = 0.6, from = :infection)]
+        )
+        reported(t) = Individual(
+            id = 1, infection_time = 1.0,
+            state = Dict(:reported => true, :reporting_time => t)
+        )
+        # density over the probability the delay is at most followup_end - start
+        @test progression_loglik(spec, [reported(3.0)]; followup_end = 5.0, truncated = true) ≈
+            logpdf(delay, 2.0) - logcdf(delay, 4.0)
+        # no cut-off, no correction beyond dropping the gate
+        @test progression_loglik(spec, [reported(3.0)]; truncated = true) ≈
+            logpdf(delay, 2.0)
+        # the default is unchanged
+        @test progression_loglik(spec, [reported(3.0)]; followup_end = 5.0) ≈
+            log(0.6) + logpdf(delay, 2.0)
+        # unobserved steps stay censored
+        unreported = Individual(
+            id = 2, infection_time = 1.0,
+            state = Dict(:reported => false, :reporting_time => Inf)
+        )
+        @test progression_loglik(spec, [unreported]; followup_end = 5.0, truncated = true) ≈
+            progression_loglik(spec, [unreported]; followup_end = 5.0)
+
+        # once the cut-off is past a fixed delay the correction vanishes,
+        # because the delay is certain
+        fixed = ModelSpec(
+            BranchingProcess(Poisson(1.0));
+            progression = [Reporting(delay = 2.0, from = :infection)]
+        )
+        @test progression_loglik(fixed, [reported(3.0)]; followup_end = 5.0, truncated = true) ==
+            progression_loglik(fixed, [reported(3.0)]; truncated = true)
+
+        # a Function delay has no density to condition on: scoring errors
+        fn = ModelSpec(
+            BranchingProcess(Poisson(1.0));
+            progression = [Reporting(delay = (rng, ind) -> 2.0, from = :infection)]
+        )
+        @test_throws "has no density to evaluate" progression_loglik(
+            fn, [reported(3.0)]; followup_end = 5.0, truncated = true
+        )
+
+        # the corrected likelihood recovers the delay from a cut sample, the
+        # plain one does not
+        rng = StableRNG(11)
+        true_scale = 3.0
+        T = 4.0
+        starts = 5 .* rand(rng, 20000)
+        draws = rand(rng, Exponential(true_scale), 20000)
+        keep = starts .+ draws .<= T
+        inds = [reported_ind(s, d) for (s, d) in zip(starts[keep], draws[keep])]
+        scales = 1.0:0.05:6.0
+        function best(truncated)
+            ll = map(scales) do θ
+                s = ModelSpec(
+                    BranchingProcess(Poisson(1.0));
+                    progression = [Reporting(delay = Exponential(θ), from = :infection)]
+                )
+                progression_loglik(s, inds; followup_end = T, truncated = truncated)
+            end
+            return scales[argmax(ll)]
+        end
+        @test abs(best(true) - true_scale) < 0.3
+        @test best(false) < true_scale - 0.8
+
+        # a terminal step is scored as before
+        rec = ModelSpec(
+            BranchingProcess(Poisson(1.0));
+            progression = [Recovery(delay = delay, from = :infection)]
+        )
+        ind = Individual(
+            id = 3, infection_time = 0.0,
+            state = Dict(
+                :recovery_candidate_time => 2.0, :recovered => true,
+                :recovered_time => 2.0, :outcome => :recovered, :outcome_time => 2.0
+            )
+        )
+        @test progression_loglik(rec, [ind]; followup_end = 5.0, truncated = true) ≈
+            progression_loglik(rec, [ind]; followup_end = 5.0)
+    end
+
     @testset "followup_end censors recovery and death candidates" begin
         spec = ModelSpec(
             BranchingProcess(Poisson(1.0));

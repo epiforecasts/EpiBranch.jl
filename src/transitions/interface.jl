@@ -292,12 +292,15 @@ end
 _delay_cdf(d::Distribution, t) = cdf(d, t)
 _delay_cdf(x::Real, t) = x < t ? 1.0 : 0.0
 _delay_cdf(f, t) = _delay_loglik(f, t)             # a `Function` delay throws
+_delay_logcdf(d::Distribution, t) = logcdf(d, t)
+_delay_logcdf(x::Real, t) = x < t ? 0.0 : -Inf
+_delay_logcdf(f, t) = _delay_loglik(f, t)
 _delay_logccdf(d::Distribution, t) = logccdf(d, t)
 _delay_logccdf(x::Real, t) = x < t ? -Inf : 0.0
 _delay_logccdf(f, t) = _delay_loglik(f, t)
 
 """
-    transition_loglik(t::AbstractClinicalTransition, individual; followup_end = Inf) -> Float64
+    transition_loglik(t::AbstractClinicalTransition, individual; followup_end = Inf, truncated = false) -> Float64
 
 The log-likelihood of what a step did to one case: the log-probability that
 the step happened (or did not), plus the log-density of its delay when it did.
@@ -305,6 +308,13 @@ the step happened (or did not), plus the log-density of its delay when it did.
 the case never reached the state the step starts from. A step that has not
 happened by `followup_end` is treated as censored there, by its survival
 probability, rather than by a density; the built-in steps take this keyword.
+With `truncated = true`, a step that did happen is scored conditionally on
+having happened by `followup_end`, as for a case selected into the data by that
+event: the density of its delay divided by the probability the delay is at most
+`followup_end` minus its start time. [`Recovery`](@ref),
+[`Death`](@ref) and terminal [`Transition`](@ref)s compete with other
+outcomes, so they ignore it. A custom step needs the keyword only to be used
+with `truncated = true`.
 
 Defined for the built-in steps ([`Transition`](@ref), [`Reporting`](@ref),
 [`Hospitalisation`](@ref), [`Death`](@ref), [`Recovery`](@ref)). A custom step
