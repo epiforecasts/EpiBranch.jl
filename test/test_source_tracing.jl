@@ -167,10 +167,10 @@ end
         # No `contacts` function is passed: backward tracing needs none, unlike
         # the forward ring walk, since the infector comes straight off the
         # transmission tree rather than the model's own contact structure.
-        EpiBranch._sellke_race!(
+        race!(
             state, [1, 2, 3], rng;
             routes = ((RouteWindow(:one; kernel = Dirac(1.0)), targets),),
-            interventions, seed! = (best, members, r) -> (best[1] = 0.0)
+            interventions
         )
         found = get(state.scratch, :_sources_found, Set{Int}())
         # Node 1 is the seed (no infector); 2's infector is 1, 3's is 2.

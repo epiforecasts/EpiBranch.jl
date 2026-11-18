@@ -1,5 +1,5 @@
 @testset "Competing risks" begin
-    clinical = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
+    clinical = CLINICAL
 
     @testset "Population susceptibility prevents overshoot" begin
         # With a hard population cap, cumulative cases should never

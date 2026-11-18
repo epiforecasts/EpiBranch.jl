@@ -288,10 +288,7 @@ EpiBranch.records_contacts(::AlwaysRecord, parent, contact, state, t) = true
                 prog, onsets, rng
             )
             EpiBranch.add_individuals!(state, 3, interventions)
-            EpiBranch._sellke_race!(
-                state, [1, 2, 3], rng; routes = routes,
-                interventions = interventions, seed! = (best, members, r) -> (best[1] = 0.0)
-            )
+            race!(state, [1, 2, 3], rng; routes = routes, interventions = interventions)
             return [get(ind.state, :infected, false) for ind in individuals(state)]
         end
         edge(to) = (inf, st) -> inf == 1 &&
@@ -349,9 +346,8 @@ EpiBranch.records_contacts(::AlwaysRecord, parent, contact, state, t) = true
                     edge(3),
                 ),
             )
-            EpiBranch._sellke_race!(
-                state, [1, 2, 3], rng; routes, interventions,
-                seed! = (best, members, r) -> (best[1] = 0.0)
+            race!(
+                state, [1, 2, 3], rng; routes, interventions
             )
             return [get(ind.state, :infected, false) for ind in individuals(state)]
         end
@@ -413,9 +409,9 @@ EpiBranch.records_contacts(::AlwaysRecord, parent, contact, state, t) = true
                     edge(2, 3, 0.5),
                 ),
             )
-            EpiBranch._sellke_race!(
+            race!(
                 state, [1, 2, 3], rng; routes, interventions,
-                contacts, seed! = (best, members, r) -> (best[1] = 0.0)
+                contacts
             )
             return state
         end
@@ -459,12 +455,11 @@ EpiBranch.records_contacts(::AlwaysRecord, parent, contact, state, t) = true
                 prog, transmission_traits(susceptibility = sus), rng
             )
             EpiBranch.add_individuals!(state, 2, ivs)
-            EpiBranch._sellke_race!(
+            race!(
                 state, [1, 2], rng; from = :infection,
                 until = (:recovered,), interventions = ivs,
                 targets = (inf, st) -> inf == 1 && !is_infected(individuals(st)[2]) ?
-                    ((2, kernel),) : (),
-                seed! = (best, members, r) -> (best[1] = 0.0)
+                    ((2, kernel),) : ()
             )
             return is_infected(individuals(state)[2])
         end
@@ -624,10 +619,9 @@ EpiBranch.records_contacts(::AlwaysRecord, parent, contact, state, t) = true
                 (inf == 3 || get(individuals(st)[3].state, :infected, false)) && return ()
                 return ((3, Dirac(inf == 1 ? 2.0 : 5.0)),)
             end
-            EpiBranch._sellke_race!(
-                state, [1, 2, 3], rng; targets,
-                from = :infection, until = (:recovered,), interventions,
-                seed! = (best, members, r) -> (best[1] = 0.0; best[2] = 0.0)
+            race!(
+                state, [1, 2, 3], rng; seed = (1, 2), targets,
+                from = :infection, until = (:recovered,), interventions
             )
             return state
         end
@@ -700,10 +694,9 @@ EpiBranch.records_contacts(::AlwaysRecord, parent, contact, state, t) = true
                     edge(3),
                 ),
             )
-            EpiBranch._sellke_race!(
+            race!(
                 state, [1, 2, 3], rng; routes, interventions,
-                contacts = (inf, st) -> inf == 1 ? (2, 3) : (),
-                seed! = (best, members, r) -> (best[1] = 0.0)
+                contacts = (inf, st) -> inf == 1 ? (2, 3) : ()
             )
             return [get(ind.state, :infected, false) for ind in individuals(state)]
         end
@@ -805,10 +798,9 @@ end
         # The edge is available for the original proposal, then withdrawn.
         return enquiries[] == 1 ? ((2, Exponential(1.0)),) : ()
     end
-    EpiBranch._sellke_race!(
+    race!(
         state, [1, 2], rng; targets,
-        from = :infection, until = (:recovered,), interventions,
-        seed! = (best, members, r) -> (best[1] = 0.0)
+        from = :infection, until = (:recovered,), interventions
     )
     @test !is_infected(individuals(state)[2])
     @test enquiries[] == 2
@@ -831,10 +823,9 @@ end
         enquiries[] += 1
         return ((2, Exponential(1.0)),)
     end
-    EpiBranch._sellke_race!(
+    race!(
         state, [1, 2], rng; targets,
-        from = :infection, until = (:recovered,), interventions,
-        seed! = (best, members, r) -> (best[1] = 0.0)
+        from = :infection, until = (:recovered,), interventions
     )
     @test !is_infected(individuals(state)[2])
     @test enquiries[] == 1
@@ -902,10 +893,9 @@ end
         enquiries[] += 1
         return ((2, Exponential(1.0)),)
     end
-    EpiBranch._sellke_race!(
+    race!(
         state, [1, 2], rng; targets,
         from = :infection, until = (:recovered,), interventions,
-        seed! = (best, members, r) -> (best[1] = 0.0),
         recorder = AlwaysRecord()
     )
     @test !is_infected(individuals(state)[2])
@@ -942,10 +932,9 @@ end
     interventions = [FlatBlock(1.0)]
     EpiBranch.add_individuals!(state, 2, interventions)
     targets = (inf, st) -> ((2, Exponential(1.0)),)
-    EpiBranch._sellke_race!(
+    race!(
         state, [1, 2], rng; targets,
         from = :infection, until = (:recovered,), interventions,
-        seed! = (best, members, r) -> (best[1] = 0.0),
         recorder = EpiBranch.ExposedContactRecorder()
     )
     @test !is_infected(individuals(state)[2])
@@ -974,10 +963,9 @@ end
         inf == 2 && return ((3, Exponential(1.0)),)
         return ()
     end
-    EpiBranch._sellke_race!(
+    race!(
         state, [1, 2, 3], rng; targets,
         from = :infection, until = (:recovered,), interventions,
-        seed! = (best, members, r) -> (best[1] = 0.0),
         recorder = EpiBranch.ExposedContactRecorder()
     )
     @test is_infected(individuals(state)[2])
@@ -1005,10 +993,9 @@ end
     interventions = [FunctionBlock(1.0)]
     EpiBranch.add_individuals!(state, 2, interventions)
     targets = (inf, st) -> ((2, Exponential(1.0)),)
-    EpiBranch._sellke_race!(
+    race!(
         state, [1, 2], rng; targets,
         from = :infection, until = (:recovered,), interventions,
-        seed! = (best, members, r) -> (best[1] = 0.0),
         recorder = EpiBranch.ExposedContactRecorder()
     )
     @test !is_infected(individuals(state)[2])
@@ -1034,10 +1021,9 @@ end
         EpiBranch.add_individuals!(state, 2, interventions)
         targets = (inf, st) -> inf == 1 ? ((2, Exponential(1.0)),) : ()
         recorder = ProbeExposedRecorder()
-        EpiBranch._sellke_race!(
+        race!(
             state, [1, 2], rng; targets,
             from = :infection, until = (:recovered,), interventions,
-            seed! = (best, members, r) -> (best[1] = 0.0),
             recorder
         )
         is_infected(individuals(state)[2]) && recorder.asked || continue

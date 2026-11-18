@@ -1,0 +1,1 @@
+Added shared helpers for the progression tests in the core test suite. `tsim` accepts `progression` and `observation` keywords, `CLINICAL` holds the common incubation attributes, `contained` replaces the local containment check in the group vaccination test, and `race!` replaces repeated Sellke race set-ups.

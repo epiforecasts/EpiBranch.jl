@@ -19,8 +19,6 @@ function EpiBranch.competing_risk(::PlainWard, parent, contact, state)
     return Risk(block_probability = 1.0)
 end
 
-const _CLINICAL = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
-
 # The infection time of each case's isolation, by id; `Inf` for those never
 # isolated.
 _iso_time(state, id) = get(state.individuals[id].state, :isolation_time, Inf)
@@ -129,7 +127,7 @@ end
                         prevents_contact = prevents
                     ),
                 ],
-                attributes = _CLINICAL
+                attributes = CLINICAL
             );
             max_cases = 200, rng = StableRNG(3)
         )
@@ -157,7 +155,7 @@ end
                         Quarantine(duration = 14.0, prevents_contact = prevents)
                     ),
                 ],
-                attributes = _CLINICAL
+                attributes = CLINICAL
             );
             max_cases = 200, rng = StableRNG(4)
         )

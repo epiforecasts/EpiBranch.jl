@@ -2,7 +2,7 @@ using DataFrames
 using Dates
 
 @testset "Line list output" begin
-    clinical = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
+    clinical = CLINICAL
 
     @testset "linelist basic output" begin
         rng = StableRNG(42)
@@ -73,7 +73,7 @@ using Dates
         rng = StableRNG(42)
         model = BranchingProcess(Poisson(1.5), Exponential(5.0))
         attrs = [
-            clinical_presentation(incubation_period = LogNormal(1.5, 0.5)),
+            CLINICAL,
             demographics(age_distribution = Normal(40, 15)),
         ]
         state = tsim(model; attributes = attrs, max_cases = 50, rng = rng)
@@ -88,7 +88,7 @@ using Dates
         rng = StableRNG(42)
         model = BranchingProcess(Poisson(2.0), Exponential(5.0))
         attrs = [
-            clinical_presentation(incubation_period = LogNormal(1.5, 0.5)),
+            CLINICAL,
             demographics(age_distribution = Uniform(0, 90)),
         ]
         # CFR depends on age via a Death probability closure.
@@ -474,7 +474,7 @@ end
     model = ModelSpec(
         BranchingProcess(Poisson(2.0), Exponential(5.0));
         progression = [Reporting(delay = LogNormal(1.0, 0.3), probability = 0.6)],
-        attributes = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
+        attributes = CLINICAL
     )
     state = simulate(model; max_cases = 200, rng = StableRNG(7))
     ref = Date(2020, 1, 1)
@@ -511,7 +511,7 @@ end
             interventions = [
                 Isolation(delay = Exponential(10.0), duration = Inf),
             ],
-            attributes = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
+            attributes = CLINICAL
         )
         st = simulate(full_model; max_cases = 200, n_initial = 20, rng = StableRNG(11))
         as_of = ref + Day(25)

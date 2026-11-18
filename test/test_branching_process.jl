@@ -46,7 +46,7 @@
 
     @testset "Incubation period sets onset times" begin
         rng = StableRNG(33)
-        init_fn = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
+        init_fn = CLINICAL
         state = simulate(
             ModelSpec(BranchingProcess(Poisson(1.5), Exponential(5.0)); attributes = init_fn);
             max_cases = 50, rng = rng
@@ -274,7 +274,7 @@ end
         BranchingProcess(
             Infectiousness(Poisson(2.0); from = :onset, kernel = Normal(0.0, 3.0))
         );
-        attributes = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
+        attributes = CLINICAL
     )
     states = simulate(
         spec, 200; max_cases = 2000, max_time = nothing, max_generations = nothing,
@@ -304,7 +304,7 @@ end
             ),
             RingVaccination(efficacy = 0.9),
         ],
-        attributes = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
+        attributes = CLINICAL
     )
     phantom = 0
     for seed in 1:100

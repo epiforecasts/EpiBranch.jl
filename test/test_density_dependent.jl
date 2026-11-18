@@ -43,7 +43,7 @@
     @testset "Interventions work with finite population" begin
         rng = StableRNG(42)
         iso = Isolation(delay = Exponential(1.0), duration = Inf)
-        init_fn = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
+        init_fn = CLINICAL
 
         state = simulate(
             ModelSpec(
