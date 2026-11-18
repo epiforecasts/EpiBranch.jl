@@ -121,9 +121,10 @@ end
 # count of their group under a `PerGroup`.
 _places(hc::HeldCapacity, resource) = _budget_of(hc.capacity, _resource_group(resource))
 
-# The stays on one resource as two sorted lists, of the days stays start and of
-# the days they end. A stay holds a place over `[a, b)`, so the places held at a
-# day are the stays started by it less those ended by it, each a binary search.
+# The stays on one resource as two sorted lists: the days stays start and the
+# days they end. A stay holds a place over `[a, b)`, so the places held on a day
+# are the stays started by then less those ended by then, each found by binary
+# search.
 struct _Occupancy
     starts::Vector{Float64}
     ends::Vector{Float64}
@@ -187,8 +188,8 @@ _occupancy_on(h::_HeldStays, resource) = get(() -> _Occupancy(), h.occupancy, re
 # Occupancy only rises where another stay starts and the capacity only falls at
 # one of its breaks, so the tightest moments of the stay are its own start, the
 # start of another stay inside it and a capacity break inside it. The starts
-# inside the stay are read off the sorted lists in one pass, so a check costs a
-# binary search plus the number of stays that start within the stay itself.
+# inside the stay are read off the sorted lists in one pass. A check costs a
+# binary search plus one step per stay that starts within it.
 function _fits_stay(capacity, occ::_Occupancy, s, e)
     _held_at(occ, s) + 1 <= _capacity_at(capacity, s) || return false
     (; starts, ends) = occ

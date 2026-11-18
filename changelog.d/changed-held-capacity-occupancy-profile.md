@@ -1,1 +1,1 @@
-`HeldCapacity` keeps a sorted occupancy profile for each resource, so checking whether a stay fits no longer counts every stay at every candidate moment. A `DeferRefused` search over a large outbreak is much faster, and a benchmark for it joins the suite.
+`HeldCapacity` keeps a sorted occupancy profile for each resource. Checking whether a stay fits no longer counts every stay at every candidate moment. A `DeferRefused` search over a large outbreak is much faster, and the suite gains a benchmark for it.

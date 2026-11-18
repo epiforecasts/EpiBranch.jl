@@ -111,9 +111,9 @@ SUITE["simulation: branching process, interventions"] = @benchmarkable simulate(
     ); n_initial = 5, max_cases = 2000, rng = StableRNG(1)
 )
 
-# A large outbreak whose traced contacts far outnumber the places, so most are
-# refused and each deferral searches the stays held on the resource. The
-# isolation only reaches some cases, so the outbreak keeps growing.
+# A large outbreak in which traced contacts far outnumber the places. Most are
+# refused, and each deferral searches the stays held on the resource. Isolation
+# reaches only some cases, so the outbreak keeps growing.
 const BP_HELD_ISOLATION = Isolation(
     onset_to_isolation_delay = LogNormal(1.0, 0.5), duration = 14.0, test_sensitivity = 0.3
 )

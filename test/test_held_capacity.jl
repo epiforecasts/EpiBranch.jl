@@ -342,7 +342,7 @@ end
     end
 
     @testset "The occupancy profile agrees with counting every stay" begin
-        # The check as first written, which counts each stay at each moment.
+        # Reference check that counts each stay at each moment.
         function reference_fits(capacity, stays, s, e)
             moments = Float64[s]
             for (a, _) in stays
