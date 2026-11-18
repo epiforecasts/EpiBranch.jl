@@ -178,7 +178,7 @@ end
             incubation_period = LogNormal(1.0, 0.3), prob_asymptomatic = 0.0
         )
         iso = Isolation(
-            onset_to_isolation_delay = Exponential(1.5),
+            delay = Exponential(1.5),
             test_sensitivity = 1.0, duration = 7.0
         )
         m = ModelSpec(
@@ -227,7 +227,7 @@ end
             incubation_period = LogNormal(1.0, 0.3), prob_asymptomatic = 0.0
         )
         iso = Isolation(
-            onset_to_isolation_delay = Exponential(1.5),
+            delay = Exponential(1.5),
             test_sensitivity = 1.0, duration = 7.0,
             post_isolation_transmission = 0.5
         )
@@ -531,7 +531,7 @@ end
                 ),
             ]
             iso = Isolation(
-                onset_to_isolation_delay = Exponential(1.5),
+                delay = Exponential(1.5),
                 test_sensitivity = 1.0, duration = 7.0
             )
             rv = RingVaccination(efficacy = 0.5, mode = LeakyMode())
@@ -623,7 +623,7 @@ end
         ct = ContactTracing(OnSymptomOnset(), 1.0, Dirac(0.0), FlagOnly())
         clinical = clinical_presentation(incubation_period = Dirac(0.0))
         iso = Isolation(
-            onset_to_isolation_delay = Exponential(1.5),
+            delay = Exponential(1.5),
             test_sensitivity = 1.0, duration = 7.0
         )
         rv = RingVaccination(efficacy = 0.5, mode = LeakyMode())

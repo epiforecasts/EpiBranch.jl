@@ -313,8 +313,7 @@ function that returns a `Distribution` rather than a value: `Conditional(ind
 each case. Unlike a plain function, the distribution behind a `Conditional`
 can be read back through [`EpiBranch.resolve`](@ref) without drawing from
 it. A likelihood over timing data needs that distribution directly, not a
-simulated value. A `Conditional` transition delay works in simulation only, and
-`progression_loglik` cannot evaluate it.
+simulated value. [`progression_loglik`](@ref) resolves a `Conditional` transition delay for each case and scores it like any other distribution.
 
 ## Stopping rules
 

@@ -191,7 +191,7 @@ end
         Transition(:recovered; from = :infection, delay = Exponential(5.0), terminal = true),
     ]
     isolation = Isolation(
-        onset_to_isolation_delay = Exponential(0.5), duration = Inf,
+        delay = Exponential(0.5), duration = Inf,
         test_sensitivity = 0.3
     )
     pool = HomogeneousProcess(; transmission_rate = 1.5, population_size = N)
@@ -226,7 +226,7 @@ end
     clinical = clinical_presentation(
         incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.0
     )
-    iso = Isolation(onset_to_isolation_delay = Exponential(0.1), duration = Inf)
+    iso = Isolation(delay = Exponential(0.1), duration = Inf)
     st = SourceTracing(
         probability = 1.0, isolation_to_trace_delay = Dirac(0.0),
         action = Quarantine(duration = Inf)
@@ -252,7 +252,7 @@ end
     clinical = clinical_presentation(
         incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.0
     )
-    iso = Isolation(onset_to_isolation_delay = Exponential(0.5), duration = Inf)
+    iso = Isolation(delay = Exponential(0.5), duration = Inf)
     ct = ContactTracing(
         probability = 1.0, isolation_to_trace_delay = Exponential(0.5),
         action = Quarantine(duration = Inf)
@@ -290,7 +290,7 @@ end
 @testset "A source found by SourceTracing is traced forward under OnIsolation" begin
     cp = clinical_presentation(incubation_period = LogNormal(1.0, 0.4))
     bp = BranchingProcess(NegBin(2.0, 0.3), Gamma(4.0, 2.5))
-    iso = Isolation(onset_to_isolation_delay = 1.0, duration = Inf, test_sensitivity = 0.5)
+    iso = Isolation(delay = 1.0, duration = Inf, test_sensitivity = 0.5)
     st = SourceTracing(
         probability = 1.0, isolation_to_trace_delay = Dirac(0.0),
         action = Quarantine(duration = Inf)
@@ -322,7 +322,7 @@ end
 @testset "Contacts traced forward from a source reach a ring action" begin
     cp = clinical_presentation(incubation_period = LogNormal(1.0, 0.4))
     bp = BranchingProcess(NegBin(2.0, 0.3), Gamma(4.0, 2.5))
-    iso = Isolation(onset_to_isolation_delay = 1.0, duration = Inf, test_sensitivity = 0.5)
+    iso = Isolation(delay = 1.0, duration = Inf, test_sensitivity = 0.5)
     st = SourceTracing(
         probability = 1.0, isolation_to_trace_delay = Dirac(0.0),
         action = Quarantine(duration = Inf)

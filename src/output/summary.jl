@@ -31,7 +31,7 @@ from a single case.
 model = ModelSpec(
     BranchingProcess(NegBin(2.5, 0.16), Gamma(2.0, 3.0));
     attributes = clinical_presentation(incubation_period = LogNormal(1.6, 0.5)),
-    interventions = [Isolation(onset_to_isolation_delay = Exponential(2.0),
+    interventions = [Isolation(delay = Exponential(2.0),
         duration = Inf)]
 )
 states = simulate(model, 1000; max_cases = 5000)
@@ -62,7 +62,7 @@ probability is needed.
 model = ModelSpec(
     BranchingProcess(NegBin(2.5, 0.16), Gamma(2.0, 3.0));
     attributes = clinical_presentation(incubation_period = LogNormal(1.6, 0.5)),
-    interventions = [Isolation(onset_to_isolation_delay = Exponential(2.0),
+    interventions = [Isolation(delay = Exponential(2.0),
         duration = Inf)]
 )
 containment_probability(model, 10_000; max_cases = 5000)
@@ -490,7 +490,7 @@ results = scenario_sweep(
         :offspring => [NegBin(2.5, 0.16), NegBin(1.5, 0.5)],
         # Each value is a whole stack of interventions, so one vector per delay.
         :interventions => [
-            [Isolation(onset_to_isolation_delay = Exponential(d), duration = 7.0)]
+            [Isolation(delay = Exponential(d), duration = 7.0)]
                 for d in [1.0, 5.0]
         ],
         :attributes => [clinical_presentation(incubation_period = LogNormal(1.6, 0.5))],

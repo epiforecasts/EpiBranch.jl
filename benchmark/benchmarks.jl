@@ -94,7 +94,7 @@ SUITE["simulation: branching process"] = @benchmarkable simulate(
 
 const BP_CLINICAL = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
 const BP_ISOLATION = Isolation(
-    onset_to_isolation_delay = LogNormal(1.0, 0.5), duration = Inf
+    delay = LogNormal(1.0, 0.5), duration = Inf
 )
 const BP_CONTACT_TRACING = ContactTracing(
     probability = 0.5, isolation_to_trace_delay = Exponential(2.0),

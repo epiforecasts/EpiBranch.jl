@@ -52,8 +52,9 @@ function transition_loglik(
     # density over the probability the delay is at most `followup_end - anchor`.
     # A terminal step competes with other outcomes, so it is not corrected.
     if truncated && !is_terminal(x)
-        return _delay_loglik(x.delay, time - anchor) -
-            _delay_logcdf(x.delay, followup_end - anchor)
+        delay = _resolved_delay(x.delay, individual)
+        return _delay_loglik(delay, time - anchor) -
+            _delay_logcdf(delay, followup_end - anchor)
     end
-    return ll + _delay_loglik(x.delay, time - anchor)
+    return ll + _delay_loglik(x.delay, time - anchor, individual)
 end
