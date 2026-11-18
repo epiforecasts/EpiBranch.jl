@@ -168,16 +168,16 @@ case counted in the step it is infected. The result is exact for
 independent reporting, and `reporting_probability` can be differentiated
 like the offspring parameters.
 
-By default a case is placed uniformly within its step independently of when its
-infector was infected, which is poor when the generation time is short
-compared with a step: an infectee in the same step as its infector is later in
-that step, so its own infectees are more likely to fall in the next. With
-`substeps` above 1 the recursion runs on a grid of that many sub-steps per
-step, with the generation time and reporting delay discretised on that grid,
-and the seeds spread uniformly over the sub-steps of step 0. The counts of the
-sub-steps of a step are added up, so the shape of the result is unchanged and
-the cost of each evaluation grows with `substeps`. Infector and infectee in the
-same sub-step are still ignored, so the approximation improves as `substeps`
+By default a case is placed uniformly within its step, independently of when
+its infector was infected. This is a poor approximation when the generation time
+is short compared with a step: an infectee in the same step as its infector is
+later in that step, so its own infectees are more likely to fall in the next.
+With `substeps` above 1 the recursion runs on a grid of that many sub-steps per
+step. The generation time and reporting delay are discretised on that grid, and
+the seeds are spread uniformly over the sub-steps of step 0. The counts of the
+sub-steps of a step are added up, so the shape of the result is unchanged. The
+cost of each evaluation grows with `substeps`. Infector and infectee in the same
+sub-step are still ignored, so the approximation improves as `substeps`
 increases.
 
 Requires `using ForwardDiff` for the derivatives of the generating function.
