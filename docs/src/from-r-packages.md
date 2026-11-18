@@ -47,7 +47,7 @@ ringbp takes its distributions as sampling functions, such as `\(n) rnbinom(n = 
 | Asymptomatic cases with a different mean number of offspring | `offspring_opts(asymptomatic = ...)` | `transmission_traits(infectiousness = ...)`, see the first recipe below |
 | Asymptomatic cases with their own offspring distribution, with its own dispersion | `offspring_opts(asymptomatic = ...)` | a two-type process, see the second recipe below |
 | The incubation period | `delay_opts(incubation_period = ...)` | `clinical_presentation(incubation_period = ...)` |
-| A delay from onset to isolation | `delay_opts(onset_to_isolation = ...)` | `Isolation(onset_to_isolation_delay = ...)` |
+| A delay from onset to isolation | `delay_opts(onset_to_isolation = ...)` | `Isolation(delay = ...)` |
 | The share of cases that are asymptomatic | `event_prob_opts(asymptomatic = ...)` | `clinical_presentation(prob_asymptomatic = ...)` |
 | The share of symptomatic cases whose contacts are traced | `event_prob_opts(symptomatic_traced = ...)` | `ContactTracing(probability = ...)` |
 | Quarantine of traced contacts | `intervention_opts(quarantine = ...)` | `ContactTracing(action = Quarantine(duration = ...))` |
@@ -87,7 +87,7 @@ List `clinical_presentation` before `transmission_traits`, so that the infectiou
 ```@example fromr
 asymptomatic_spec = ModelSpec(
     BranchingProcess(NegBin(2.5, 0.16), LogNormal(1.6, 0.5));
-    interventions = [Isolation(onset_to_isolation_delay = Exponential(3.0), duration = Inf)],
+    interventions = [Isolation(delay = Exponential(3.0), duration = Inf)],
     attributes = [
         clinical_presentation(
             incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.3
@@ -120,7 +120,7 @@ two_type_spec = ModelSpec(
         LogNormal(1.6, 0.5);
         type_labels = ["symptomatic", "asymptomatic"]
     );
-    interventions = [Isolation(onset_to_isolation_delay = Exponential(3.0), duration = Inf)],
+    interventions = [Isolation(delay = Exponential(3.0), duration = Inf)],
     attributes = clinical_presentation(
         incubation_period = LogNormal(1.5, 0.5),
         prob_asymptomatic = (rng, ind) -> individual_type(ind) == 2 ? 1.0 : 0.0

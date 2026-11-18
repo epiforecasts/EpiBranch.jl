@@ -76,7 +76,7 @@ required_fields(::SymptomaticOnly) = [:asymptomatic]
 
 The event an [`Isolation`](@ref) is timed from: [`AfterSymptomOnset`](@ref)
 (the default) or [`AfterPositiveTest`](@ref). The case is isolated at the
-reference time of the trigger plus the `onset_to_isolation_delay` of the isolation.
+reference time of the trigger plus the `delay` of the isolation.
 
 To write a new trigger, define a subtype and a method of
 [`isolation_reference_time`](@ref EpiBranch.isolation_reference_time), and
@@ -93,7 +93,7 @@ through it.
 """
 function isolation_reference_time end
 
-"""Isolate a case `onset_to_isolation_delay` after its symptom onset (the
+"""Isolate a case `delay` after its symptom onset (the
 default for [`Isolation`](@ref)). A case with no onset is not isolated."""
 struct AfterSymptomOnset <: IsolationTrigger end
 isolation_reference_time(::AfterSymptomOnset, individual, state) = onset_time(individual)
@@ -103,7 +103,7 @@ isolation_reference_time(::AfterSymptomOnset, individual, state) = onset_time(in
 
 Isolate a case when its test result comes back positive: the sampling time
 that the [`Testing`](@ref) step called `name` records in `:<name>_time`, plus
-the `onset_to_isolation_delay` of the isolation. The delay then stands for the
+the `delay` of the isolation. The delay then stands for the
 turnaround from sample to result. The result is read from `:<name>_result`.
 A case never tested has a time of `Inf`. A case with a negative result is not
 isolated through the test. With several `Testing` steps, `name` picks the one
@@ -130,7 +130,7 @@ required_fields(t::AfterPositiveTest) = [Symbol(t.name, :_time), Symbol(t.name, 
 # ── Isolation intervention ──────────────────────────────────────────
 
 """
-    Isolation(; onset_to_isolation_delay, duration,
+    Isolation(; delay, duration,
               trigger = AfterSymptomOnset(),
               eligibility = SymptomaticOnly(), test_sensitivity = 1.0,
               post_isolation_transmission = 0.0, prevents_contact = true)
@@ -140,14 +140,15 @@ transmission. Isolation applies to cases; traced contacts who are not yet
 known cases are quarantined through [`ContactTracing`](@ref).
 
 # Arguments
-- `onset_to_isolation_delay`: days from the trigger to isolation, from symptom
+- `delay`: days from the trigger to isolation, from symptom
   onset by default (from the sample for [`AfterPositiveTest`](@ref), where it
   is the turnaround). A number,
   a distribution such as `Exponential(2.0)` (mean 2 days), or a function of
   the random number generator and the individual, `(rng, ind) -> ...`, drawn
   for each case. The function can read information another intervention has
   recorded on the case, for example to shorten the delay once a case in the
-  same household has been detected.
+  same household has been detected. `onset_to_isolation_delay` is a
+  deprecated alias that warns once.
 - `duration` (required): days a case stays isolated before release.
   A number, a distribution or a function `(rng, ind) -> ...`. `Inf` isolates
   for good; with zero the case is still recorded as isolated, so tracing can
@@ -167,7 +168,7 @@ known cases are quarantined through [`ContactTracing`](@ref).
   `(rng, ind) -> ...`, drawn once per case. A [`Testing`](@ref) step in the
   model's `progression` can be given instead: a case is then detected when its
   own test, taken from its within-host trajectory, is positive. Isolation still
-  starts `onset_to_isolation_delay` after the trigger. Analytic effects
+  starts `delay` after the trigger. Analytic effects
   (`analytic_offspring_effect`) need a number or a distribution and refuse this form.
   To time isolation from a test result, use `trigger = AfterPositiveTest(name)`.
 - `post_isolation_transmission`: fraction of normal transmission that
@@ -199,7 +200,7 @@ continues.
 
 # Examples
 ```julia
-iso = Isolation(onset_to_isolation_delay = Exponential(2.0), duration = Inf)
+iso = Isolation(delay = Exponential(2.0), duration = Inf)
 model = BranchingProcess(NegBin(2.5, 0.16), LogNormal(1.6, 0.5))
 spec = ModelSpec(model; interventions = [iso], attributes = clinical_presentation(incubation_period = LogNormal(1.5, 0.5)))
 state = simulate(spec; max_cases = 500)
@@ -207,7 +208,7 @@ state = simulate(spec; max_cases = 500)
 # Leaky isolation lasting 14 days; AllCases lets every case draw a test result,
 # with the default trigger only cases with an onset are isolated
 Isolation(
-    onset_to_isolation_delay = 1.0, duration = 14.0,
+    delay = 1.0, duration = 14.0,
     eligibility = AllCases(), post_isolation_transmission = 0.25,
 )
 ```
@@ -218,7 +219,7 @@ For extension authors: the case records `:isolated`, `:isolation_time`,
 struct Isolation{T <: IsolationTrigger, E <: IsolationEligibility, D, S, U} <: AbstractIntervention
     trigger::T
     eligibility::E
-    onset_to_isolation_delay::D
+    delay::D
     test_sensitivity::S
     post_isolation_transmission::Float64
     duration::U
@@ -226,16 +227,27 @@ struct Isolation{T <: IsolationTrigger, E <: IsolationEligibility, D, S, U} <: A
 end
 
 function Isolation(;
-        onset_to_isolation_delay,
+        delay = nothing,
         duration,
         trigger::IsolationTrigger = AfterSymptomOnset(),
         eligibility::IsolationEligibility = SymptomaticOnly(),
         test_sensitivity = 1.0,
         post_isolation_transmission::Real = 0.0,
+        onset_to_isolation_delay = nothing,
         prevents_contact::Bool = true
     )
+    if onset_to_isolation_delay !== nothing
+        delay === nothing || throw(
+            ArgumentError(
+                "give `delay` or the deprecated `onset_to_isolation_delay`, not both"
+            )
+        )
+        @warn "`onset_to_isolation_delay` is deprecated; use `delay`." maxlog = 1
+        delay = onset_to_isolation_delay
+    end
+    delay === nothing && throw(ArgumentError("`Isolation` needs a `delay`"))
     return Isolation(
-        trigger, eligibility, onset_to_isolation_delay, test_sensitivity,
+        trigger, eligibility, delay, test_sensitivity,
         Float64(post_isolation_transmission), duration, prevents_contact
     )
 end
@@ -287,7 +299,7 @@ end
 # When a test-positive case isolates itself: the trigger time plus the delay.
 function _self_isolation_time(iso::Isolation, individual, state)
     delay = sample_value(
-        iso.onset_to_isolation_delay,
+        iso.delay,
         stream(state.rng, individual.id, (:isolation, :delay)), individual
     )
     return isolation_reference_time(iso.trigger, individual, state) + delay

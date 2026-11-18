@@ -320,7 +320,7 @@ EpiBranch.interventions(m::_ProcessWithInterventions) = m.interventions
     end
 
     @testset "layers on the spec are applied" begin
-        iso = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
+        iso = Isolation(delay = Exponential(1.0), duration = Inf)
         attr = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
         bp = BranchingProcess(Poisson(2.0), Exponential(5.0))
 
@@ -334,7 +334,7 @@ EpiBranch.interventions(m::_ProcessWithInterventions) = m.interventions
     end
 
     @testset "keywords set the layers; default to none" begin
-        iso = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
+        iso = Isolation(delay = Exponential(1.0), duration = Inf)
         bp = BranchingProcess(Poisson(2.0), Exponential(5.0))
         # A bare process carries no layers, so the spec defaults to none.
         @test isempty(EpiBranch.interventions(ModelSpec(bp)))
@@ -345,7 +345,7 @@ EpiBranch.interventions(m::_ProcessWithInterventions) = m.interventions
     @testset "progression and process are public, and a spec rebuilds from itself" begin
         bp = BranchingProcess(Poisson(1.5), Exponential(5.0))
         prog = [Transition(:onset; from = :infection, delay = Exponential(3.0))]
-        iso = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
+        iso = Isolation(delay = Exponential(1.0), duration = Inf)
         attr = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
         spec = ModelSpec(
             bp; progression = prog, interventions = [iso], attributes = attr
@@ -434,7 +434,7 @@ EpiBranch.interventions(m::_ProcessWithInterventions) = m.interventions
     end
 
     @testset "a process's own interventions are applied too" begin
-        iso = Isolation(onset_to_isolation_delay = 0.0, duration = Inf)
+        iso = Isolation(delay = 0.0, duration = Inf)
         isolated = _ProcessWithInterventions(NegBin(2.5, 0.5), [iso])
         for f in (
                 extinction_probability, epidemic_probability, probability_contain,
@@ -769,7 +769,7 @@ EpiBranch.interventions(m::_ProcessWithInterventions) = m.interventions
         @test EpiBranch.has_effect(_ActionsHookOnly())
         # `Isolation` implements several hooks properly and stays silent too.
         iso = Isolation(
-            onset_to_isolation_delay = Exponential(1.0), duration = Inf
+            delay = Exponential(1.0), duration = Inf
         )
         @test_logs ModelSpec(bp; interventions = [iso])
     end

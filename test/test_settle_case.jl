@@ -64,7 +64,7 @@ end
             probability = 1.0, isolation_to_trace_delay = Dirac(0.1), depth = 3,
             action = Quarantine(duration = 14.0)
         )
-        iso = Isolation(onset_to_isolation_delay = Dirac(1.0), duration = Inf)
+        iso = Isolation(delay = Dirac(1.0), duration = Inf)
         model = ModelSpec(
             BranchingProcess(Poisson(3.0), Exponential(5.0));
             interventions = [iso, ct, _RecordSettle()], progression,
@@ -104,7 +104,7 @@ end
 
 @testset "Scheduled start_time gates on the isolation's own time, not the case's infection time" begin
     sch = Scheduled(
-        Isolation(onset_to_isolation_delay = Dirac(0.0), duration = Inf);
+        Isolation(delay = Dirac(0.0), duration = Inf);
         start_time = 10.0
     )
     attributes = clinical_presentation(incubation_period = Dirac(0.5))
@@ -239,7 +239,7 @@ end
     transitions = [Transition(:recovered; delay = 3.0, terminal = true)]
     model = BranchingProcess(NegBin(2.5, 0.16), LogNormal(1.6, 0.5))
     attributes = [clinical_presentation(incubation_period = LogNormal(1.5, 0.5))]
-    interventions = [Isolation(onset_to_isolation_delay = 1.0, duration = Inf)]
+    interventions = [Isolation(delay = 1.0, duration = Inf)]
     function seed()
         state = EpiBranch.new_state(model, transitions, attributes, StableRNG(1))
         EpiBranch.add_individuals!(state, 1, interventions)

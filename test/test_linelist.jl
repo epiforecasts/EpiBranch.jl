@@ -139,7 +139,7 @@ using Dates
     @testset "linelist includes intervention state" begin
         rng = StableRNG(42)
         model = BranchingProcess(Poisson(2.0), Exponential(5.0))
-        iso = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
+        iso = Isolation(delay = Exponential(1.0), duration = Inf)
         state = tsim(
             model;
             interventions = [iso], attributes = clinical,
@@ -156,7 +156,7 @@ using Dates
             BranchingProcess(Poisson(2.0), Gamma(2.0, 3.0); population_size = 2000);
             attributes = clinical_presentation(incubation_period = LogNormal(1.6, 0.4)),
             interventions = [
-                Isolation(onset_to_isolation_delay = Exponential(2.0), duration = Inf),
+                Isolation(delay = Exponential(2.0), duration = Inf),
                 ContactTracing(
                     probability = 0.8, isolation_to_trace_delay = Exponential(1.0),
                     action = Quarantine(duration = Inf)
@@ -316,7 +316,7 @@ using Dates
                 # Home isolation and quarantine keep the contacts they block.
                 # That leaves uninfected contacts to report.
                 Isolation(
-                    onset_to_isolation_delay = Exponential(1.0), duration = Inf,
+                    delay = Exponential(1.0), duration = Inf,
                     prevents_contact = false
                 ),
                 ContactTracing(
@@ -383,7 +383,7 @@ using Dates
     end
 
     @testset "linelist reports a quarantine's release date" begin
-        iso = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
+        iso = Isolation(delay = Exponential(1.0), duration = Inf)
         ct = ContactTracing(
             TraceEveryone(), 1.0, Exponential(0.5), Quarantine(duration = Exponential(1.0))
         )
@@ -505,7 +505,7 @@ end
                 Death(delay = LogNormal(2.5, 0.4), probability = 0.5),
             ],
             interventions = [
-                Isolation(onset_to_isolation_delay = Exponential(10.0), duration = Inf),
+                Isolation(delay = Exponential(10.0), duration = Inf),
             ],
             attributes = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
         )
