@@ -37,9 +37,9 @@ end
 # default share of asymptomatic cases.
 const CLINICAL = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
 
-# The fraction of `n` simulated outbreaks that `containment_probability` counts
-# as contained, for a `spec` or a model with the keywords of `ModelSpec`. The
-# defaults are the ones the containment tests share.
+# Fraction of `n` simulated outbreaks that `containment_probability` counts as
+# contained, for a `spec` or for a model plus `ModelSpec` keywords. The defaults
+# are shared by the containment tests.
 function contained(
         spec::Union{ModelSpec, TransmissionModel}, n = 200;
         max_cases = 200, seed = 11, kwargs...
@@ -49,9 +49,9 @@ function contained(
 end
 
 # Run the Sellke race over `members` (a vector of ids, or a count `n` for
-# `1:n`) with the cases in `seed` (an id or ids) infected at time zero, the
-# set-up the hand-built race tests share. A `seed!` keyword replaces `seed`
-# for tests that seed the race another way. The other keywords go to the race.
+# `1:n`), with the cases in `seed` (an id or ids) infected at time zero. This is
+# the set-up shared by the hand-built race tests. Tests that seed the race
+# differently pass `seed!`, which replaces `seed`. Other keywords go to the race.
 function race!(state, members, rng; seed = 1, seed! = nothing, kwargs...)
     ids = members isa Integer ? collect(1:members) : members
     seeded = seed! === nothing ?
