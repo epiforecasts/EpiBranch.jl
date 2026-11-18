@@ -182,7 +182,7 @@ function RoutedNetwork(
     # kernel to validate.
     windows = [_validate_route_kernel(w) for w in windows]
     _check_external(external_hazard, n)
-    obs_end_value = _check_obs_end(obs_end)
+    obs_end_value = EpiBranch._check_obs_end(obs_end)
     # A model-level start applies to every route that leaves its own unset, so
     # the stored routes are the ones the simulation runs and `window_open` on
     # them agrees with it.
@@ -319,19 +319,9 @@ function simulate_once(
     Tobs = model.obs_end
 
     state = new_state(model, progression, attributes, rng)
-    if model.eager
-        add_individuals!(state, model.n, interventions; setup = (ind, i) -> nothing)
-    else
-        EpiBranch.lazily_populate!(state, model.n, interventions)
-    end
+    EpiBranch._populate!(state, model.n, interventions, model.eager)
 
-    _ext_active(model.external_hazard) && !isfinite(Tobs) &&
-        throw(
-        ArgumentError(
-            "an external hazard needs a finite `obs_end` (an unbounded window seeds " *
-                "the whole network); build the process with e.g. `obs_end = 30.0`"
-        )
-    )
+    EpiBranch._check_finite_obs_end(model.external_hazard, Tobs, "the whole network")
 
     windows = [_start_unset(w, derived) for w in model.windows]
     # A route that proposes its own contacts records what it proposed only
