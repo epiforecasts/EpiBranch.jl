@@ -163,3 +163,8 @@ const CHAIN_LAW = chain_size_distribution(BranchingProcess(Poisson(0.8)))
 SUITE["evaluation: chain size loglikelihood"] = @benchmarkable loglikelihood(
     $CHAIN_LAW, $(collect(1:50))
 )
+
+const CHAIN_SIZES_DATA = ChainSizes(repeat([1, 1, 1, 2, 3, 1, 5, 2, 1, 8], 100))
+SUITE["evaluation: ChainSizes loglikelihood"] = @benchmarkable loglikelihood(
+    $CHAIN_SIZES_DATA, $(NegBin(0.8, 0.5))
+)
