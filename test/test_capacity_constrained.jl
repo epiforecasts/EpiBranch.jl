@@ -985,6 +985,17 @@ end
         @test EpiBranch._resource_of(cc, ind, empty_state()) === nothing
     end
 
+    @testset "A wrapper around a capacity wrapper finds the same resource" begin
+        rv = RingVaccination(efficacy = 0.9)
+        cc = CapacityConstrained(rv; budget_per_period = PerGroup("A" => 1.0, "B" => 1.0))
+        outer = Scheduled(cc; start_time = 1.0)
+        state = _grouped_state()
+        ind = _traced_contact(rv, 1, 1.0)
+        ind.state[:type] = 2
+        @test EpiBranch._resource_of(outer, ind, state) == "B"
+        @test EpiBranch._resource_of(rv, ind, state) === nothing
+    end
+
     @testset "A PerGroup budget splits an intervention of your own per group" begin
         struct _GroupedAppointment <: EpiBranch.AbstractIntervention end
         EpiBranch.discovers_actions(::_GroupedAppointment) = true
