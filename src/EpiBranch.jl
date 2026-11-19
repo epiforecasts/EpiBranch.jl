@@ -203,6 +203,7 @@ export HybridProcess, HybridState
 export GenerationCounts, simulate_by_generation
 export AbstractDepletion, PerContactDepletion
 export transmission_timing, implied_R
+export state_from_cases
 export Individual, InfectionEpisode, close_episode!, SimulationState
 export AbstractSimulationState, CountSimulationState, individuals
 export SimOpts
