@@ -1,0 +1,1 @@
+The simulated chain-length likelihood now has a geometric tail for runs censored at their length. Above the `_TAIL_MIN_COUNT`-th largest uncensored length, a constant hazard replaces the Kaplan-Meier hazard. An observed length that no simulation reached is now scored by the fitted tail instead of at the smoothing prior.
