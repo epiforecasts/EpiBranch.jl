@@ -269,8 +269,8 @@ function _incidence_log_pgf(
         return 1 - ρ + ρ * r
     end
     Ψ = Matrix{S}(undef, n, m)
-    # What the later steps contribute to a step-`k` case's offspring. Lags
-    # beyond the horizon contribute 1 through the precomputed tail sum.
+    # Contribution of the later steps to the offspring of a step-`k` case.
+    # Lags beyond the horizon contribute 1 each, through the precomputed tail sum.
     function later(k, i)
         b = zero(S)
         L = min(length(w) - 1, n - k)
