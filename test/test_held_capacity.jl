@@ -345,6 +345,42 @@ end
         @test_throws ArgumentError HeldCapacity(rv; capacity = "two")
     end
 
+    @testset "The occupancy profile agrees with counting every stay" begin
+        # Reference check that counts each stay at each moment.
+        function reference_fits(capacity, stays, s, e)
+            moments = Float64[s]
+            for (a, _) in stays
+                s < a < e && push!(moments, a)
+            end
+            append!(moments, EpiBranch._capacity_breaks(capacity, s, e))
+            return all(moments) do m
+                count(((a, b),) -> a <= m < b, stays) + 1 <= EpiBranch._capacity_at(capacity, m)
+            end
+        end
+        rng = StableRNG(7)
+        schedules = Any[2.0, 5.0, Steps([4.0, 9.0], [3.0, 1.0, 4.0])]
+        for capacity in schedules, _ in 1:40
+            store = EpiBranch._HeldStays()
+            stays = Tuple{Float64, Float64}[]
+            for id in 1:rand(rng, 1:12)
+                a = round(10 * rand(rng); digits = 1)
+                b = rand(rng) < 0.2 ? Inf : a + round(6 * rand(rng); digits = 1)
+                store[id] = (:ward, a, b)
+                push!(stays, (a, b))
+            end
+            occ = EpiBranch._occupancy_on(store, :ward)
+            for _ in 1:20
+                s = round(12 * rand(rng); digits = 1)
+                e = s + round(5 * rand(rng); digits = 1)
+                @test EpiBranch._fits_stay(capacity, occ, s, e) ==
+                    reference_fits(capacity, stays, s, e)
+            end
+            # Removing a stay takes it out of the profile.
+            delete!(store, 1)
+            occ = EpiBranch._occupancy_on(store, :ward)
+            @test length(occ.starts) == length(occ.ends) == length(stays) - 1
+        end
+    end
     @testset "Each group follows its own capacity schedule" begin
         rv = RingVaccination(efficacy = 0.9)
         capacity = PerGroup(
