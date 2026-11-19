@@ -154,7 +154,7 @@ using StableRNGs
             )
         end
 
-        # An asymptomatic case shows no onset either, so it stays possible, at
+        # An asymptomatic case also shows no onset, so it remains possible, with
         # the posterior probability given no onset by `now`.
         pa = 0.3
         mixed = draws(

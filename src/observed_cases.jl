@@ -154,9 +154,9 @@ end
 
 # A case listed without an onset had none by `now`: it is either asymptomatic
 # or its incubation period ends after `now`. The attributes are drawn again
-# until one of those holds, which conditions the incubation period on the
-# observation whatever form the model gives it, and weights the asymptomatic
-# fraction by how likely each kind of case is to show no onset by `now`.
+# until one of those holds. This conditions the incubation period on the
+# observation for any form the model gives it. The asymptomatic fraction is
+# weighted by how likely each kind of case is to show no onset by `now`.
 function _redraw_until_no_onset_by!(ind, state, now)
     haskey(ind.state, :incubation_period) || return nothing
     for _ in 1:_MAX_CONDITIONING_ATTEMPTS
