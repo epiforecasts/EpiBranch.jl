@@ -497,8 +497,8 @@ function _run_generations(
         model::BranchingProcess, offspring, state::GenerationCounts, campaigns,
         counts::Int; max_generations::Integer, rng::AbstractRNG, multiplier
     )
-    susceptibles = state.susceptibles isa NoPopulation ? nothing : state.susceptibles
-    sizes = state.type_sizes isa NoPopulation ? nothing : state.type_sizes
+    susceptibles = state.susceptibles isa NoPopulation ? nothing : _scalar(state.susceptibles)
+    sizes = state.type_sizes isa NoPopulation ? nothing : _scalar(state.type_sizes)
     cumulative = state.cumulative_cases
     gen = state.generation
     while gen < max_generations && counts != 0
@@ -582,6 +582,8 @@ end
 
 _as_vector(x::Vector{Int}) = x
 _as_vector(x::Int) = [x]
+_scalar(x::Int) = x
+_scalar(x::Vector{Int}) = only(x)
 _like(::Vector{Int}, v::Vector{Int}) = v
 
 # The multiplier of a single type: no draw, one shared draw, or the one
