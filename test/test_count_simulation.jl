@@ -65,9 +65,9 @@
         for t in 3:(T + 1)
             @test var(a[:, t]) ≈ var(b[:, t]) rtol = 0.25
         end
-        # Autocorrelation of daily counts at lag one. Each day's estimate is
-        # noisy, so the days are compared loosely one by one and tightly on
-        # their average, which has far less sampling error.
+        # Lag-one autocorrelation of daily counts. The estimate for each day
+        # is noisy, so days are compared loosely one by one. Their average has
+        # far less sampling error and is compared tightly.
         diffs = [cor(a[:, t], a[:, t + 1]) - cor(b[:, t], b[:, t + 1]) for t in 2:T]
         @test all(abs.(diffs) .< 0.1)
         @test abs(mean(diffs)) < 0.03
