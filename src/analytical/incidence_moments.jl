@@ -202,6 +202,15 @@ function incidence_moments(
     return _incidence_moments_from(K, n)
 end
 
+# `tail[l] = Σ_{l' ≥ l} p[l']`, with `tail[end] = 0`.
+function _tail_sums(p::AbstractVector)
+    tail = zeros(float(eltype(p)), length(p) + 1)
+    for l in length(p):-1:1
+        tail[l] = tail[l + 1] + p[l]
+    end
+    return tail
+end
+
 # ── Multi-type processes ──────────────────────────────────────────────
 #
 # A type-j case draws its total offspring from G_j = dist_fn(R_j) and gives
@@ -232,11 +241,18 @@ function _incidence_log_pgf(
     m = length(pgfs)
     S = promote_type(T, eltype(w), eltype(d), eltype(alloc), Tpar, typeof(ρ))
     U(k, i) = 1 <= k <= n ? S(u[k + (i - 1) * n]) : one(S)
+    # Lags beyond step `n` contribute 1. Only the lags inside the horizon are
+    # summed, and a precomputed tail sum, `wtail[l] = Σ_{l' ≥ l} w[l']`, adds
+    # the mass beyond them.
+    wtail = _tail_sums(w)
+    dtail = _tail_sums(d)
     function report(k, i)
         r = zero(S)
-        for l in 0:(length(d) - 1)
+        L = min(length(d), n - k + 1)
+        for l in 0:(L - 1)
             r += d[l + 1] * U(k + l, i)
         end
+        r += dtail[L + 1]
         return 1 - ρ + ρ * r
     end
     Ψ = Matrix{S}(undef, n, m)
@@ -244,10 +260,11 @@ function _incidence_log_pgf(
     function next_generation!(k)
         for i in 1:m
             b = zero(S)
-            for l in 1:length(w)
-                b += w[l] * (k + l > n ? one(S) : Ψ[k + l, i])
+            L = min(length(w), n - k)
+            for l in 1:L
+                b += w[l] * Ψ[k + l, i]
             end
-            B[i] = b
+            B[i] = b + wtail[L + 1]
         end
         return B
     end
