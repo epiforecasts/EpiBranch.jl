@@ -203,12 +203,17 @@ end
             (vaccinated, (; generation_length = 7.0)),
         )
         state = simulate_by_generation(
-            model; n_initial = 10, max_generations = 2, rng = StableRNG(1), kw...
+            model; n_initial = 1000, max_generations = 2, rng = StableRNG(1), kw...
         )
         cont = (; (k => v for (k, v) in pairs(kw) if k === :multiplier)...)
-        continue_to(model, state, 4; cont...)
-        short = @allocated continue_to(model, state, 4; cont...)
-        long = @allocated continue_to(model, state, 14; cont...)
+        # Fresh, identically seeded streams make the two runs draw alike, and
+        # the checks below rule out an extinct chain passing for free.
+        continue_to(model, state, 4; rng = StableRNG(2), cont...)
+        short = @allocated continue_to(model, state, 4; rng = StableRNG(2), cont...)
+        long = @allocated continue_to(model, state, 14; rng = StableRNG(2), cont...)
+        reached = continue_to(model, state, 14; rng = StableRNG(2), cont...)
+        @test reached.generation == 14
+        @test reached.counts > 0
         @test long == short
     end
 end
