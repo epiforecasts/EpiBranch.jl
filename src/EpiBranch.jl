@@ -1,5 +1,6 @@
 module EpiBranch
 
+using CensoredDistributions: double_interval_censored
 using DataAPI: DataAPI
 using DataFrames
 using Dates

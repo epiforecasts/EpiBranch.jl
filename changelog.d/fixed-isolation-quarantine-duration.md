@@ -22,4 +22,4 @@ there just ends the hazard reduction and the case transmits at full rate
 again. Two removals layered on one case are held as the interval covering
 both where they meet; where they do not, the later one is kept, the earlier
 being spent before it begins. A duration of zero removes nobody on either
-engine, and a negative one is refused.
+model, and a negative one is refused.
