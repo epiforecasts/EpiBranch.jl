@@ -50,7 +50,7 @@ function (w::_ObservedOffspring)(rng, ind, state)
         later = typeof(from_t)[]
         seen = 0
         for _ in 1:n
-            t = _window_infection_time(kernel, from_t, state)
+            t = _window_infection_time(kernel, from_t, rng)
             t < ind.infection_time && continue
             if t <= cut
                 seen += 1
