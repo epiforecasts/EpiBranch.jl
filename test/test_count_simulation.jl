@@ -47,8 +47,10 @@
     # the other simulation, whose sampling error is large with a heavy tail.
     function split_correlation(R, V, weights)
         v = [w * R + w^2 * (V - R) for w in weights]
-        return [i == j ? 1.0 : weights[i] * weights[j] * (V - R) / sqrt(v[i] * v[j])
-                for i in eachindex(weights), j in eachindex(weights)]
+        return [
+            i == j ? 1.0 : weights[i] * weights[j] * (V - R) / sqrt(v[i] * v[j])
+                for i in eachindex(weights), j in eachindex(weights)
+        ]
     end
 
     function check_agreement(model, T, L, n; reference = nothing)
