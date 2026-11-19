@@ -1,1 +1,1 @@
-`incidence_moments` no longer adds the generation-time pmf mass beyond the horizon one lag at a time at every step: it is added as one precomputed tail total, so the per-step cost no longer depends on the pmf being longer than the series.
+`incidence_moments` now adds the generation-time pmf mass beyond the horizon as one precomputed tail total instead of one lag at a time at every step. The cost per step no longer grows when the pmf is longer than the series.
