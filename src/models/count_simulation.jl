@@ -41,7 +41,7 @@ How a cohort of `n` people infected on one day infects people on later days
 of the `n` infectiousnesses drawn from `ν`, a distribution of mean one:
 `Dirac(1.0)` when every member is alike and `Gamma(k, 1/k)` for a negative
 binomial offspring law, where `Λ` takes one draw as `Gamma(n k, 1/k)`. Any
-other `ν` takes `n` draws, so its cost and memory grow with the number of
+other `ν` takes `n` draws, and the cost and memory grow with the number of
 cases. A shape `k` in place of `ν` stands for `Gamma(k, 1/k)`. `R` is a function of the day.
 """
 struct CountRule{F, D <: UnivariateDistribution}
@@ -50,8 +50,7 @@ struct CountRule{F, D <: UnivariateDistribution}
     g::Vector{Float64}
 end
 
-# A gamma shape `k` in place of the distribution, as `CountRule` took before it
-# held `ν`; infinite `k` is a point mass.
+# A gamma shape `k` in place of `ν`; infinite `k` is a point mass.
 CountRule(R, k::Real, g) = CountRule(R, _gamma_unit(k), g)
 
 # A `ModelSpec` qualifies when the layers it adds do not act on transmission.
