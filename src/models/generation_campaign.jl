@@ -149,6 +149,20 @@ function _doses_by_type(rng::AbstractRNG, c::_Campaign, ::CapacityConstrained, t
     return rand(rng, Multinomial(doses, Float64.(sizes) ./ sum(sizes)))
 end
 
+# The doses of a campaign for a single type, with a shared budget or a budget
+# of one entry per group.
+_single_doses(c::_Campaign{<:AbstractVector}, t0, t1) = _interval_doses(c, t0, t1, only(c.budget))
+_single_doses(c::_Campaign, t0, t1) = _interval_doses(c, t0, t1)
+
+# `_vaccinate!` for a single type: the same draws, with the susceptibles as an
+# integer, returning how many are left.
+function _vaccinate(rng::AbstractRNG, c::_Campaign, t0, t1, susceptibles::Int, size::Int)
+    doses = _single_doses(c, t0, t1)
+    (doses == 0 || susceptibles <= 0 || size <= 0) && return susceptibles
+    reached = min(rand(rng, Binomial(doses, susceptibles / size)), susceptibles)
+    return susceptibles - rand(rng, Binomial(reached, c.efficacy))
+end
+
 # Give a campaign's doses for `[t0, t1)` to the susceptibles. A dose reaches a
 # susceptible of a type with probability equal to the share of susceptibles in
 # the population of the type at the start of the interval, and protects with
