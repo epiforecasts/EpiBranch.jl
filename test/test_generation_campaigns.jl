@@ -205,8 +205,8 @@ EpiBranch.trigger_time(e::_EligibleAt, infector, state) = e.time
     end
 
     @testset "GroupVaccination budgets are shared by the types" begin
-        gv = group()
+        gv = CapacityConstrained(group(); budget_per_period = 1.0)
         a = Individual(id = 1, state = Dict{Symbol, Any}(:type => 1))
-        @test EpiBranch.resource_key(gv, a, nothing) === nothing
+        @test EpiBranch._resource_of(gv, a, nothing) === nothing
     end
 end

@@ -248,27 +248,21 @@ end
         @test capacity_usage(cc, state).used == 1
     end
 
-    @testset "A resource_key splits isolation's budget per group" begin
-        struct _DistrictIsolation <: EpiBranch.InterventionWrapper
-            intervention::Isolation
-        end
-        EpiBranch.resource_key(::_DistrictIsolation, individual, state) =
-            individual.state[:district]
-
+    @testset "A PerGroup budget splits isolation's budget per group" begin
         iso = Isolation(delay = Dirac(0.0), duration = Inf)
-        cc = CapacityConstrained(_DistrictIsolation(iso); budget_per_period = 1.0)
-        state = empty_state()
+        cc = CapacityConstrained(iso; budget_per_period = PerGroup("A" => 1.0, "B" => 1.0))
+        state = _grouped_state()
         a = Individual(
             id = 1,
             state = Dict{Symbol, Any}(
-                :district => :A, :test_positive => true, :onset_time => 1.0,
+                :type => 1, :test_positive => true, :onset_time => 1.0,
                 :asymptomatic => false
             )
         )
         b = Individual(
             id = 2,
             state = Dict{Symbol, Any}(
-                :district => :B, :test_positive => true, :onset_time => 1.0,
+                :type => 2, :test_positive => true, :onset_time => 1.0,
                 :asymptomatic => false
             )
         )
@@ -985,13 +979,13 @@ end
         @test count(is_vaccinated, contacts2) == 0
     end
 
-    @testset "resource_key defaults to nothing, one budget for everyone" begin
-        rv = RingVaccination(efficacy = 0.9)
-        ind = _traced_contact(rv, 1, 1.0)
-        @test EpiBranch.resource_key(rv, ind, nothing) === nothing
+    @testset "A shared budget puts everyone on one resource" begin
+        cc = CapacityConstrained(RingVaccination(efficacy = 0.9); budget_per_period = 1.0)
+        ind = _traced_contact(cc.intervention, 1, 1.0)
+        @test EpiBranch._resource_of(cc, ind, empty_state()) === nothing
     end
 
-    @testset "resource_key splits the budget per group" begin
+    @testset "A PerGroup budget splits an intervention of your own per group" begin
         struct _GroupedAppointment <: EpiBranch.AbstractIntervention end
         EpiBranch.discovers_actions(::_GroupedAppointment) = true
         function EpiBranch.intervention_actions(::_GroupedAppointment, state, candidates)
@@ -1004,14 +998,14 @@ end
         end
         EpiBranch.capacity_key(::_GroupedAppointment) = :attended
         EpiBranch.capacity_time_key(::_GroupedAppointment) = :time
-        EpiBranch.resource_key(::_GroupedAppointment, individual, state) =
-            individual.state[:district]
 
-        cc = CapacityConstrained(_GroupedAppointment(); budget_per_period = 1.0)
-        state = empty_state(BranchingProcess(Poisson(1.0)); rng = MersenneTwister(1))
-        a1 = Individual(id = 1, state = Dict{Symbol, Any}(:district => :A, :time => 1.0))
-        a2 = Individual(id = 2, state = Dict{Symbol, Any}(:district => :A, :time => 2.0))
-        b1 = Individual(id = 3, state = Dict{Symbol, Any}(:district => :B, :time => 1.0))
+        cc = CapacityConstrained(
+            _GroupedAppointment(); budget_per_period = PerGroup("A" => 1.0, "B" => 1.0)
+        )
+        state = _grouped_state()
+        a1 = Individual(id = 1, state = Dict{Symbol, Any}(:type => 1, :time => 1.0))
+        a2 = Individual(id = 2, state = Dict{Symbol, Any}(:type => 1, :time => 2.0))
+        b1 = Individual(id = 3, state = Dict{Symbol, Any}(:type => 2, :time => 1.0))
         append!(individuals(state), [a1, a2, b1])
         state.max_infection_time = 2.0
 
@@ -1022,7 +1016,7 @@ end
 
         @test capacity_usage(cc, state, :A).used == 1
         @test capacity_usage(cc, state, :B).used == 1
-        @test capacity_usage(cc, state, :C).used == 0
+        @test_throws ArgumentError capacity_usage(cc, state, :C)
     end
 
     @testset "Fewer doses under a binding capacity constraint than without one" begin
