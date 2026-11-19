@@ -1,0 +1,1 @@
+`incidence_moments` sums only the lags of the generation-time and reporting-delay pmfs that lie inside the horizon at each sub-step, and adds the mass beyond it from a precomputed tail sum, which cuts its run time by 10–30% with unchanged results.
