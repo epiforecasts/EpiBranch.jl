@@ -48,17 +48,17 @@
 # with distribution `delay`: the lag is at most `l` steps with probability
 # `cdf(dic, l + 1)`, where `dic` is the delay under double interval
 # censoring (a uniform primary event, whole-step secondary interval). Cases
-# are infected throughout a step, so binning the delay directly onto
+# are infected throughout a step. Binning the delay directly onto
 # `(l - 1, l]` would overstate the realised lag by half a step.
-# CensoredDistributions.jl's closed forms and its `Dual`-aware numeric
-# fallback keep this differentiable in the delay's parameters.
+# The closed forms of CensoredDistributions.jl and its `Dual`-aware numeric
+# fallback keep this differentiable in the parameters of the delay.
 function _step_lag_cdf(delay::Distribution)
     dic = double_interval_censored(delay; interval = 1)
     return l -> cdf(dic, l + 1)
 end
 
-# A fixed delay is a point mass, whose cdf jumps at the step boundaries that
-# the censored cdf is evaluated on, so the lag cdf is written out directly:
+# A fixed delay is a point mass whose cdf jumps at the step boundaries where
+# the censored cdf is evaluated. The lag cdf is therefore written out directly:
 # a delay of `c` steps from a uniform start lands in step `floor(c)` or the
 # one after it, with the fractional part of `c` the chance of the latter.
 _step_lag_cdf(delay::Dirac) = l -> clamp(l + 1 - delay.value, 0.0, 1.0)
