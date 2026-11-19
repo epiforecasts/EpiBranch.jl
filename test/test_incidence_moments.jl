@@ -8,7 +8,7 @@ using ForwardDiff
 
         # A fixed generation time of one step puts the infectee in the next
         # step with certainty: an infector at U within its step infects at
-        # U + 1, which is always in the following step.
+        # U + 1, always in the following step.
         w2 = EpiBranch._discretize_generation_interval(Dirac(1.0))
         @test sum(w2) ≈ 1.0
         @test w2[1] ≈ 0.0 atol = 1.0e-6
