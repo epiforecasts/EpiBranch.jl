@@ -1,1 +1,0 @@
-`incidence_moments` sums over generation-time lags only up to the observation horizon and adds the mass beyond it as one precomputed total. This cuts the cost per step when the lag pmf is longer than the series.
