@@ -276,9 +276,9 @@ function _incidence_log_pgf(
         k = cld(q, s)
         return 1 <= k <= n ? S(u[k + (i - 1) * n]) : one(S)
     end
-    # Lags beyond sub-step `N` contribute 1. Only the lags inside the horizon
-    # are summed, and a precomputed tail sum, `wtail[l] = Σ_{l' ≥ l} w[l']`,
-    # adds the mass beyond them.
+    # Lags beyond sub-step `N` contribute 1. The sums run over the lags inside
+    # the horizon only. The mass beyond it comes from a precomputed tail sum,
+    # `wtail[l] = Σ_{l' ≥ l} w[l']`.
     wtail = _tail_sums(w)
     dtail = _tail_sums(d)
     function report(q, i)
