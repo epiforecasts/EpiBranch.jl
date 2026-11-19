@@ -486,8 +486,53 @@ function _continue_generations(
         )
     )
     offspring = _generation_offspring(model)
-    template = state.counts
-    counts = _as_vector(state.counts)
+    return _run_generations(
+        model, offspring, state, campaigns, state.counts; max_generations, rng, multiplier
+    )
+end
+
+# A single type keeps its count, susceptibles and size as plain integers and
+# allocates no vectors for them in a generation.
+function _run_generations(
+        model::BranchingProcess, offspring, state::GenerationCounts, campaigns,
+        counts::Int; max_generations::Integer, rng::AbstractRNG, multiplier
+    )
+    susceptibles = state.susceptibles isa NoPopulation ? nothing : _scalar(state.susceptibles)
+    sizes = state.type_sizes isa NoPopulation ? nothing : _scalar(state.type_sizes)
+    cumulative = state.cumulative_cases
+    gen = state.generation
+    while gen < max_generations && counts != 0
+        if susceptibles !== nothing && sizes !== nothing
+            for campaign in campaigns
+                t0, t1 = _generation_interval(state.generation_length, gen)
+                susceptibles = _vaccinate(rng, campaign, t0, t1, susceptibles, sizes)
+            end
+        end
+        m = _single_multiplier(rng, multiplier)
+        potential = _single_potential(rng, offspring, counts, m, susceptibles !== nothing)
+        if susceptibles === nothing
+            # Without a finite population nothing is thinned.
+            counts = potential
+        else
+            counts, susceptibles = _deplete(
+                rng, state.depletion, potential, susceptibles, something(sizes)
+            )
+        end
+        cumulative += counts
+        gen += 1
+    end
+    return GenerationCounts(
+        counts, cumulative, state.population_size,
+        susceptibles === nothing ? NoPopulation() : susceptibles,
+        state.type_sizes, gen, state.generation_length, state.depletion, rng
+    )
+end
+
+function _run_generations(
+        model::BranchingProcess, offspring, state::GenerationCounts, campaigns,
+        template::Vector{Int}; max_generations::Integer, rng::AbstractRNG, multiplier
+    )
+    counts = template
     susceptibles = state.susceptibles isa NoPopulation ? nothing :
         copy(_as_vector(state.susceptibles))
     sizes = state.type_sizes isa NoPopulation ? nothing : _as_vector(state.type_sizes)
@@ -537,10 +582,24 @@ function _generation_interval(::Nothing, gen)
     throw(ArgumentError("a vaccination campaign needs a generation_length"))
 end
 
-_as_vector(x::Int) = [x]
 _as_vector(x::Vector{Int}) = x
-_like(::Int, v::Vector{Int}) = only(v)
+_as_vector(x::Int) = [x]
+_scalar(x::Int) = x
+_scalar(x::Vector{Int}) = only(x)
 _like(::Vector{Int}, v::Vector{Int}) = v
+
+# The multiplier of a single type: no draw, one shared draw, or the one
+# distribution of a vector of length 1.
+_single_multiplier(rng, ::Nothing) = nothing
+function _single_multiplier(rng, multiplier::AbstractVector)
+    length(multiplier) == 1 || throw(
+        ArgumentError(
+            "multiplier has $(length(multiplier)) distributions for 1 types"
+        )
+    )
+    return rand(rng, only(multiplier))
+end
+_single_multiplier(rng, multiplier) = rand(rng, multiplier)
 
 # ── The generation's potential contacts ──────────────────────────────
 
@@ -590,12 +649,15 @@ _type_multiplier(m::AbstractVector, j::Int) = m[j]
 function _generation_potential(
         rng::AbstractRNG, offspring::Distribution, current::Vector{Int}, m, finite::Bool
     )
-    n = only(current)
-    n == 0 && return [0]
+    return [_single_potential(rng, offspring, only(current), m, finite)]
+end
+
+function _single_potential(rng::AbstractRNG, offspring::Distribution, n::Int, m, finite::Bool)
+    n == 0 && return 0
     law = m === nothing ? offspring : scale_mean(offspring, _type_multiplier(m, 1))
     rate = finite ? _contact_rate(rng, law, n) : nothing
-    rate === nothing || return [Float64(rate)]
-    return [sum_offspring(rng, law, n)]
+    rate === nothing || return Float64(rate)
+    return sum_offspring(rng, law, n)
 end
 
 # Multi-type: each type's cases draw their total from its own law, scaled by
@@ -662,6 +724,27 @@ function _deplete!(
         susceptibles[i] -= kept[i]
     end
     return kept
+end
+
+# The same draws for a single type, with its susceptibles as an integer:
+# returns the contacts kept and the susceptibles left.
+function _deplete(rng, ::PerContactDepletion, potential::Float64, susceptibles::Int, size::Int)
+    (potential <= 0 || susceptibles <= 0) && return 0, susceptibles
+    reached = -expm1(-potential / size)
+    kept = rand(rng, Binomial(susceptibles, reached))
+    return kept, susceptibles - kept
+end
+
+function _deplete(rng, ::PerContactDepletion, potential::Int, susceptibles::Int, size::Int)
+    remaining = potential
+    kept = 0
+    while remaining > 0 && susceptibles > 0
+        remaining -= rand(rng, Geometric(susceptibles / size)) + 1
+        remaining < 0 && break
+        kept += 1
+        susceptibles -= 1
+    end
+    return kept, susceptibles
 end
 
 # A given number of contacts: the number that fall before the next one that
