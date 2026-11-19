@@ -98,8 +98,8 @@ end
 # Discretised generation-time pmf over lag 0, 1, 2, ...: `w[l + 1]` is the
 # probability that an infectee's step is `l` steps after its infector's, with
 # the infector infected uniformly within its step (see `_step_lag_cdf`). Lag 0
-# is an infectee in the same step as its infector, which matters when the
-# generation time is short compared with a step; dropping it would attribute
+# covers infectees in the same step as their infector. It matters when the
+# generation time is short compared with a step: dropping it would attribute
 # those infections to later steps and overstate R.
 function _discretize_generation_interval(
         generation_time::Distribution; tol::Real = 1.0e-8, max_lag::Int = 10_000
