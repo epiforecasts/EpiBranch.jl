@@ -502,9 +502,11 @@ function _run_generations(
     cumulative = state.cumulative_cases
     gen = state.generation
     while gen < max_generations && counts != 0
-        for campaign in campaigns
-            t0, t1 = _generation_interval(state.generation_length, gen)
-            susceptibles = _vaccinate(rng, campaign, t0, t1, susceptibles, sizes)
+        if susceptibles !== nothing && sizes !== nothing
+            for campaign in campaigns
+                t0, t1 = _generation_interval(state.generation_length, gen)
+                susceptibles = _vaccinate(rng, campaign, t0, t1, susceptibles, sizes)
+            end
         end
         m = _single_multiplier(rng, multiplier)
         potential = _single_potential(rng, offspring, counts, m, susceptibles !== nothing)
