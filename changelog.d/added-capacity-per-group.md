@@ -1,1 +1,1 @@
-`CapacityConstrained` can now split an intervention's budget by the groups of the `Population`: pass `PerGroup` as `budget_per_period`. `capacity_usage(cc, state, key)` reads one group's own usage, with `key` the name of the group.
+`CapacityConstrained` can now split the budget of an intervention by the groups of the `Population`: pass `PerGroup` as `budget_per_period`. `capacity_usage(cc, state, key)` reads the usage of one group, with `key` the name of the group.

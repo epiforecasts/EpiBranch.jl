@@ -1,1 +1,1 @@
-Under `CapacityConstrained`, `GroupVaccination` can give each group its own budget by passing `PerGroup` as `budget_per_period`, rather than all groups drawing on one. Read one group's usage with `capacity_usage(cc, state, group)`.
+Under `CapacityConstrained`, `GroupVaccination` can give each group its own budget by passing `PerGroup` as `budget_per_period`, rather than all groups drawing on one. Read the usage of one group with `capacity_usage(cc, state, group)`.
