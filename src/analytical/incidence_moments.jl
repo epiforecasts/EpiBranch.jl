@@ -241,9 +241,9 @@ function _incidence_log_pgf(
     m = length(pgfs)
     S = promote_type(T, eltype(w), eltype(d), eltype(alloc), Tpar, typeof(ρ))
     U(k, i) = 1 <= k <= n ? S(u[k + (i - 1) * n]) : one(S)
-    # Lags that land beyond step `n` contribute 1, so only the lags inside the
-    # horizon are summed and the mass beyond them is added from a precomputed
-    # tail sum, `wtail[l] = Σ_{l' ≥ l} w[l']`.
+    # Lags beyond step `n` contribute 1. Only the lags inside the horizon are
+    # summed, and a precomputed tail sum, `wtail[l] = Σ_{l' ≥ l} w[l']`, adds
+    # the mass beyond them.
     wtail = _tail_sums(w)
     dtail = _tail_sums(d)
     function report(k, i)

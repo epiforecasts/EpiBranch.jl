@@ -81,8 +81,8 @@ using ForwardDiff
     end
 
     @testset "Lags beyond the horizon are marginalised out" begin
-        # Both pmfs are longer than the series, so the truncated sums rely on
-        # the tail mass standing in for the steps not observed.
+        # Both pmfs are longer than the series. The truncated sums use the
+        # tail mass in place of the unobserved steps.
         R, ρ, n, seeds = 1.4, 0.6, 5, 3
         gt, delay = Gamma(3.0, 3.0), LogNormal(1.5, 0.5)
         w = EpiBranch._discretize_generation_interval(gt)
