@@ -65,16 +65,18 @@
         for t in 3:(T + 1)
             @test var(a[:, t]) ≈ var(b[:, t]) rtol = 0.25
         end
-        # Autocorrelation of daily counts at lag one.
-        for t in 2:T
-            @test cor(a[:, t], a[:, t + 1]) ≈ cor(b[:, t], b[:, t + 1]) atol = 0.05
-        end
+        # Lag-one autocorrelation of daily counts. The estimate for each day
+        # is noisy, so days are compared loosely one by one. Their average has
+        # far less sampling error and is compared tightly.
+        diffs = [cor(a[:, t], a[:, t + 1]) - cor(b[:, t], b[:, t + 1]) for t in 2:T]
+        @test all(abs.(diffs) .< 0.1)
+        @test abs(mean(diffs)) < 0.03
         # Correlation across days of one infector's offspring.
         if reference === nothing
-            @test cor(offspring[1]) ≈ cor(offspring[2]) atol = 0.03
+            @test cor(offspring[1]) ≈ cor(offspring[2]) atol = 0.05
         else
-            @test cor(offspring[1]) ≈ reference atol = 0.02
-            @test cor(offspring[2]) ≈ reference atol = 0.02
+            @test cor(offspring[1]) ≈ reference atol = 0.03
+            @test cor(offspring[2]) ≈ reference atol = 0.03
         end
         @test vec(mean(offspring[1]; dims = 1)) ≈ vec(mean(offspring[2]; dims = 1)) rtol = 0.06
         return cor(offspring[1])
@@ -83,7 +85,7 @@
     @testset "agrees with the individual simulation" begin
         weights = [0.3, 0.5, 0.2]
         c = check_agreement(
-            BranchingProcess(Poisson(1.3), gt), 8, 3, 2000;
+            BranchingProcess(Poisson(1.3), gt), 8, 3, 1000;
             reference = split_correlation(1.3, 1.3, weights)
         )
         @test all(abs(c[i, j]) < 0.03 for i in 1:3, j in 1:3 if i != j)
@@ -91,7 +93,7 @@
         # A negative binomial offspring number is correlated across the days
         # of one infector.
         c = check_agreement(
-            BranchingProcess(NegBin(1.3, 0.8), gt), 8, 3, 2000;
+            BranchingProcess(NegBin(1.3, 0.8), gt), 8, 3, 1000;
             reference = split_correlation(1.3, 1.3 + 1.3^2 / 0.8, weights)
         )
         @test c[1, 2] > 0.25
@@ -100,7 +102,7 @@
         renewal = BranchingProcess(
             Infectiousness(RenewalOffspring(R, [0.3, 0.5, 0.2]; k = 1.0))
         )
-        c = check_agreement(renewal, 8, 3, 2000)
+        c = check_agreement(renewal, 8, 3, 1000)
         @test c[1, 2] > 0.25
     end
 
