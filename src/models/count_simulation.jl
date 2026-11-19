@@ -6,17 +6,19 @@
 # has `n` members, each with an infectiousness `ν` of mean one. The members of
 # a cohort share nothing, so the total infectiousness `Λ` of the cohort is the
 # sum of its `ν`: `Gamma(n k, 1/k)` when `ν ~ Gamma(k, 1/k)` (a negative
-# binomial offspring law, or `RenewalOffspring` with a finite `k`), and `n`
-# when every `ν` is one. The cohort infects `Poisson(Λ R(t) g(t - s))` people
-# on day `t`, independently for each `t`, with `R(t)` the mean offspring number
+# binomial offspring law, or `RenewalOffspring` with a finite `k`), `n` when
+# every `ν` is one, and otherwise the sum of `n` draws of `ν` (a Poisson
+# lognormal or Poisson Weibull law, whose `ν` is the rate divided by its
+# mean). The cohort infects `Poisson(Λ R(t) g(t - s))` people on day `t`, independently for each `t`, with `R(t)` the mean offspring number
 # at `t` and `g` the generation time on the daily lags.
 #
 # The result keeps, for each day, the count of the cohort, its `Λ` and the
 # number of infections it received from each earlier cohort. That is enough to
 # continue the run and to build the people when they are asked for. The
 # infections caused by a cohort are shared among its members in proportion to
-# their `ν`, which are `Dirichlet(k, …, k)` given `Λ` (equal shares when every
-# `ν` is one).
+# their `ν`, which are `Dirichlet(k, …, k)` given `Λ` for a gamma `ν` (equal
+# shares when every `ν` is one). For another `ν` the values of the members are
+# drawn at that point, from their law given the sum.
 
 """
     EpiBranch.count_rule(model)
@@ -31,18 +33,25 @@ method for a new model type gives it the count-level path. The rule is a
 count_rule(::TransmissionModel) = nothing
 
 """
-    CountRule(R, k, g)
+    CountRule(R, ν, g)
 
 How a cohort of `n` people infected on one day infects people on later days
 ([`EpiBranch.count_rule`](@ref)): the number infected `lag` days later, on day
-`t`, is `Poisson(Λ R(t) g[lag])`. `Λ` is the total infectiousness of the cohort, drawn
-once as `Gamma(n k, 1/k)`, or `n` if `k` is `Inf`. `R` is a function of the day.
+`t`, is `Poisson(Λ R(t) g[lag])`. `Λ` is the total infectiousness of the cohort, the sum
+of the `n` infectiousnesses drawn from `ν`, a distribution of mean one:
+`Dirac(1.0)` when every member is alike and `Gamma(k, 1/k)` for a negative
+binomial offspring law, where `Λ` takes one draw as `Gamma(n k, 1/k)`. Any
+other `ν` takes `n` draws, and the cost and memory grow with the number of
+cases. A shape `k` in place of `ν` stands for `Gamma(k, 1/k)`. `R` is a function of the day.
 """
-struct CountRule{F}
+struct CountRule{F, D <: UnivariateDistribution}
     R::F
-    k::Float64
+    ν::D
     g::Vector{Float64}
 end
+
+# A gamma shape `k` in place of `ν`; infinite `k` is a point mass.
+CountRule(R, k::Real, g) = CountRule(R, _gamma_unit(k), g)
 
 # A `ModelSpec` qualifies when the layers it adds do not act on transmission.
 function count_rule(spec::ModelSpec)
@@ -61,25 +70,34 @@ function count_rule(model::BranchingProcess)
     return _count_rule(w.offspring, w.kernel)
 end
 
-_count_rule(o::Poisson, kernel) = _daily_rule(_ConstantR(mean(o)), Inf, kernel)
+_count_rule(o::Poisson, kernel) = _daily_rule(_ConstantR(mean(o)), Dirac(1.0), kernel)
 function _count_rule(o::NegativeBinomial, kernel)
     0 < o.p < 1 || return nothing
-    return _daily_rule(_ConstantR(mean(o)), Float64(o.r), kernel)
+    return _daily_rule(_ConstantR(mean(o)), _gamma_unit(o.r), kernel)
 end
+_count_rule(o::_PoissonMixture, kernel) =
+    _daily_rule(_ConstantR(mean(o)), _unit_rate_law(o), kernel)
 function _count_rule(o::RenewalOffspring{<:Any, <:AbstractVector}, kernel)
-    return CountRule(o.R, Float64(o.k), o.generation_time)
+    return CountRule(o.R, _gamma_unit(o.k), o.generation_time)
 end
+
+# The infectiousness of one member: mean one, `Gamma(k, 1/k)`, or a point mass
+# at one when `k` is infinite.
+_gamma_unit(k) = isfinite(k) ? Gamma(Float64(k), 1 / Float64(k)) : Dirac(1.0)
+# The rate law of a Poisson mixture divided by its mean.
+_unit_rate_law(o::PoissonLognormal) = LogNormal(-o.σ^2 / 2, Float64(o.σ))
+_unit_rate_law(o::PoissonWeibull) = Weibull(Float64(o.k), Float64(o.λ) / mean(_rate_law(o)))
 _count_rule(o, kernel) = nothing
 
 # The generation time as a pmf on lags 1, 2, …, when it is a distribution on
 # whole days from 1 with a largest value.
-function _daily_rule(R, k, kernel)
+function _daily_rule(R, ν, kernel)
     kernel isa DiscreteUnivariateDistribution || return nothing
     lo, hi = minimum(kernel), maximum(kernel)
     lo >= 1 && isfinite(hi) && hi <= 10_000 || return nothing
     g = Float64[pdf(kernel, lag) for lag in 1:Int(hi)]
     isapprox(sum(g), 1; atol = 1.0e-9) || return nothing
-    return CountRule(R, Float64(k), g)
+    return CountRule(R, ν, g)
 end
 
 """
@@ -114,6 +132,7 @@ mutable struct CountSimulationState{M, L, F} <: AbstractSimulationState
     rule::CountRule{F}
     counts::Vector{Int}
     cohort_infectiousness::Vector{Float64}
+    cohort_members::Vector{Vector{Float64}}
     inflow::Vector{Vector{Int}}
     day::Int
     cumulative_cases::Int
@@ -128,8 +147,19 @@ function Base.show(io::IO, s::CountSimulationState)
     return print(io, "CountSimulationState(cases=$(s.cumulative_cases), day=$(s.day), $(status))")
 end
 
-_cohort_infectiousness(rule::CountRule, n::Int, rng) =
-    n == 0 ? 0.0 : isfinite(rule.k) ? rand(rng, Gamma(n * rule.k, 1 / rule.k)) : Float64(n)
+# The total infectiousness of a cohort of `n`, and the infectiousness of each
+# member where it has to be kept. A point mass or a gamma `ν` needs no members:
+# the split among them is independent of the total, so it is drawn when the
+# people are built. Any other `ν` gives a split that depends on the total, so
+# the members are drawn first and the total is their sum.
+_draw_cohort(rule::CountRule, n::Int, rng) =
+    n == 0 ? (0.0, Float64[]) : _draw_cohort(rule.ν, n, rng)
+_draw_cohort(::Dirac, n, rng) = (Float64(n), Float64[])
+_draw_cohort(ν::Gamma, n, rng) = (rand(rng, Gamma(n * shape(ν), scale(ν))), Float64[])
+function _draw_cohort(ν, n, rng)
+    members = [rand(rng, ν) for _ in 1:n]
+    return (sum(members), members)
+end
 
 # Whether the last cohorts that can still infect anyone are all empty.
 function _count_extinct(s::CountSimulationState)
@@ -151,7 +181,9 @@ function _count_step!(s::CountSimulationState)
     n = sum(inflow)
     push!(s.inflow, inflow)
     push!(s.counts, n)
-    push!(s.cohort_infectiousness, _cohort_infectiousness(rule, n, s.rng))
+    total, members = _draw_cohort(rule, n, s.rng)
+    push!(s.cohort_infectiousness, total)
+    push!(s.cohort_members, members)
     s.cumulative_cases += n
     s.day = t
     s.extinct = _count_extinct(s)
@@ -179,9 +211,10 @@ function _simulate_counts(model, rule::CountRule, n_initial::Int, max_time::Real
         attributes = attributes(model), progression = progression(model),
         observation = observation(model),
     )
+    total, members = _draw_cohort(rule, n_initial, rng)
     state = CountSimulationState(
-        process_of(model), layers, rule, [n_initial],
-        [_cohort_infectiousness(rule, n_initial, rng)], [zeros(Int, length(rule.g))],
+        process_of(model), layers, rule, [n_initial], [total], [members],
+        [zeros(Int, length(rule.g))],
         0, n_initial, n_initial == 0, rng, stream, nothing
     )
     return _count_advance!(state, max_time)
@@ -267,7 +300,7 @@ function _realise!(s::CountSimulationState)
             x == 0 && continue
             src = d - lag
             isempty(shares[src + 1]) &&
-                (shares[src + 1] = _member_shares(s.rule, s.counts[src + 1], rng))
+                (shares[src + 1] = _member_shares(s.rule, s.counts[src + 1], s.cohort_members[src + 1], rng))
             cumulative = shares[src + 1]
             for _ in 1:x
                 member = min(searchsortedfirst(cumulative, rand(rng)), length(cumulative))
@@ -288,11 +321,18 @@ function _realise!(s::CountSimulationState)
 end
 
 # The cumulative share of the infections of the cohort that each of its `n`
-# members causes: equal when every member has the same infectiousness, otherwise
-# `Dirichlet(k, …, k)`, the split of a `Gamma(n k)` total among `n` independent
-# `Gamma(k)` parts.
-function _member_shares(rule::CountRule, n::Int, rng)
-    weights = isfinite(rule.k) ? [rand(rng, Gamma(rule.k, 1.0)) for _ in 1:n] : ones(n)
+# members causes, in proportion to their infectiousness: equal when every
+# member has the same, `Dirichlet(k, …, k)` for a gamma `ν` (the split of a
+# `Gamma(n k)` total among `n` independent `Gamma(k)` parts), and given by the
+# kept values of `members` otherwise.
+function _member_shares(rule::CountRule, n::Int, members, rng)
+    weights = if !isempty(members)
+        members
+    elseif rule.ν isa Dirac
+        ones(n)
+    else
+        [rand(rng, rule.ν) for _ in 1:n]
+    end
     cumulative = cumsum(weights)
     cumulative ./= cumulative[end]
     return cumulative

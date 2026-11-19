@@ -53,7 +53,7 @@
         ]
     end
 
-    function check_agreement(model, T, L, n; reference = nothing)
+    function check_agreement(model, T, L, n; reference = nothing, atol = 0.05)
         counts, offspring = compare(model, T, L, n)
         a, b = counts[:, :, 1], counts[:, :, 2]
         # Daily means, within the sampling error of the difference.
@@ -73,7 +73,7 @@
         @test abs(mean(diffs)) < 0.03
         # Correlation across days of one infector's offspring.
         if reference === nothing
-            @test cor(offspring[1]) ≈ cor(offspring[2]) atol = 0.05
+            @test cor(offspring[1]) ≈ cor(offspring[2]) atol = atol
         else
             @test cor(offspring[1]) ≈ reference atol = 0.03
             @test cor(offspring[2]) ≈ reference atol = 0.03
@@ -104,6 +104,35 @@
         )
         c = check_agreement(renewal, 8, 3, 1000)
         @test c[1, 2] > 0.25
+    end
+
+    @testset "Poisson mixtures agree with the individual simulation" begin
+        # Offspring numbers are correlated across the days of one infector,
+        # through a rate that is neither gamma nor constant.
+        lognormal = PoissonLognormal(log(1.3) - 0.245, 0.7)
+        weibull = PoissonWeibull(1.4, 1.3 / mean(Weibull(1.4, 1.0)))
+        for offspring in (lognormal, weibull)
+            rule = EpiBranch.count_rule(BranchingProcess(offspring, gt))
+            @test mean(rule.ν) ≈ 1 atol = 1.0e-9
+            @test rule.R(1) ≈ mean(offspring)
+            c = check_agreement(BranchingProcess(offspring, gt), 8, 3, 4000)
+            @test c[1, 2] > 0.1
+        end
+    end
+
+    @testset "the members of a cohort keep their infectiousness" begin
+        # With a mixed Poisson law the split of the infections of a cohort
+        # among its members depends on the total, so the members are kept.
+        model = BranchingProcess(PoissonLognormal(-0.2, 0.9), gt)
+        state = count_run(model; max_time = 6, rng = StableRNG(4))
+        @test length(state.cohort_members) == state.day + 1
+        @test all(
+            length(m) == n && sum(m) ≈ total for
+                (m, n, total) in zip(state.cohort_members, state.counts, state.cohort_infectiousness)
+        )
+        @test length(individuals(state)) == state.cumulative_cases
+        negbin = count_run(BranchingProcess(NegBin(1.3, 0.8), gt); max_time = 6, rng = StableRNG(4))
+        @test all(isempty, negbin.cohort_members)
     end
 
     @testset "the people of a state" begin
