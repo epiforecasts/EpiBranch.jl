@@ -573,6 +573,12 @@ function simulate(
         spec.process, n_initial, initial_cases, index_types, max_cases, max_generations,
         max_time, stopping_rules
     )
+    rule = _count_route(
+        spec, initial_cases, index_types, max_cases, max_generations, max_time,
+        stopping_rules, condition, rng
+    )
+    rule === nothing ||
+        return _simulate_counts(spec, rule, sim_opts.n_initial, max_time::Real, rng)
     state = _run_once_or_retry(
         spec.process, sim_opts, condition, max_attempts; _layers(spec)..., rng
     )

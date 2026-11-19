@@ -1,5 +1,6 @@
 module EpiBranch
 
+using CensoredDistributions: double_interval_censored
 using DataAPI: DataAPI
 using DataFrames
 using Dates
@@ -147,6 +148,7 @@ include("output/tracing.jl")
 include("output/chains.jl")
 include("output/generation_intervals.jl")
 include("output/summary.jl")
+include("models/count_simulation.jl")
 
 # Analytical
 include("analytical/reproduction_number.jl")
@@ -203,7 +205,7 @@ export GenerationCounts, simulate_by_generation
 export AbstractDepletion, PerContactDepletion
 export transmission_timing, implied_R
 export Individual, InfectionEpisode, close_episode!, SimulationState
-export AbstractSimulationState, individuals
+export AbstractSimulationState, CountSimulationState, individuals
 export SimOpts
 export AbstractStoppingRule, Extinction, MaxCases, MaxGenerations, MaxTime, should_stop
 export AbstractIntervention, Isolation, ContactTracing, SourceTracing

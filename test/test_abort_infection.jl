@@ -137,10 +137,7 @@ end
         # transition runs; without detaching `:_removal_entries` first, a
         # removal the second transition records grows the same vector the
         # snapshot shares, so undoing it leaves the entry behind.
-        prog = AbstractClinicalTransition[
-            _RemovalVisit(0.5),
-            _RemovalVisit(5.0),
-        ]
+        prog = AbstractClinicalTransition[_RemovalVisit(0.5), _RemovalVisit(5.0)]
         state = EpiBranch.new_state(
             BranchingProcess(Poisson(0.0)), prog, NoAttributes(), StableRNG(1)
         )
@@ -221,9 +218,8 @@ end
             (RouteWindow(:one; until = (:late,), kernel = Dirac(1.0)), edge(1, 2, 1.0)),
             (RouteWindow(:two; until = (:late,), kernel = Dirac(3.0)), edge(2, 3, 3.0)),
         )
-        EpiBranch._sellke_race!(
-            state, [1, 2, 3], rng; routes, interventions,
-            seed! = (best, members, r) -> (best[1] = 0.0)
+        race!(
+            state, [1, 2, 3], rng; routes, interventions
         )
         return state
     end

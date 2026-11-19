@@ -52,6 +52,7 @@ const TEST_GROUPS = (
         "test_testing.jl",
         "test_infectiousness.jl",
         "test_renewal_offspring.jl",
+        "test_count_simulation.jl",
         "test_funeral.jl",
         "test_density_dependent.jl",
         "test_structure_driven.jl",

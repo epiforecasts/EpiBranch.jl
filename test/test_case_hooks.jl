@@ -69,8 +69,7 @@ _case_hook_model(ivs) = ModelSpec(
             @test ind.state[:_offered_count] ==
                 count(c -> c.infection_time <= infector.infection_time, cases)
         end
-        @test state.max_infection_time ==
-            maximum(ind.infection_time for ind in cases)
+        @test state.max_infection_time == maximum(ind.infection_time for ind in cases)
         @test all(state.scratch[:_one_infector_per_call])
     end
 
@@ -107,11 +106,10 @@ _case_hook_model(ivs) = ModelSpec(
             (to, Dirac(1.0)) for to in neighbours[inf]
                 if !get(individuals(st)[to].state, :infected, false)
         )
-        EpiBranch._sellke_race!(
+        race!(
             state, [1, 2, 3], rng;
             routes = ((RouteWindow(:one; kernel = Dirac(1.0)), targets),),
-            interventions, contacts = (inf, st) -> neighbours[inf],
-            seed! = (best, members, r) -> (best[1] = 0.0)
+            interventions, contacts = (inf, st) -> neighbours[inf]
         )
         @test individuals(state)[1].state[:_traced_from] == 2
         @test individuals(state)[2].state[:_traced_from] == 3

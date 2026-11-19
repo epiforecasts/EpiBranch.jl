@@ -47,12 +47,24 @@
 # chain-length likelihood.
 
 # Cumulative distribution of the step lag between two events when the first
-# falls uniformly within its step (double interval censoring) and the second
-# is that event plus a delay with cumulative distribution `F`: the lag is at
-# most `l` steps with probability ∫_l^{l+1} F(x) dx. Cases are infected
-# throughout a step, so binning the delay directly onto `(l - 1, l]` would
-# overstate the realised lag by half a step.
-_censored_cdf(F) = l -> first(quadgk(F, l, l + 1))
+# falls uniformly within its step and the second is that event plus a delay
+# with distribution `delay`: the lag is at most `l` steps with probability
+# `cdf(dic, l + 1)`, where `dic` is the delay under double interval
+# censoring (a uniform primary event, whole-step secondary interval). Cases
+# are infected throughout a step. Binning the delay directly onto
+# `(l - 1, l]` would overstate the realised lag by half a step.
+# The closed forms of CensoredDistributions.jl and its `Dual`-aware numeric
+# fallback keep this differentiable in the parameters of the delay.
+function _step_lag_cdf(delay::Distribution)
+    dic = double_interval_censored(delay; interval = 1)
+    return l -> cdf(dic, l + 1)
+end
+
+# A fixed delay is a point mass whose cdf jumps at the step boundaries where
+# the censored cdf is evaluated. The lag cdf is therefore written out directly:
+# a delay of `c` steps from a uniform start lands in step `floor(c)` or the
+# one after it, with the fractional part of `c` the chance of the latter.
+_step_lag_cdf(delay::Dirac) = l -> clamp(l + 1 - delay.value, 0.0, 1.0)
 
 # Bin the step-lag cumulative distribution `H` onto the integer lags
 # `first_lag`, `first_lag + 1`, ...: the first entry is `H(first_lag) - base`,
@@ -85,17 +97,14 @@ end
 
 # Discretised generation-time pmf over lag 0, 1, 2, ...: `w[l + 1]` is the
 # probability that an infectee's step is `l` steps after its infector's, with
-# the infector infected uniformly within its step (see `_censored_cdf`). Lag 0
+# the infector infected uniformly within its step (see `_step_lag_cdf`). Lag 0
 # is an infectee in the same step as its infector, which matters when the
 # generation time is short compared with a step; dropping it would attribute
-# those infections to later steps and overstate R. The distribution is taken
-# to be continuous with no atom at or below 0; the integral over each step
-# avoids evaluating the cdf at 0 itself, which a `Dual` parameter would send
-# through `log(0) = -Inf` for a distribution like `LogNormal`.
+# those infections to later steps and overstate R.
 function _discretize_generation_interval(
         generation_time::Distribution; tol::Real = 1.0e-8, max_lag::Int = 10_000
     )
-    H = _censored_cdf(t -> cdf(generation_time, t))
+    H = _step_lag_cdf(generation_time)
     return _bin_cdf(H, 0, tol, max_lag, "generation-time distribution")
 end
 
@@ -111,7 +120,7 @@ function _discretize_report_delay(
         delay::Distribution; tol::Real = 1.0e-8, max_lag::Int = 10_000
     )
     minimum(delay) >= 0 || throw(ArgumentError("reporting_delay must be non-negative"))
-    return _bin_cdf(_censored_cdf(t -> cdf(delay, t)), 0, tol, max_lag, "reporting delay")
+    return _bin_cdf(_step_lag_cdf(delay), 0, tol, max_lag, "reporting delay")
 end
 
 # The offspring law's own numeric element type, promoted with `eltype(u)` in

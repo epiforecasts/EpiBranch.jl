@@ -70,9 +70,7 @@ end
         # from its own stream, so the unrelated noise changes nothing.
         baseline_crn = run_sim(AbstractIntervention[], CommonRandomNumbers(42))
         noisy_crn = run_sim([_NoiseForOne(1)], CommonRandomNumbers(42))
-        @test all(
-            onset_time(baseline_crn[i]) == onset_time(noisy_crn[i]) for i in 1:5
-        )
+        @test all(onset_time(baseline_crn[i]) == onset_time(noisy_crn[i]) for i in 1:5)
     end
 
     @testset "population characteristics draw from a per-person stream" begin
@@ -122,6 +120,24 @@ end
         for i in 1:5
             @test baseline_crn[i].state[:risk] == noisy_crn[i].state[:risk]
         end
+    end
+
+    @testset "a prevented infection removes only its own subtree" begin
+        process = BranchingProcess(NegBin(1.5, 0.3), Exponential(5.0))
+        attrs = clinical_presentation(incubation_period = LogNormal(1.6, 0.5))
+        size_of(s) = count(is_infected, s.individuals)
+        runs(ivs) = size_of.(
+            simulate(
+                ModelSpec(process; attributes = attrs, interventions = ivs),
+                100; max_cases = 500, rng = CommonRandomNumbers(1)
+            )
+        )
+        none = runs(AbstractIntervention[])
+        no_effect = runs([Isolation(onset_to_isolation_delay = 1.0e6, duration = Inf)])
+        late = runs([Isolation(onset_to_isolation_delay = 10.0, duration = Inf)])
+        @test none == no_effect
+        @test all(late .<= none)
+        @test any(late .< none)
     end
 
     @testset "copy is independent and keeps positions" begin

@@ -316,6 +316,9 @@ MaxGenerations
 MaxTime
 AbstractSimulationState
 SimulationState
+CountSimulationState
+EpiBranch.count_rule
+EpiBranch.CountRule
 individuals
 Base.copy(::SimulationState)
 Individual

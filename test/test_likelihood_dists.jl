@@ -23,7 +23,7 @@ EpiBranch.chain_size_distribution(d::BrokenExactOffspring) = throw(d.error)
         build(p) = ModelSpec(
             BranchingProcess(NegBin(0.8, 0.5), Gamma(2, 1));
             progression = [Reporting(delay = 1.0, probability = p)],
-            attributes = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
+            attributes = CLINICAL
         )
         @test chain_size_distribution(build(ForwardDiff.Dual(0.5, 1.0))) isa ThinnedChainSize
         exact(p) = sum(logpdf(ThinnedChainSize(GammaBorel(0.5, 0.8), p), n) for n in sizes)
@@ -64,8 +64,7 @@ EpiBranch.chain_size_distribution(d::BrokenExactOffspring) = throw(d.error)
         seeds = [1, 2, 1, 1]
 
         d = chain_size_distribution(bp; seeds = seeds)
-        @test logpdf(d, data) ≈
-            loglikelihood(ChainSizes(data; seeds = seeds), Poisson(0.5))
+        @test logpdf(d, data) ≈ loglikelihood(ChainSizes(data; seeds = seeds), Poisson(0.5))
 
         pc = [1.0, 0.5, 0.0, 0.7]
         d_pc = chain_size_distribution(bp; seeds = seeds, prob_concluded = pc)
@@ -77,7 +76,7 @@ EpiBranch.chain_size_distribution(d::BrokenExactOffspring) = throw(d.error)
 
         # With interventions, prob_concluded routes through the
         # simulation-based likelihood.
-        clinical = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
+        clinical = CLINICAL
         iso = Isolation(delay = Exponential(1.0), duration = Inf)
         d_iv = chain_size_distribution(
             ModelSpec(bp; interventions = [iso], attributes = clinical);
@@ -116,9 +115,7 @@ EpiBranch.chain_size_distribution(d::BrokenExactOffspring) = throw(d.error)
         # Explicit kwargs still force the simulation-based wrapper.
         @test chain_size_distribution(bp; n_sim = 500, rng = StableRNG(1)) isa
             Distribution
-        @test isfinite(
-            loglikelihood(ChainSizes(data), bp; n_sim = 500, rng = StableRNG(1))
-        )
+        @test isfinite(loglikelihood(ChainSizes(data), bp; n_sim = 500, rng = StableRNG(1)))
     end
 
     @testset "chain_size_distribution — bare-pgf GeneratingFunctionOffspring falls back" begin
@@ -230,9 +227,7 @@ EpiBranch.chain_size_distribution(d::BrokenExactOffspring) = throw(d.error)
 
     @testset "chain_size_distribution — whole-chain detection" begin
         data = [1, 2, 1, 3, 1]
-        obs = ModelSpec(
-            BranchingProcess(Poisson(0.5)); observation = ChainDetection(0.4)
-        )
+        obs = ModelSpec(BranchingProcess(Poisson(0.5)); observation = ChainDetection(0.4))
         d = chain_size_distribution(obs; n_sim = 0)
         @test logpdf(d, data) ≈ loglikelihood(ChainSizes(data), obs)
     end
@@ -439,9 +434,7 @@ EpiBranch.chain_size_distribution(d::BrokenExactOffspring) = throw(d.error)
             BranchingProcess(Poisson(0.5));
             progression = [Reporting(probability = 0.0, delay = 0.0, from = :infection)]
         )
-        d = chain_size_distribution(
-            spec; seeds = [1], condition = 0:0, max_attempts = 5
-        )
+        d = chain_size_distribution(spec; seeds = [1], condition = 0:0, max_attempts = 5)
         err = try
             rand(StableRNG(1), d, 1)
             nothing

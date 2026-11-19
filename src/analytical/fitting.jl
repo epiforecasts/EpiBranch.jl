@@ -596,6 +596,10 @@ With `censored_at_value = true` the cap is ignored and each censored value is
 instead a lower bound on that run's true value. The probabilities come from a
 product-limit (Kaplan-Meier) estimator. A censored run informs the hazard at
 every value up to its censoring point, and its mass moves to the larger values.
+From the `_TAIL_MIN_COUNT`-th largest uncensored value upwards the hazard is
+held at a constant, the geometric tail of the uncensored case, fitted to the
+events and exposure there. A value that no run reached is then scored by the
+fitted tail. This needs at least `_TAIL_MIN_COUNT` uncensored runs.
 
 `prob_concluded`, when given (one value per observation, in `[0, 1]`), mixes
 each observation's point mass with its right tail under the same simulated
@@ -614,8 +618,6 @@ function _empirical_ll(
     n_total = length(simulated)
 
     if censored_at_value
-        # Lower-bound censoring needs the full simulated distribution. The
-        # parametric tail is not used.
         max_val = max(maximum(observed), maximum(simulated))
         counts = zeros(Int, max_val - min_val + 1)
         censored_counts = zeros(Int, length(counts))
@@ -715,6 +717,29 @@ function _empirical_ll_censored_at_value(
     # censored at or above it.
     at_risk = reverse(cumsum(reverse(counts .+ censored_counts)))
     hazard = (counts .+ 1) ./ (at_risk .+ 2)
+    # Tail start: the value of the `_TAIL_MIN_COUNT`-th largest uncensored run,
+    # as for the uncensored path. Above it the product-limit hazards rest on a
+    # handful of events, and values no run reached would score at the smoothing
+    # prior alone. A constant hazard, the geometric tail, replaces them. Each
+    # run adds exposure at every value from the tail start up to its own value,
+    # and an event only if it is uncensored. With fewer uncensored runs there
+    # is no tail to pool and the product-limit hazards stand.
+    if sum(counts) >= _TAIL_MIN_COUNT
+        n_above = 0
+        i0 = 1
+        for j in n_bins:-1:1
+            n_above += counts[j]
+            if n_above >= _TAIL_MIN_COUNT
+                i0 = j
+                break
+            end
+        end
+        tail_events = sum(@view counts[i0:end])
+        tail_exposure = sum(
+            (j - i0 + 1) * (counts[j] + censored_counts[j]) for j in i0:n_bins
+        )
+        hazard[i0:end] .= (tail_events + 1) / (tail_exposure + 2)
+    end
     # survival[j] = P(X >= value j) = prod_{k<j} (1 - hazard[k])
     survival = vcat(1.0, cumprod(1 .- hazard))[1:n_bins]
     ll = 0.0

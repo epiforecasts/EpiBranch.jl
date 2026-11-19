@@ -9,5 +9,5 @@ record-reading kernel on every route, and `NetworkProcess` is the one-route
 case of the same mechanism.
 
 A record that an attribute builder, a `Transition` or an observation model
-moves is now followed as well: the engine no longer infers from the
+moves is now followed as well: the simulation no longer infers from the
 intervention stack that nothing else can move one.

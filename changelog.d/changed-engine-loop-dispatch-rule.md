@@ -1,4 +1,4 @@
-`docs/src/contributing.md` states the engine-loop half of the
+`docs/src/contributing.md` states the simulation-loop half of the
 extension-by-dispatch rule: a loop should ask the composed layers and never
 decide for them. A loop that decides what a named intervention does to whom,
 reads a state key an intervention owns, or keeps its own record of what has

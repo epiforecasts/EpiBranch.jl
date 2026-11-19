@@ -25,6 +25,47 @@ using ForwardDiff
         @test sum((0:(length(d) - 1)) .* d) ≈ 2.4 atol = 0.03
     end
 
+    @testset "Discretisation matches the uniform-within-step lag" begin
+        # Reference: P(lag ≤ l) = ∫_l^{l+1} F(x) dx by a fine midpoint rule.
+        function ref_pmf(delay, nlag)
+            H(l) = sum(cdf(delay, l + (i - 0.5) / 4000) for i in 1:4000) / 4000
+            return [H(l) - (l == 0 ? 0.0 : H(l - 1)) for l in 0:(nlag - 1)]
+        end
+        for gt in (LogNormal(1.6, 0.5), Gamma(4.0, 0.6), Weibull(2.0, 3.0), Exponential(2.0))
+            w = EpiBranch._discretize_generation_interval(gt)
+            r = ref_pmf(gt, 12)
+            @test w[1:12] ≈ r ./ sum(ref_pmf(gt, 400)) atol = 1.0e-4
+            d = EpiBranch._discretize_report_delay(gt)
+            @test d[1:12] ≈ w[1:12] atol = 1.0e-12
+        end
+
+        # A fixed delay of c steps lands in step floor(c) or the next, with
+        # the fractional part of c the chance of the latter.
+        d = EpiBranch._discretize_report_delay(1.25)
+        @test d ≈ [0.0, 0.75, 0.25]
+        @test EpiBranch._discretize_generation_interval(Dirac(2.5)) ≈ [0.0, 0.0, 0.5, 0.5]
+
+        # Continuous time: infect uniformly within a step, add a continuous
+        # generation time, and read off the step it lands in.
+        gt = LogNormal(1.0, 0.4)
+        rng = StableRNG(1)
+        lags = [floor(Int, rand(rng) + rand(rng, gt)) for _ in 1:400_000]
+        w = EpiBranch._discretize_generation_interval(gt)
+        emp = [count(==(j), lags) / length(lags) for j in 0:5]
+        @test emp ≈ w[1:6] atol = 0.01
+    end
+
+    @testset "Dual parameters pass through the discretisation" begin
+        f(p) = (w = EpiBranch._discretize_generation_interval(Gamma(p[1], p[2])); sum((1:length(w)) .* w))
+        g = ForwardDiff.gradient(f, [4.0, 0.6])
+        h = 1.0e-5
+        fd = (f([4.0 + h, 0.6]) - f([4.0 - h, 0.6])) / 2h
+        @test g[1] ≈ fd rtol = 1.0e-4
+        @test all(isfinite, g)
+        r(p) = sum(EpiBranch._discretize_report_delay(LogNormal(p[1], p[2]))[1:3])
+        @test all(isfinite, ForwardDiff.gradient(r, [1.0, 0.4]))
+    end
+
     @testset "incidence_moments matches the renewal equation for the mean" begin
         R, gt, n, seeds = 1.4, LogNormal(1.0, 0.4), 8, 4
         w = EpiBranch._discretize_generation_interval(gt)

@@ -5,13 +5,14 @@
 function tsim(
         model::BranchingProcess;
         transitions = EpiBranch.AbstractClinicalTransition[],
+        progression = transitions,
         attributes = NoAttributes(),
         interventions = AbstractIntervention[],
+        observation = NoObservation(),
         kwargs...
     )
     spec = ModelSpec(
-        model; progression = transitions, attributes = attributes,
-        interventions = interventions
+        model; progression, attributes, interventions, observation
     )
     return simulate(spec; kwargs...)
 end
@@ -30,4 +31,29 @@ end
 # The SIR removal: infected cases recover after `delay` and leave the process.
 function sir(delay)
     return [Transition(:recovered; from = :infection, delay = delay, terminal = true)]
+end
+
+# The attributes most tests use: a log-normal incubation period.
+# `clinical_presentation` defaults to no asymptomatic cases.
+const CLINICAL = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
+
+# Fraction of `n` outbreaks simulated from a `ModelSpec` that
+# `containment_probability` counts as contained. Extra keywords go to `simulate`.
+function contained(
+        spec::ModelSpec, n = 200;
+        max_cases = 200, seed = 11, kwargs...
+    )
+    states = simulate(spec, n; max_cases, rng = StableRNG(seed), kwargs...)
+    return containment_probability(states; max_cases).proportion
+end
+
+# Run the Sellke race over `members` (a vector of ids, or a count `n` for
+# `1:n`), with the cases in `seed` (an id or ids) infected at time zero. This is
+# the set-up shared by the hand-built race tests. Tests that seed the race
+# differently pass `seed!`, which replaces `seed`. Other keywords go to the race.
+function race!(state, members, rng; seed = 1, seed! = nothing, kwargs...)
+    ids = members isa Integer ? collect(1:members) : members
+    seeded = seed! === nothing ?
+        (best, _, _) -> (best[collect(seed)] .= 0.0) : seed!
+    return EpiBranch._sellke_race!(state, ids, rng; seed! = seeded, kwargs...)
 end

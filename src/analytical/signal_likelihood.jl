@@ -30,6 +30,11 @@ function loglikelihood(data::SignalData, state::SimulationState)
     return total
 end
 
+# Count-level runs are scored on the individuals realised from their counts.
+function loglikelihood(data::SignalData, state::CountSimulationState)
+    return loglikelihood(data, _realise!(state))
+end
+
 """
     loglikelihood(data::SignalData, model::TransmissionModel; rng = Random.default_rng(), kwargs...)
     loglikelihood(data::SignalData, spec::ModelSpec; rng = Random.default_rng(), kwargs...)
