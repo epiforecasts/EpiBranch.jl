@@ -183,7 +183,7 @@ function _initialise_observed(
         ind = _create_individual(state, obs.parent[i], chain[i], i, obs.inf[i])
         ind.generation = generation[i]
         if !isnan(obs.onset[i])
-            # A case with a listed onset has symptoms, whatever the model drew.
+            # A case with a listed onset is symptomatic, overriding any asymptomatic draw.
             haskey(ind.state, :asymptomatic) && (ind.state[:asymptomatic] = false)
             ind.state[:incubation_period] = T(obs.onset[i] - obs.inf[i])
         end
