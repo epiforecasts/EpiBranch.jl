@@ -80,6 +80,28 @@ using ForwardDiff
         @test m.mean ≈ μ_renewal
     end
 
+    @testset "Lags beyond the horizon are marginalised out" begin
+        # Both pmfs are longer than the series. The truncated sums use the
+        # tail mass in place of the unobserved steps.
+        R, ρ, n, seeds = 1.4, 0.6, 5, 3
+        gt, delay = Gamma(3.0, 3.0), LogNormal(1.5, 0.5)
+        w = EpiBranch._discretize_generation_interval(gt)
+        d = EpiBranch._discretize_report_delay(delay)
+        @test length(w) > n && length(d) > n
+        infections = zeros(Float64, n)
+        get_μ(t) = t == 0 ? Float64(seeds) : (t < 0 ? 0.0 : infections[t])
+        for t in 1:n
+            infections[t] = R * sum(w[j] * get_μ(t - j) for j in 1:length(w))
+        end
+        reported = [
+            ρ * sum(d[l + 1] * get_μ(t - l) for l in 0:(length(d) - 1)) for t in 1:n
+        ]
+        m = incidence_moments(
+            Poisson(R), gt, n; seeds, reporting_probability = ρ, reporting_delay = delay
+        )
+        @test m.mean ≈ reported
+    end
+
     @testset "incidence_moments matches a discrete-time branching simulation" begin
         # A hand-rolled discrete-time simulation sharing exactly the
         # assumptions `incidence_moments` encodes (each step-k individual
@@ -285,6 +307,63 @@ using ForwardDiff
         ]
         @test maximum(abs.(emp_mean .- vec(m.mean))) < 0.2
         @test maximum(abs.(emp_cov .- m.cov)) < 0.5
+    end
+
+    @testset "Sub-steps approach the continuous-time process" begin
+        # Continuous-time branching process with a generation time short
+        # compared with a step, seeds infected uniformly within step 0 and
+        # counts by (delayed) report time: the reference `substeps` converges to.
+        R, gt, n, seeds, ρ = 0.6, Gamma(2.0, 0.1), 3, 2, 0.6
+        delay = Gamma(2.0, 0.15)
+        function simulate_continuous(rng)
+            counts = zeros(n)
+            report!(t) =
+            if rand(rng) < ρ
+                tr = t + rand(rng, delay)
+                0 < tr <= n && (counts[ceil(Int, tr)] += 1)
+            end
+            stack = [rand(rng) - 1 for _ in 1:seeds]
+            foreach(report!, stack)
+            while !isempty(stack)
+                t = pop!(stack)
+                for _ in 1:rand(rng, Poisson(R))
+                    tc = t + rand(rng, gt)
+                    tc <= n || continue
+                    report!(tc)
+                    push!(stack, tc)
+                end
+            end
+            return counts
+        end
+        nsim = 20000
+        sims = reduce(hcat, (simulate_continuous(StableRNG(i)) for i in 1:nsim))'
+        emp_mean = vec(sum(sims, dims = 1)) ./ nsim
+        emp_cov = [
+            sum((sims[:, t] .- emp_mean[t]) .* (sims[:, t′] .- emp_mean[t′])) / (nsim - 1)
+                for t in 1:n, t′ in 1:n
+        ]
+
+        kw = (seeds = seeds, reporting_probability = ρ, reporting_delay = delay)
+        coarse = incidence_moments(Poisson(R), gt, n; kw...)
+        fine = incidence_moments(Poisson(R), gt, n; substeps = 24, kw...)
+        @test maximum(abs.(emp_mean .- fine.mean)) < 0.06
+        @test maximum(abs.(emp_cov .- fine.cov)) < 0.3
+        # The default of one sub-step per step is far from the continuous-time
+        # moments here.
+        @test maximum(abs.(emp_mean .- coarse.mean)) > 0.5
+        @test maximum(abs.(emp_cov .- coarse.cov)) > 1.0
+    end
+
+    @testset "Sub-steps in the multi-type method" begin
+        gt = Gamma(2.0, 0.1)
+        kw = (reporting_probability = 0.8, reporting_delay = Gamma(2.0, 0.2), substeps = 6)
+        single = incidence_moments(NegBin(0.9, 0.5), gt, 4; seeds = 2, kw...)
+        o = EpiBranch.MultiTypeOffspring(fill(0.9, 1, 1), R -> NegBin(R, 0.5))
+        multi = incidence_moments(o, gt, 4; seeds = [2], kw...)
+        @test vec(multi.mean) ≈ single.mean
+        @test multi.cov ≈ single.cov
+        @test_throws ArgumentError incidence_moments(Poisson(1.0), gt, 4; substeps = 0)
+        @test_throws ArgumentError incidence_moments(o, gt, 4; seeds = [1], substeps = 0)
     end
 
     @testset "A count that can only be zero has mean and variance 0" begin
