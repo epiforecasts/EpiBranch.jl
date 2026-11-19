@@ -182,8 +182,11 @@ function _initialise_observed(
     for i in 1:n
         ind = _create_individual(state, obs.parent[i], chain[i], i, obs.inf[i])
         ind.generation = generation[i]
-        isnan(obs.onset[i]) ||
-            (ind.state[:incubation_period] = T(obs.onset[i] - obs.inf[i]))
+        if !isnan(obs.onset[i])
+            # A case with a listed onset has symptoms, whatever the model drew.
+            haskey(ind.state, :asymptomatic) && (ind.state[:asymptomatic] = false)
+            ind.state[:incubation_period] = T(obs.onset[i] - obs.inf[i])
+        end
         isfinite(obs.isolation[i]) &&
             set_isolated!(ind, obs.isolation[i]; release_time = Inf)
         _initialise!(interventions, ind, state)
