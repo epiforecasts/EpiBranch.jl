@@ -513,7 +513,7 @@ function _run_generations(
             counts = potential
         else
             counts, susceptibles = _deplete(
-                rng, state.depletion, potential, susceptibles, sizes
+                rng, state.depletion, potential, susceptibles, something(sizes)
             )
         end
         cumulative += counts
