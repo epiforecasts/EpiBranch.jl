@@ -1,1 +1,1 @@
-The count simulation test compares the cross-day offspring correlation of the Poisson and negative binomial models with its closed-form value rather than with a second noisy estimate, which lets the tolerance tighten from 0.03 to 0.02.
+The count simulation test compares the cross-day offspring correlation of the Poisson and negative binomial models with its closed-form value rather than with a second noisy estimate. The tolerance tightens from 0.03 to 0.02.
