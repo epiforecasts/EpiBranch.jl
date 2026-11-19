@@ -241,8 +241,8 @@ function _incidence_log_pgf(
     end
     Ψ = Matrix{S}(undef, n, m)
     B = Vector{S}(undef, m)
-    # Mass of `w` beyond lag `l`: those children land past the horizon, where
-    # Ψ ≡ 1, so they enter as one total rather than term by term.
+    # Mass of `w` beyond lag `l`. Those children land past the horizon, where
+    # Ψ ≡ 1, and enter as one total instead of term by term.
     wtail = reverse(cumsum(reverse(w)))
     wbeyond(l) = l >= length(w) ? zero(eltype(wtail)) : wtail[l + 1]
     function next_generation!(k)
