@@ -202,6 +202,15 @@ function incidence_moments(
     return _incidence_moments_from(K, n)
 end
 
+# `tail[l] = Σ_{l' ≥ l} p[l']`, with `tail[end] = 0`.
+function _tail_sums(p::AbstractVector)
+    tail = zeros(float(eltype(p)), length(p) + 1)
+    for l in length(p):-1:1
+        tail[l] = tail[l + 1] + p[l]
+    end
+    return tail
+end
+
 # ── Multi-type processes ──────────────────────────────────────────────
 #
 # A type-j case draws its total offspring from G_j = dist_fn(R_j) and gives
@@ -224,15 +233,6 @@ end
 # the plain `Float64` ForwardDiff probes before perturbing it (nested
 # automatic differentiation, as a `Dual` offspring under an outer AD call over
 # R or k gives).
-# `tail[l] = Σ_{l' ≥ l} p[l']`, with `tail[end] = 0`.
-function _tail_sums(p::AbstractVector)
-    tail = zeros(float(eltype(p)), length(p) + 1)
-    for l in length(p):-1:1
-        tail[l] = tail[l + 1] + p[l]
-    end
-    return tail
-end
-
 function _incidence_log_pgf(
         u::AbstractVector{T}, w::AbstractVector{<:Real}, pgfs::AbstractVector,
         alloc::AbstractMatrix{<:Real}, n::Integer, seeds::AbstractVector{<:Real},
