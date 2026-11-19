@@ -56,9 +56,8 @@
 # `(l - 1, l]` would overstate the realised lag by half a step.
 # The closed forms of CensoredDistributions.jl and its `Dual`-aware numeric
 # fallback keep this differentiable in the parameters of the delay.
-# Lags are counted in sub-steps of width `1 / substeps`, so the primary window
-# and the interval are `1 / substeps` and the cdf is evaluated at
-# `(l + 1) / substeps`.
+# Lags are counted in sub-steps of width `1 / substeps`. The primary window and
+# the interval have that width, and the cdf is evaluated at `(l + 1) / substeps`.
 function _step_lag_cdf(delay::Distribution, substeps::Integer = 1)
     dic = double_interval_censored(
         delay; primary_event = Uniform(0, 1 / substeps), interval = 1 / substeps
@@ -68,8 +67,8 @@ end
 
 # A fixed delay is a point mass whose cdf jumps at the step boundaries where
 # the censored cdf is evaluated. The lag cdf is therefore written out directly:
-# a delay of `c` sub-steps from a uniform start lands in sub-step `floor(c)` or
-# the one after it, with the fractional part of `c` the chance of the latter.
+# a delay of `c` sub-steps from a uniform start ends in sub-step `floor(c)` or
+# the next, with probability equal to the fractional part of `c` for the next.
 function _step_lag_cdf(delay::Dirac, substeps::Integer = 1)
     return l -> clamp(l + 1 - substeps * delay.value, 0.0, 1.0)
 end
