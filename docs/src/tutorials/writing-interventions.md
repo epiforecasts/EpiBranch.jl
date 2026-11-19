@@ -836,10 +836,10 @@ By default everyone draws on the same budget. To split it by the groups of the
 population, such as districts or treatment centres, pass
 `budget_per_period = PerGroup(...)` to `CapacityConstrained` (or `capacity =
 PerGroup(...)` to `HeldCapacity`). The wrapper finds each person's group
-itself, so your intervention needs no method for it. Each group gets its own
-budget, tracked under the same `period`, `carry_over` and `priority`,
-independently of every other, and `capacity_usage(cc, state, group)` reads one
-group's own usage. A model
+itself. Your intervention needs no method for it. Each group gets its own
+budget with the same `period`, `carry_over` and `priority`, tracked
+independently of every other. `capacity_usage(cc, state, group)` reads the
+usage of one group. A model
 that keeps counts or compartments rather than individuals applies an
 intervention only if it defines `EpiBranch.count_dosing`; see [What each model
 applies](@ref).

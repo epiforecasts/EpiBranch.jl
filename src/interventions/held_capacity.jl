@@ -312,7 +312,7 @@ end
 
 The number of places held at day `at` and the number there are. `key` selects
 one budget when `capacity` is a [`PerGroup`](@ref): the name of the group. The
-default, `nothing`, is the single one everyone shares.
+default, `nothing`, is the one budget everyone shares.
 """
 function held_usage(hc::HeldCapacity, state::SimulationState, at::Real, key = nothing)
     resource = _user_resource(hc.capacity, key)
