@@ -180,8 +180,8 @@ function _initialise_observed(
     T = _timetype(state)
     generation, chain = _generations(obs.parent, obs.inf)
     for i in 1:n
-        # A case with a listed onset is symptomatic: set before the attributes
-        # run, so traits drawn from `:asymptomatic` see it.
+        # A case with a listed onset is symptomatic. The flag is set before the
+        # attributes run because traits drawn from `:asymptomatic` read it.
         listed = !isnan(obs.onset[i])
         prepare = listed ? (ind -> (ind.state[:asymptomatic] = false)) : _no_prepare
         ind = _create_individual(
