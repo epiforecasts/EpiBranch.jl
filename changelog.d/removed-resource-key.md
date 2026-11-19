@@ -1,1 +1,0 @@
-`EpiBranch.resource_key` is removed. Pass `PerGroup` as `budget_per_period` of `CapacityConstrained` or as `capacity` of `HeldCapacity` to split a budget by the groups of the `Population`. An intervention written outside the package then needs no method to have a budget for each district or centre. `capacity_usage` and `held_usage` take the name of the group as their `key`.
