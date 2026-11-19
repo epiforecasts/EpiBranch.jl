@@ -317,10 +317,10 @@ function _incidence_log_pgf(
         return b + wtail[L + 2]
     end
     # Ψ_q depends on itself through the offspring infected in the same sub-step
-    # (weight w[1]), so it solves Ψ_{q,j} = r_{q,j} · G_j(Σ_i a[i,j] (w[1] Ψ_{q,i} + b_i))
-    # by iterating from the value without same-sub-step offspring. The iteration
-    # converges, derivatives included, when the expected same-sub-step
-    # offspring of a case are below one.
+    # (weight w[1]). It solves Ψ_{q,j} = r_{q,j} · G_j(Σ_i a[i,j] (w[1] Ψ_{q,i} + b_i))
+    # by iteration from the value without same-sub-step offspring. The iteration
+    # converges, derivatives included, if the expected same-sub-step offspring
+    # of a case number fewer than one.
     function solve_substep(q)
         b = [later(q, i) for i in 1:m]
         r = [report(q, j) for j in 1:m]
@@ -336,7 +336,7 @@ function _incidence_log_pgf(
             x = y
             gap <= 1.0e-13 && (converged = true)
             converged && break
-            # Derivatives that grow instead of settling.
+            # Stop if the derivatives diverge.
             gap < 1.0e12 || break
         end
         # The moments are read at u = 1, where the PGF of a finite count is 1.
