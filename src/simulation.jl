@@ -1665,7 +1665,9 @@ end
 function (clinical::ClinicalPresentation)(rng, ind)
     rng = stream(rng, ind.id, :clinical_presentation)
     pa = sample_value(clinical.prob_asymptomatic, rng, ind)
-    is_asymp = rand(rng) < pa
+    # A case already marked symptomatic (a listed onset) stays so, before later
+    # builders read the flag.
+    is_asymp = (rand(rng) < pa) & !(get(ind.state, :asymptomatic, true) === false)
     ind.state[:asymptomatic] = is_asymp
     ind.state[:incubation_period] = sample_value(clinical.incubation_period, rng, ind)
     return _set_onset_from_incubation!(ind)

@@ -180,11 +180,15 @@ function _initialise_observed(
     T = _timetype(state)
     generation, chain = _generations(obs.parent, obs.inf)
     for i in 1:n
-        ind = _create_individual(state, obs.parent[i], chain[i], i, obs.inf[i])
+        # A case with a listed onset is symptomatic: set before the attributes
+        # run, so traits drawn from `:asymptomatic` see it.
+        listed = !isnan(obs.onset[i])
+        prepare = listed ? (ind -> (ind.state[:asymptomatic] = false)) : _no_prepare
+        ind = _create_individual(
+            state, obs.parent[i], chain[i], i, obs.inf[i]; prepare
+        )
         ind.generation = generation[i]
-        if !isnan(obs.onset[i])
-            # A case with a listed onset is symptomatic, overriding any asymptomatic draw.
-            haskey(ind.state, :asymptomatic) && (ind.state[:asymptomatic] = false)
+        if listed
             ind.state[:incubation_period] = T(obs.onset[i] - obs.inf[i])
         end
         isfinite(obs.isolation[i]) &&
