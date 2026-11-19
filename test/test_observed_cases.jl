@@ -132,6 +132,46 @@ using StableRNGs
         @test state.cumulative_cases >= 2
     end
 
+    @testset "a case with no onset has none before `now`" begin
+        inc = LogNormal(1.5, 0.5)
+        now = 6.0
+        one_case = DataFrame(infection_time = [0.0])
+        n = 2000
+        draws(spec) = map(1:n) do s
+            ind = initialise_state(spec, one_case; now, rng = StableRNG(s)).individuals[1]
+            (ind.state[:asymptomatic], incubation_period(ind), onset_time(ind))
+        end
+
+        symptomatic = draws(
+            ModelSpec(model; attributes = clinical_presentation(incubation_period = inc))
+        )
+        @test all(d -> d[3] > now, symptomatic)
+        ref = truncated(inc; lower = now)
+        incs = [d[2] for d in symptomatic]
+        for q in (0.1, 0.25, 0.5, 0.75, 0.9)
+            @test isapprox(
+                count(<=(quantile(ref, q)), incs) / n, q; atol = 4 * sqrt(q * (1 - q) / n)
+            )
+        end
+
+        # An asymptomatic case shows no onset either, so it stays possible, at
+        # the posterior probability given no onset by `now`.
+        pa = 0.3
+        mixed = draws(
+            ModelSpec(
+                model;
+                attributes = clinical_presentation(
+                    incubation_period = inc, prob_asymptomatic = pa
+                )
+            )
+        )
+        @test all(d -> d[1] || d[3] > now, mixed)
+        post = pa / (pa + (1 - pa) * ccdf(inc, now))
+        @test isapprox(
+            count(d -> d[1], mixed) / n, post; atol = 4 * sqrt(post * (1 - post) / n)
+        )
+    end
+
     @testset "invalid tables are refused" begin
         @test_throws ArgumentError initialise_state(model, DataFrame(x = [1.0]))
         @test_throws ArgumentError initialise_state(
