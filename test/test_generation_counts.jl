@@ -206,8 +206,8 @@ end
             model; n_initial = 1000, max_generations = 2, rng = StableRNG(1), kw...
         )
         cont = (; (k => v for (k, v) in pairs(kw) if k === :multiplier)...)
-        # Fresh, identically seeded streams make the two runs draw alike, and
-        # the checks below rule out an extinct chain passing for free.
+        # Each run uses a fresh stream with the same seed, so the runs draw alike.
+        # The checks below guard against an extinct chain passing trivially.
         continue_to(model, state, 4; rng = StableRNG(2), cont...)
         short = @allocated continue_to(model, state, 4; rng = StableRNG(2), cont...)
         long = @allocated continue_to(model, state, 14; rng = StableRNG(2), cont...)
