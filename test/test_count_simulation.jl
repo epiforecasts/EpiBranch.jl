@@ -41,7 +41,19 @@
         return counts, offspring
     end
 
-    function check_agreement(model, T, L, n)
+    # Correlation across lags of one infector's offspring when the offspring
+    # number has mean `R` and variance `V` and is split over the lags by
+    # `weights`. Each simulation is compared with this value rather than with
+    # the other simulation, whose sampling error is large with a heavy tail.
+    function split_correlation(R, V, weights)
+        v = [w * R + w^2 * (V - R) for w in weights]
+        return [
+            i == j ? 1.0 : weights[i] * weights[j] * (V - R) / sqrt(v[i] * v[j])
+                for i in eachindex(weights), j in eachindex(weights)
+        ]
+    end
+
+    function check_agreement(model, T, L, n; reference = nothing)
         counts, offspring = compare(model, T, L, n)
         a, b = counts[:, :, 1], counts[:, :, 2]
         # Daily means, within the sampling error of the difference.
@@ -58,18 +70,30 @@
             @test cor(a[:, t], a[:, t + 1]) ≈ cor(b[:, t], b[:, t + 1]) atol = 0.05
         end
         # Correlation across days of one infector's offspring.
-        @test cor(offspring[1]) ≈ cor(offspring[2]) atol = 0.03
+        if reference === nothing
+            @test cor(offspring[1]) ≈ cor(offspring[2]) atol = 0.03
+        else
+            @test cor(offspring[1]) ≈ reference atol = 0.02
+            @test cor(offspring[2]) ≈ reference atol = 0.02
+        end
         @test vec(mean(offspring[1]; dims = 1)) ≈ vec(mean(offspring[2]; dims = 1)) rtol = 0.06
         return cor(offspring[1])
     end
 
     @testset "agrees with the individual simulation" begin
-        c = check_agreement(BranchingProcess(Poisson(1.3), gt), 8, 3, 2000)
+        weights = [0.3, 0.5, 0.2]
+        c = check_agreement(
+            BranchingProcess(Poisson(1.3), gt), 8, 3, 2000;
+            reference = split_correlation(1.3, 1.3, weights)
+        )
         @test all(abs(c[i, j]) < 0.03 for i in 1:3, j in 1:3 if i != j)
 
         # A negative binomial offspring number is correlated across the days
         # of one infector.
-        c = check_agreement(BranchingProcess(NegBin(1.3, 0.8), gt), 8, 3, 2000)
+        c = check_agreement(
+            BranchingProcess(NegBin(1.3, 0.8), gt), 8, 3, 2000;
+            reference = split_correlation(1.3, 1.3 + 1.3^2 / 0.8, weights)
+        )
         @test c[1, 2] > 0.25
 
         R(t) = t < 5 ? 1.6 : 0.8
