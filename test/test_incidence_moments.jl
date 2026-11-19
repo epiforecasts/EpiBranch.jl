@@ -80,6 +80,28 @@ using ForwardDiff
         @test m.mean ≈ μ_renewal
     end
 
+    @testset "Lags beyond the horizon are marginalised out" begin
+        # Both pmfs are longer than the series, so the truncated sums rely on
+        # the tail mass standing in for the steps not observed.
+        R, ρ, n, seeds = 1.4, 0.6, 5, 3
+        gt, delay = Gamma(3.0, 3.0), LogNormal(1.5, 0.5)
+        w = EpiBranch._discretize_generation_interval(gt)
+        d = EpiBranch._discretize_report_delay(delay)
+        @test length(w) > n && length(d) > n
+        infections = zeros(Float64, n)
+        get_μ(t) = t == 0 ? Float64(seeds) : (t < 0 ? 0.0 : infections[t])
+        for t in 1:n
+            infections[t] = R * sum(w[j] * get_μ(t - j) for j in 1:length(w))
+        end
+        reported = [
+            ρ * sum(d[l + 1] * get_μ(t - l) for l in 0:(length(d) - 1)) for t in 1:n
+        ]
+        m = incidence_moments(
+            Poisson(R), gt, n; seeds, reporting_probability = ρ, reporting_delay = delay
+        )
+        @test m.mean ≈ reported
+    end
+
     @testset "incidence_moments matches a discrete-time branching simulation" begin
         # A hand-rolled discrete-time simulation sharing exactly the
         # assumptions `incidence_moments` encodes (each step-k individual

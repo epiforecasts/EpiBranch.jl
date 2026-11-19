@@ -224,6 +224,15 @@ end
 # the plain `Float64` ForwardDiff probes before perturbing it (nested
 # automatic differentiation, as a `Dual` offspring under an outer AD call over
 # R or k gives).
+# `tail[l] = Σ_{l' ≥ l} p[l']`, with `tail[end] = 0`.
+function _tail_sums(p::AbstractVector)
+    tail = zeros(float(eltype(p)), length(p) + 1)
+    for l in length(p):-1:1
+        tail[l] = tail[l + 1] + p[l]
+    end
+    return tail
+end
+
 function _incidence_log_pgf(
         u::AbstractVector{T}, w::AbstractVector{<:Real}, pgfs::AbstractVector,
         alloc::AbstractMatrix{<:Real}, n::Integer, seeds::AbstractVector{<:Real},
@@ -232,11 +241,18 @@ function _incidence_log_pgf(
     m = length(pgfs)
     S = promote_type(T, eltype(w), eltype(d), eltype(alloc), Tpar, typeof(ρ))
     U(k, i) = 1 <= k <= n ? S(u[k + (i - 1) * n]) : one(S)
+    # Lags that land beyond step `n` contribute 1, so only the lags inside the
+    # horizon are summed and the mass beyond them is added from a precomputed
+    # tail sum, `wtail[l] = Σ_{l' ≥ l} w[l']`.
+    wtail = _tail_sums(w)
+    dtail = _tail_sums(d)
     function report(k, i)
         r = zero(S)
-        for l in 0:(length(d) - 1)
+        L = min(length(d), n - k + 1)
+        for l in 0:(L - 1)
             r += d[l + 1] * U(k + l, i)
         end
+        r += dtail[L + 1]
         return 1 - ρ + ρ * r
     end
     Ψ = Matrix{S}(undef, n, m)
@@ -244,10 +260,11 @@ function _incidence_log_pgf(
     function next_generation!(k)
         for i in 1:m
             b = zero(S)
-            for l in 1:length(w)
-                b += w[l] * (k + l > n ? one(S) : Ψ[k + l, i])
+            L = min(length(w), n - k)
+            for l in 1:L
+                b += w[l] * Ψ[k + l, i]
             end
-            B[i] = b
+            B[i] = b + wtail[L + 1]
         end
         return B
     end
