@@ -2,11 +2,11 @@ module EpiBranchCensoredDistributionsExt
 
 # `serial_interval` turns a model's generation time and incubation period
 # into the distribution of a serial interval, for CensoredDistributions.jl's
-# `double_interval_censored` to score linked-pair data against. Loading
-# CensoredDistributions.jl and ConvolvedDistributions.jl together (both
-# declared as weak dependencies, so this extension can call the latter
-# directly) activates the method, keeping both packages optional for users
-# who only simulate.
+# `double_interval_censored` to score linked-pair data against.
+# CensoredDistributions.jl is a direct dependency, so loading
+# ConvolvedDistributions.jl (a weak dependency, which this extension calls
+# directly) is what activates the method, keeping that package optional for
+# users who only simulate.
 
 using EpiBranch
 using ConvolvedDistributions: convolved, difference
