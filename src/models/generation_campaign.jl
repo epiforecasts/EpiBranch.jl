@@ -58,7 +58,7 @@ end
 
 # The campaigns a spec holds, or an error naming every intervention that
 # cannot be applied, and the missing `generation_length` or population.
-function _generation_campaigns(spec::ModelSpec, generation_length, finite_population::Bool)
+function _check_spec_inputs(spec::ModelSpec)
     isempty(progression(spec)) && attributes(spec) isa NoAttributes &&
         observation(spec) isa NoObservation && recorder(spec) isa NoContactRecorder ||
         throw(
@@ -67,23 +67,79 @@ function _generation_campaigns(spec::ModelSpec, generation_length, finite_popula
                 "progression, attributes, observation or recorder"
         )
     )
+    return nothing
+end
+
+function _generation_campaigns(spec::ModelSpec, generation_length, finite_population::Bool)
+    _check_spec_inputs(spec)
     ivs = interventions(spec)
     isempty(ivs) && return _Campaign[]
-    names = join((nameof(typeof(iv)) for iv in ivs), ", ")
     generation_length === nothing && throw(
         ArgumentError(
             "simulate_by_generation needs a generation_length to date the doses of the " *
-                "interventions $names"
+                "interventions $(_intervention_names(ivs))"
         )
     )
     finite_population || throw(
         ArgumentError(
             "simulate_by_generation needs a finite population for the " *
-                "interventions $names to act on"
+                "interventions $(_intervention_names(ivs)) to act on"
         )
     )
     population = EpiBranch.population(process(spec))
     return [_by_type(_campaign(iv, (0.0, Inf), nothing), population) for iv in ivs]
+end
+
+_intervention_names(ivs) = join((nameof(typeof(iv)) for iv in ivs), ", ")
+
+# The inputs the campaigns of a spec were built from. A later call with the
+# same spec reuses the campaigns. A filter calls a continuation for every
+# particle at every step, and building the campaigns costs far more than
+# simulating a generation.
+struct _CampaignCache{V}
+    process::Any
+    population::Any
+    interventions::Vector{AbstractIntervention}
+    generation_length::Float64
+    campaigns::V
+end
+
+# Keyed by the identity of the intervention vector of the spec. The vector
+# lives as long as the spec and is shared with any copy of it. `WeakKeyDict`
+# locks itself. Two threads that miss together both build, and either result
+# is right.
+const _CAMPAIGN_CACHE = WeakKeyDict{Vector{AbstractIntervention}, _CampaignCache}()
+
+function _cache_valid(c::_CampaignCache, spec::ModelSpec, generation_length::Float64)
+    ivs = interventions(spec)
+    return c.generation_length == generation_length &&
+        c.process === process(spec) &&
+        c.population === EpiBranch.population(process(spec)) &&
+        length(c.interventions) == length(ivs) &&
+        all(i -> c.interventions[i] === ivs[i], eachindex(ivs))
+end
+
+# As `_generation_campaigns`, built once per spec and reused. The checks of the
+# spec run on every call. A spec that fails them is never cached, so the errors
+# are unchanged. The cache is rebuilt if the interventions or process of the
+# spec, or the `generation_length`, differ from what it was built from.
+function _cached_generation_campaigns(
+        spec::ModelSpec, generation_length, finite_population::Bool
+    )
+    _check_spec_inputs(spec)
+    ivs = interventions(spec)
+    (isempty(ivs) || generation_length === nothing || !finite_population) &&
+        return _generation_campaigns(spec, generation_length, finite_population)
+    cached = get(_CAMPAIGN_CACHE, ivs, nothing)
+    if cached !== nothing && _cache_valid(cached, spec, Float64(generation_length))
+        return cached.campaigns
+    end
+    campaigns = _generation_campaigns(spec, generation_length, finite_population)
+    _CAMPAIGN_CACHE[ivs] = _CampaignCache(
+        process(spec), EpiBranch.population(process(spec)), copy(ivs),
+        Float64(generation_length), campaigns
+    )
+    return campaigns
 end
 
 # A budget per group becomes one budget for each type, in the order of the
