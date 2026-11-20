@@ -277,24 +277,26 @@ end
 # susceptibles first, then the contacts fall at random on the population and the
 # infections are shared among the sources in proportion to their means.
 function _draw_inflow!(inflow, s::CountSimulationState, contacts, t)
-    if s.susceptibles === nothing
+    susceptibles = s.susceptibles
+    if susceptibles === nothing
         for i in eachindex(contacts)
             contacts[i] > 0 && (inflow[i] = rand(s.rng, Poisson(contacts[i])))
         end
         return inflow
     end
-    pop = s.rule.population
+    pop = s.rule.population::Int
     for c in s.rule.campaigns
-        s.susceptibles = _vaccinate(s.rng, c, t - 1, t, s.susceptibles, pop)
+        susceptibles = _vaccinate(s.rng, c, t - 1, t, susceptibles, pop)
     end
+    s.susceptibles = susceptibles
     total = sum(contacts)
-    (total <= 0 || s.susceptibles <= 0) && return inflow
-    kept = rand(s.rng, Binomial(s.susceptibles, -expm1(-total / pop)))
+    (total <= 0 || susceptibles <= 0) && return inflow
+    kept = rand(s.rng, Binomial(susceptibles, -expm1(-total / pop)))
     kept == 0 && return inflow
     inflow .= reshape(
         rand(s.rng, Multinomial(kept, vec(contacts) ./ total)), size(inflow)
     )
-    s.susceptibles -= kept
+    s.susceptibles = susceptibles - kept
     return inflow
 end
 
