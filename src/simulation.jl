@@ -125,8 +125,8 @@ function simulate(
     )
     rule === nothing ||
         return _simulate_counts(
-            model, rule, sim_opts.n_initial, max_time, max_cases, rng, max_generations
-        )
+        model, rule, sim_opts.n_initial, max_time, max_cases, rng, max_generations
+    )
     return _run_once_or_retry(
         model, sim_opts, condition, max_attempts; _layers(model)..., rng
     )

@@ -579,8 +579,8 @@ function simulate(
     )
     rule === nothing ||
         return _simulate_counts(
-            spec, rule, sim_opts.n_initial, max_time, max_cases, rng, max_generations
-        )
+        spec, rule, sim_opts.n_initial, max_time, max_cases, rng, max_generations
+    )
     state = _run_once_or_retry(
         spec.process, sim_opts, condition, max_attempts; _layers(spec)..., rng
     )

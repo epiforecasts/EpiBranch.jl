@@ -324,14 +324,14 @@ using EpiBranch, Distributions, Random, StableRNGs, Statistics, DataFrames
             m = BranchingProcess(offspring, gt)
             on_counts = [
                 simulate(
-                        m; max_cases = 2000, max_generations = G, rng = StableRNG(i)
-                    ).cumulative_cases for i in 1:1000
+                    m; max_cases = 2000, max_generations = G, rng = StableRNG(i)
+                ).cumulative_cases for i in 1:1000
             ]
             on_individuals = [
                 simulate(
-                        m; max_cases = 2000, stopping_rules = [MaxCases(2000), MaxGenerations(G)],
-                        rng = StableRNG(10_000 + i)
-                    ).cumulative_cases for i in 1:1000
+                    m; max_cases = 2000, stopping_rules = [MaxCases(2000), MaxGenerations(G)],
+                    rng = StableRNG(10_000 + i)
+                ).cumulative_cases for i in 1:1000
             ]
             @test abs(mean(on_counts) - mean(on_individuals)) <
                 5 * hypot(std(on_counts), std(on_individuals)) / sqrt(1000)
