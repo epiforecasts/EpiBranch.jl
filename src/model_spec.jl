@@ -630,6 +630,13 @@ function _simulate_each(
         spec.process, n_initial, initial_cases, index_types, max_cases, max_generations,
         max_time, stopping_rules
     )
+    rule = _count_route(
+        spec, initial_cases, index_types, max_cases, max_generations, max_time,
+        stopping_rules, nothing, rng
+    )
+    rule === nothing || return _simulate_n_counts(
+        each, T, spec, rule, n, sim_opts.n_initial, max_time::Real, rng, parallel
+    )
     horizon = _max_time(sim_opts)
     classified(s) = each(_classify_cases!(s, spec.case_definition, horizon))
     return _simulate_n(

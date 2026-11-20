@@ -286,6 +286,12 @@ using EpiBranch, Distributions, Random, StableRNGs, Statistics, DataFrames
         # `parallel` gives count states too.
         par = simulate(model, 20; kw..., rng = StableRNG(3), parallel = true)
         @test all(s -> s isa CountSimulationState, par)
+        # So does a spec that qualifies, for runs and for containment.
+        spec = ModelSpec(model)
+        spec_states = simulate(spec, 5; kw..., rng = StableRNG(3))
+        @test all(s -> s isa CountSimulationState, spec_states)
+        @test [s.counts for s in spec_states] == [s.counts for s in states[1:5]]
+        @test 0 <= containment_probability(spec, 50; kw..., rng = StableRNG(3)).proportion <= 1
         # A model that is not on the count path still gives individual runs.
         slow = BranchingProcess(NegBin(1.5, 0.5), Gamma(2.0, 1.0))
         @test simulate(slow, 3; kw..., rng = StableRNG(3)) isa Vector{<:SimulationState}
