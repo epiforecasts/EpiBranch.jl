@@ -147,6 +147,21 @@ function Base.show(io::IO, s::CountSimulationState)
     return print(io, "CountSimulationState(cases=$(s.cumulative_cases), day=$(s.day), $(status))")
 end
 
+"""
+    copy(state::CountSimulationState) -> CountSimulationState
+
+Copy the counts, random streams and realised people so either state can be
+continued independently. The model, layers and count rule are shared.
+"""
+function Base.copy(s::CountSimulationState)
+    return CountSimulationState(
+        s.model, s.layers, s.rule, copy(s.counts), copy(s.cohort_infectiousness),
+        deepcopy(s.cohort_members), deepcopy(s.inflow), s.day, s.cumulative_cases,
+        s.extinct, deepcopy(s.rng), copy(s.individual_stream),
+        s.built === nothing ? nothing : copy(s.built)
+    )
+end
+
 # The total infectiousness of a cohort of `n`, and the infectiousness of each
 # member where it has to be kept. A point mass or a gamma `ν` needs no members:
 # the split among them is independent of the total, so it is drawn when the

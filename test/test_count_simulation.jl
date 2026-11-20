@@ -1,3 +1,5 @@
+using EpiBranch, Distributions, Random, StableRNGs, Statistics, DataFrames
+
 @testset "Count-level simulation" begin
     gt = DiscreteNonParametric(1:3, [0.3, 0.5, 0.2])
     count_run(model; n_initial = 4, max_time, rng) = simulate(
@@ -199,6 +201,25 @@
         @test_throws ArgumentError simulate(
             BranchingProcess(NegBin(1.4, 0.7), Gamma(2.0, 1.0)), state; max_time = 30
         )
+    end
+
+    @testset "independent copies" begin
+        model = BranchingProcess(PoissonLognormal(-0.2, 0.9), gt)
+        for realised in (false, true)
+            state = count_run(model; max_time = 4, rng = StableRNG(11))
+            realised && individuals(state)
+            other = copy(state)
+            @test other !== state
+            @test isequal(linelist(other), linelist(state))
+            @test individuals(other) !== individuals(state)
+            expected = deepcopy(state)
+            simulate(model, other; max_time = 8)
+            simulate(model, expected; max_time = 8)
+            @test other.counts == expected.counts
+            @test isequal(linelist(other), linelist(expected))
+            @test state.day == 4
+            @test length(state.counts) == 5
+        end
     end
 
     @testset "extinction" begin
