@@ -319,7 +319,6 @@ using EpiBranch, Distributions, Random, StableRNGs, Statistics, DataFrames
             BranchingProcess(Poisson(0.1), gt); max_time = 100, max_cases = nothing,
             max_generations = 50, rng = StableRNG(3)
         ).extinct
-        # The cap alone bounds the run: no time or case limit is needed.
         alone = simulate(
             BranchingProcess(Poisson(2.0), gt); n_initial = 2, max_cases = nothing,
             max_generations = 3, rng = StableRNG(4)

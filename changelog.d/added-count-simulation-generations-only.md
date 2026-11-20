@@ -1,1 +1,1 @@
-The count-level path also runs when `max_generations` is the only bound: `simulate` with a non-default `max_generations` and no `max_time` or `max_cases` runs on counts when the model qualifies, until every case has reached the cap.
+The count-level path also runs when `max_generations` is the only bound, until every case has reached the cap.
