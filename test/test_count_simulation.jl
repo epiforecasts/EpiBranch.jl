@@ -356,6 +356,73 @@ using EpiBranch, Distributions, Random, StableRNGs, Statistics, DataFrames
         @test maximum(i.generation for i in individuals(state)) <= 4
     end
 
+    @testset "a finite population depletes as in the individual simulation" begin
+        for (offspring, n) in ((Poisson(1.8), 600), (NegBin(1.8, 0.6), 600))
+            model = BranchingProcess(offspring, gt; population = Population(150))
+            rule = EpiBranch.count_rule(model)
+            @test rule.population == 150
+            a = zeros(n, 13)
+            b = zeros(n, 13)
+            for i in 1:n
+                a[i, :] = daily(count_run(model; n_initial = 5, max_time = 12, rng = StableRNG(i)), 12)
+                b[i, :] = daily(individual_run(model; n_initial = 5, max_time = 12, rng = StableRNG(n + i)), 12)
+            end
+            for t in 2:13
+                se = sqrt(var(a[:, t]) / n + var(b[:, t]) / n)
+                @test abs(mean(a[:, t]) - mean(b[:, t])) < 4.5 * se
+            end
+            @test var(sum(a; dims = 2)) ≈ var(sum(b; dims = 2)) rtol = 0.25
+            @test all(sum(a; dims = 2) .<= 150)
+        end
+        state = count_run(
+            BranchingProcess(Poisson(3.0), gt; population = Population(80)); n_initial = 5,
+            max_time = 60, rng = StableRNG(3)
+        )
+        @test state.cumulative_cases + state.susceptibles == 80
+        @test_throws ArgumentError count_run(
+            BranchingProcess(Poisson(3.0), gt; population = Population(80)); n_initial = 81,
+            max_time = 5, rng = StableRNG(3)
+        )
+    end
+
+    @testset "vaccination doses reach the susceptibles each day" begin
+        model = BranchingProcess(Poisson(2.5), gt; population = Population(1000))
+        spec(budget; efficacy = 1.0, period = 1.0) = ModelSpec(
+            model;
+            interventions = [
+                CapacityConstrained(
+                    GroupVaccination(efficacy = efficacy, group_key = :type);
+                    budget_per_period = budget, period = period
+                ),
+            ]
+        )
+        run(sp; n = 200, T = 20) = [
+            count_run(sp; n_initial = 5, max_time = T, rng = StableRNG(i)) for i in 1:n
+        ]
+        @test length(EpiBranch.count_rule(spec(10.0)).campaigns) == 1
+        # Enough doses on the first day protect everyone who is reached, so
+        # nothing spreads beyond the index cases.
+        none = run(spec(Steps([-0.5, 0.5], [0.0, 1.0e6, 0.0])))
+        @test all(s.cumulative_cases == 5 for s in none)
+        # A budget of half the people, spent at once, leaves about half of the
+        # susceptibles: 995 * 0.5, all at efficacy one, and the epidemic is
+        # smaller than without it.
+        half = run(spec(Steps([-0.5, 0.5], [0.0, 497.0, 0.0])); n = 100)
+        @test mean(s.susceptibles + s.cumulative_cases for s in half) ≈ 1000 - 497 * 995 / 1000 atol = 15
+        unvaccinated = run(model; n = 100)
+        @test mean(s.cumulative_cases for s in half) < mean(s.cumulative_cases for s in unvaccinated)
+        # A dose that protects with probability `efficacy` removes that share.
+        partial = run(spec(Steps([-0.5, 0.5], [0.0, 400.0, 0.0]); efficacy = 0.5); n = 100)
+        @test mean(s.susceptibles + s.cumulative_cases for s in partial) ≈ 1000 - 200 * 0.995 atol = 15
+        # A campaign a count cannot apply is run as individuals.
+        @test EpiBranch.count_rule(
+            ModelSpec(model; interventions = [GroupVaccination(efficacy = 1.0, group_key = :type)])
+        ) === nothing
+        @test EpiBranch.count_rule(
+            ModelSpec(BranchingProcess(Poisson(2.5), gt); interventions = spec(10.0).interventions)
+        ) === nothing
+    end
+
     @testset "which runs take the count-level path" begin
         model = BranchingProcess(Poisson(1.2), gt)
         @test count_run(model; max_time = 5, rng = StableRNG(1)) isa CountSimulationState
@@ -368,11 +435,11 @@ using EpiBranch, Distributions, Random, StableRNGs, Statistics, DataFrames
         @test simulate(model; kw..., stopping_rules = [MaxTime(5.0)]) isa SimulationState
         @test simulate(model; kw..., condition = 1:1000) isa SimulationState
         @test simulate(model; kw..., rng = CommonRandomNumbers(1)) isa SimulationState
-        # A continuous generation time, a function-valued offspring, a
-        # population, a window that ends and interventions are individual.
+        # A continuous generation time, a function-valued offspring, a window
+        # that ends and interventions a count cannot apply are individual.
         @test EpiBranch.count_rule(BranchingProcess(Poisson(1.2), Gamma(2.0, 1.0))) === nothing
         @test EpiBranch.count_rule(BranchingProcess(Poisson(1.2))) === nothing
-        @test EpiBranch.count_rule(BranchingProcess(Poisson(1.2), gt; population = Population(1000))) === nothing
+        @test EpiBranch.count_rule(BranchingProcess(Poisson(1.2), gt; population = Population(1000))).population == 1000
         @test EpiBranch.count_rule(BranchingProcess(Binomial(5, 0.3), gt)) === nothing
         @test EpiBranch.count_rule(BranchingProcess(Poisson(1.2), DiscreteNonParametric(0:2, [0.2, 0.5, 0.3]))) ===
             nothing

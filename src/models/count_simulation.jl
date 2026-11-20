@@ -26,7 +26,9 @@
 The rule by which [`simulate`](@ref) runs `model` as daily counts rather than
 as individuals, or `nothing` if `model` has to be simulated as individuals.
 A model qualifies when nothing about an individual feeds back on
-transmission and its generation time is a distribution on whole days. Adding a
+transmission, apart from a finite population of one group and vaccination
+campaigns that count-level doses can apply, and its generation time is a
+distribution on whole days. Adding a
 method for a new model type gives it the count-level path. The rule is a
 [`CountRule`](@ref).
 """
@@ -43,31 +45,61 @@ of the `n` infectiousnesses drawn from `ν`, a distribution of mean one:
 binomial offspring law, where `Λ` takes one draw as `Gamma(n k, 1/k)`. Any
 other `ν` takes `n` draws, and the cost and memory grow with the number of
 cases. A shape `k` in place of `ν` stands for `Gamma(k, 1/k)`. `R` is a function of the day.
+
+A finite `population` thins the contacts of each day against the susceptibles
+left, and each of `campaigns` gives its doses to them (see
+[`simulate_by_generation`](@ref)). Both default to none.
 """
 struct CountRule{F, D <: UnivariateDistribution}
     R::F
     ν::D
     g::Vector{Float64}
+    population::Union{Nothing, Int}
+    campaigns::Vector{_Campaign}
 end
 
+CountRule(R, ν::UnivariateDistribution, g) = CountRule(R, ν, g, nothing, _Campaign[])
 # A gamma shape `k` in place of `ν`; infinite `k` is a point mass.
 CountRule(R, k::Real, g) = CountRule(R, _gamma_unit(k), g)
 
-# A `ModelSpec` qualifies when the layers it adds do not act on transmission.
+# A `ModelSpec` qualifies when the layers it adds do not act on transmission,
+# except vaccination campaigns that a count can apply, which need a finite
+# population.
 function count_rule(spec::ModelSpec)
-    isempty(spec.interventions) || return nothing
     spec.case_definition === nothing || return nothing
     spec.recorder isa NoContactRecorder || return nothing
-    return count_rule(spec.process)
+    rule = count_rule(spec.process)
+    rule === nothing && return nothing
+    isempty(spec.interventions) && return rule
+    rule.population === nothing && return nothing
+    campaigns = _count_campaigns(spec.interventions, population(spec.process))
+    campaigns === nothing && return nothing
+    return CountRule(rule.R, rule.ν, rule.g, rule.population, campaigns)
+end
+
+# The campaigns of `interventions`, or `nothing` when one cannot be applied to
+# a count.
+function _count_campaigns(interventions, population)
+    try
+        return _Campaign[
+            _by_type(_campaign(iv, (0.0, Inf), nothing), population) for iv in interventions
+        ]
+    catch err
+        err isa ArgumentError && return nothing
+        rethrow()
+    end
 end
 
 function count_rule(model::BranchingProcess)
     n_types(model) == 1 && length(model.infectiousness) == 1 || return nothing
     isempty(transmission_risks(model)) || return nothing
-    population(model) isa NoPopulation || return nothing
     w = only(model.infectiousness)
     w.from === :infection && isempty(w.until) && w.calendar === nothing || return nothing
-    return _count_rule(w.offspring, w.kernel)
+    rule = _count_rule(w.offspring, w.kernel)
+    rule === nothing && return nothing
+    sizes = _type_sizes(population(model), 1)
+    sizes isa NoPopulation && return rule
+    return CountRule(rule.R, rule.ν, rule.g, sizes, _Campaign[])
 end
 
 _count_rule(o::Poisson, kernel) = _daily_rule(_ConstantR(mean(o)), Dirac(1.0), kernel)
@@ -130,6 +162,8 @@ Fields:
   entry, the count for the day, when generations are not tracked).
 - `day`: the last day simulated.
 - `cumulative_cases`: the total number of cases.
+- `susceptibles`: the number of people not yet infected or protected, or
+  `nothing` for an unlimited population.
 - `extinct`: whether transmission had died out.
 """
 mutable struct CountSimulationState{M, L, F} <: AbstractSimulationState
@@ -144,6 +178,7 @@ mutable struct CountSimulationState{M, L, F} <: AbstractSimulationState
     inflow::Vector{Matrix{Int}}
     day::Int
     cumulative_cases::Int
+    susceptibles::Union{Nothing, Int}
     extinct::Bool
     rng::AbstractRNG
     individual_stream::Xoshiro
@@ -170,7 +205,7 @@ function Base.copy(s::CountSimulationState)
         s.model, s.layers, s.rule, copy(s.counts), s.max_generation,
         deepcopy(s.generation_counts), deepcopy(s.cohort_infectiousness),
         deepcopy(s.cohort_members), deepcopy(s.inflow), s.day, s.cumulative_cases,
-        s.extinct, _copy_count_rng(s.rng), copy(s.individual_stream),
+        s.susceptibles, s.extinct, _copy_count_rng(s.rng), copy(s.individual_stream),
         built === nothing ? nothing : copy(built)
     )
 end
@@ -224,14 +259,17 @@ function _count_step!(s::CountSimulationState)
     ncls = _classes_on(g, t)
     inflow = zeros(Int, length(rule.g), ncls)
     by_class = zeros(Int, ncls)
+    contacts = zeros(length(rule.g), ncls)
     for lag in 1:min(length(rule.g), t), k in eachindex(s.generation_counts[t - lag + 1])
         _infects(g, k) || continue
         n = s.generation_counts[t - lag + 1][k]
         n == 0 && continue
-        mean_infections = s.cohort_infectiousness[t - lag + 1][k] * r * rule.g[lag]
-        x = mean_infections > 0 ? rand(s.rng, Poisson(mean_infections)) : 0
-        inflow[lag, k] = x
-        by_class[_next_class(g, k)] += x
+        contacts[lag, k] = s.cohort_infectiousness[t - lag + 1][k] * r * rule.g[lag]
+    end
+    _draw_inflow!(inflow, s, contacts, t)
+    for lag in axes(inflow, 1), k in axes(inflow, 2)
+        inflow[lag, k] == 0 && continue
+        by_class[_next_class(g, k)] += inflow[lag, k]
     end
     push!(s.inflow, inflow)
     push!(s.counts, sum(by_class))
@@ -241,6 +279,38 @@ function _count_step!(s::CountSimulationState)
     s.day = t
     s.extinct = _count_extinct(s)
     return s
+end
+
+# The infections of day `t` from each source of `contacts`, the Poisson mean of
+# the contacts it makes. With an unlimited population each is its own
+# Poisson draw.
+function _draw_inflow!(inflow, s::CountSimulationState, contacts, t)
+    s.susceptibles === nothing || return _draw_inflow_finite!(inflow, s, contacts, t)
+    for i in eachindex(contacts)
+        contacts[i] > 0 && (inflow[i] = rand(s.rng, Poisson(contacts[i])))
+    end
+    return inflow
+end
+
+# Doses of the day before reach the susceptibles. The contacts of the day then
+# fall at random on the people of the population, and each susceptible they
+# reach is infected: the number reached is binomial, as in
+# `PerContactDepletion`. Contacts are exchangeable within the day, so the
+# infections are shared among the sources in proportion to their means.
+function _draw_inflow_finite!(inflow, s::CountSimulationState, contacts, t)
+    pop = s.rule.population
+    for c in s.rule.campaigns
+        s.susceptibles = _vaccinate(s.rng, c, t - 1, t, s.susceptibles, pop)
+    end
+    total = sum(contacts)
+    (total <= 0 || s.susceptibles <= 0) && return inflow
+    kept = rand(s.rng, Binomial(s.susceptibles, -expm1(-total / pop)))
+    kept == 0 && return inflow
+    inflow .= reshape(
+        rand(s.rng, Multinomial(kept, vec(contacts) ./ total)), size(inflow)
+    )
+    s.susceptibles -= kept
+    return inflow
 end
 
 # Draw the infectiousness of each generation's cohort of a new day.
@@ -287,10 +357,19 @@ function _simulate_counts(
     state = CountSimulationState(
         process_of(model), layers, rule, [n_initial], max_generations, [by_class],
         Vector{Float64}[], Vector{Vector{Float64}}[], [zeros(Int, length(rule.g), ncls)],
-        0, n_initial, n_initial == 0, rng, stream, nothing
+        0, n_initial, _initial_susceptibles(rule.population, n_initial), n_initial == 0,
+        rng, stream, nothing
     )
     _push_cohorts!(state, by_class)
     return _count_advance!(state, max_time, max_cases)
+end
+
+_initial_susceptibles(::Nothing, n_initial) = nothing
+function _initial_susceptibles(population::Int, n_initial)
+    n_initial <= population || throw(
+        ArgumentError("n_initial ($n_initial) must not exceed the population ($population)")
+    )
+    return population - n_initial
 end
 
 process_of(model::TransmissionModel) = model

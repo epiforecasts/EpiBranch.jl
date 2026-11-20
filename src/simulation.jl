@@ -70,7 +70,9 @@ on which the total reaches it, and may hold more cases than that. A
 Leaving it at its default runs individuals. The result is a
 [`CountSimulationState`](@ref). Its daily counts have the same distribution as
 those of the individual simulation of the same model, and its people are built
-when they are asked for. Any other run returns a [`SimulationState`](@ref).
+when they are asked for. The exception is a vaccination campaign, whose doses a
+count gives to the susceptibles each day rather than to contacts as they are
+made. Any other run returns a [`SimulationState`](@ref).
 
 The probability and delay of each step in a case's natural history are set
 on the transitions in the `progression` of a [`ModelSpec`](@ref). Each takes
