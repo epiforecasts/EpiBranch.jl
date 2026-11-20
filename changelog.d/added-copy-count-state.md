@@ -1,1 +1,1 @@
-`copy` now makes an independent copy of a count-level simulation state, including its random streams and any realised people.
+`copy` now copies a count-level simulation state, including the random streams and any realised people. The copy can be continued independently.

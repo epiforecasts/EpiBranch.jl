@@ -150,7 +150,7 @@ end
 """
     copy(state::CountSimulationState) -> CountSimulationState
 
-Copy the counts, random streams and realised people so either state can be
+Copy the counts, random streams and realised people. Either state can then be
 continued independently. The model, layers and count rule are shared.
 """
 function Base.copy(s::CountSimulationState)
