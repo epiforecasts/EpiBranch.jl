@@ -302,7 +302,7 @@ function _count_route(
         stopping_rules, condition, rng; default_generations = false
     )
     bounded = if max_time === nothing
-        max_cases !== nothing
+        max_cases !== nothing || max_generations !== nothing
     else
         max_time isa Real && isfinite(max_time) && max_time >= 0
     end

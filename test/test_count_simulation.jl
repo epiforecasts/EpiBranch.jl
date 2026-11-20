@@ -319,6 +319,14 @@ using EpiBranch, Distributions, Random, StableRNGs, Statistics, DataFrames
             BranchingProcess(Poisson(0.1), gt); max_time = 100, max_cases = nothing,
             max_generations = 50, rng = StableRNG(3)
         ).extinct
+        # The cap alone bounds the run: no time or case limit is needed.
+        alone = simulate(
+            BranchingProcess(Poisson(2.0), gt); n_initial = 2, max_cases = nothing,
+            max_generations = 3, rng = StableRNG(4)
+        )
+        @test alone isa CountSimulationState
+        @test !alone.extinct && alone.day < 100
+        @test maximum(i.generation for i in individuals(alone)) <= 3
         # The same distribution as the individual simulation under the cap.
         for (offspring, G) in ((Poisson(1.4), 3), (NegativeBinomial(0.5, 0.3), 5))
             m = BranchingProcess(offspring, gt)
