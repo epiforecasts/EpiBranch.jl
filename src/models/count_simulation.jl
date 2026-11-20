@@ -191,8 +191,7 @@ function _draw_cohort(ν, n, rng)
     return (sum(members), members)
 end
 
-# Generations are tracked as classes `1:(max_generation + 1)`, or as one class
-# when there is no cap. Cases in the last class make no contacts.
+# Generation classes are `1:(max_generation + 1)`, or one class without a cap.
 _n_classes(max_generation) = max_generation === nothing ? 1 : max_generation + 1
 _infects(max_generation, k) = max_generation === nothing || k <= max_generation
 _next_class(max_generation, k) = max_generation === nothing ? k : k + 1
@@ -207,8 +206,6 @@ function _count_exhausted(s::CountSimulationState)
     return true
 end
 
-# A run that reaches the generation cap is not extinct, even when nothing can
-# infect anyone any more.
 function _count_extinct(s::CountSimulationState)
     g = s.max_generation
     g !== nothing && any(c -> c[g + 1] > 0, s.generation_counts) && return false
@@ -242,8 +239,7 @@ function _count_step!(s::CountSimulationState)
     return s
 end
 
-# Draw the infectiousness of each generation's cohort of a new day. The last
-# class under a cap makes no contacts, so it needs none.
+# Draw the infectiousness of each generation's cohort of a new day.
 function _push_cohorts!(s::CountSimulationState, by_class)
     total = zeros(length(by_class))
     members = [Float64[] for _ in by_class]
@@ -307,8 +303,6 @@ function _count_route(
         max_time isa Real && isfinite(max_time) && max_time >= 0
     end
     bounded || return nothing
-    # The default `max_generations` is a safeguard on individual runs, so it
-    # keeps a run on individuals unless the caller wants only the outcome.
     (
         (default_generations || max_generations != _DEFAULT_MAX_GENERATIONS) &&
             stopping_rules === nothing && condition === nothing &&
@@ -369,7 +363,6 @@ function _realise!(s::CountSimulationState)
     end
     g = s.max_generation
     ncls = _n_classes(g)
-    # The ids of the members of each day's cohorts, by generation class.
     ids = [[Int[] for _ in 1:ncls] for _ in 0:s.day]
     append!(ids[1][1], 1:n0)
     shares = [[Float64[] for _ in 1:ncls] for _ in 0:s.day]
