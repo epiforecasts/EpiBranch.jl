@@ -578,7 +578,7 @@ function simulate(
         stopping_rules, condition, rng
     )
     rule === nothing ||
-        return _simulate_counts(spec, rule, sim_opts.n_initial, max_time::Real, rng)
+        return _simulate_counts(spec, rule, sim_opts.n_initial, max_time, max_cases, rng)
     state = _run_once_or_retry(
         spec.process, sim_opts, condition, max_attempts; _layers(spec)..., rng
     )
@@ -635,7 +635,7 @@ function _simulate_each(
         stopping_rules, nothing, rng
     )
     rule === nothing || return _simulate_n_counts(
-        each, T, spec, rule, n, sim_opts.n_initial, max_time::Real, rng, parallel
+        each, T, spec, rule, n, sim_opts.n_initial, max_time, max_cases, rng, parallel
     )
     horizon = _max_time(sim_opts)
     classified(s) = each(_classify_cases!(s, spec.case_definition, horizon))
