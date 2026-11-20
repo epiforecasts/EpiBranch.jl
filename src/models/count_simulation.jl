@@ -62,9 +62,6 @@ CountRule(R, ν::UnivariateDistribution, g) = CountRule(R, ν, g, nothing, _Camp
 # A gamma shape `k` in place of `ν`; infinite `k` is a point mass.
 CountRule(R, k::Real, g) = CountRule(R, _gamma_unit(k), g)
 
-# A `ModelSpec` qualifies when the layers it adds do not act on transmission,
-# except vaccination campaigns that a count can apply, which need a finite
-# population.
 function count_rule(spec::ModelSpec)
     spec.case_definition === nothing || return nothing
     spec.recorder isa NoContactRecorder || return nothing
@@ -72,18 +69,12 @@ function count_rule(spec::ModelSpec)
     rule === nothing && return nothing
     isempty(spec.interventions) && return rule
     rule.population === nothing && return nothing
-    campaigns = _count_campaigns(spec.interventions, population(spec.process))
-    campaigns === nothing && return nothing
-    return CountRule(rule.R, rule.ν, rule.g, rule.population, campaigns)
-end
-
-# The campaigns of `interventions`, or `nothing` when one cannot be applied to
-# a count.
-function _count_campaigns(interventions, population)
     try
-        return _Campaign[
-            _by_type(_campaign(iv, (0.0, Inf), nothing), population) for iv in interventions
+        campaigns = _Campaign[
+            _by_type(_campaign(iv, (0.0, Inf), nothing), population(spec.process))
+                for iv in spec.interventions
         ]
+        return CountRule(rule.R, rule.ν, rule.g, rule.population, campaigns)
     catch err
         err isa ArgumentError && return nothing
         rethrow()
@@ -282,22 +273,16 @@ function _count_step!(s::CountSimulationState)
 end
 
 # The infections of day `t` from each source of `contacts`, the Poisson mean of
-# the contacts it makes. With an unlimited population each is its own
-# Poisson draw.
-function _draw_inflow!(inflow, s::CountSimulationState, contacts, t)
-    s.susceptibles === nothing || return _draw_inflow_finite!(inflow, s, contacts, t)
-    for i in eachindex(contacts)
-        contacts[i] > 0 && (inflow[i] = rand(s.rng, Poisson(contacts[i])))
-    end
-    return inflow
-end
-
-# Doses of the day before reach the susceptibles. The contacts of the day then
-# fall at random on the people of the population, and each susceptible they
-# reach is infected: the number reached is binomial, as in
-# `PerContactDepletion`. Contacts are exchangeable within the day, so the
+# the contacts it makes. In a finite population the day's doses reach the
+# susceptibles first, then the contacts fall at random on the population and the
 # infections are shared among the sources in proportion to their means.
-function _draw_inflow_finite!(inflow, s::CountSimulationState, contacts, t)
+function _draw_inflow!(inflow, s::CountSimulationState, contacts, t)
+    if s.susceptibles === nothing
+        for i in eachindex(contacts)
+            contacts[i] > 0 && (inflow[i] = rand(s.rng, Poisson(contacts[i])))
+        end
+        return inflow
+    end
     pop = s.rule.population
     for c in s.rule.campaigns
         s.susceptibles = _vaccinate(s.rng, c, t - 1, t, s.susceptibles, pop)
