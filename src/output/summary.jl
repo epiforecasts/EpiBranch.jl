@@ -208,7 +208,7 @@ function _contained_each(model, n::Int, cap; kwargs...)
     )
     rule = _count_route(
         model, o.initial_cases, o.index_types, o.max_cases, o.max_generations,
-        o.max_time, o.stopping_rules, o.condition, o.rng
+        o.max_time, o.stopping_rules, o.condition, o.rng; default_generations = true
     )
     rule === nothing &&
         return _simulate_each(s -> _is_contained(s, cap), Bool, model, n; kwargs...)
@@ -220,7 +220,9 @@ function _contained_each(model, n::Int, cap; kwargs...)
         o.max_generations, o.max_time, o.stopping_rules
     ).n_initial
     run(rng) = _is_contained(
-        _simulate_counts(model, rule, n_initial, o.max_time, o.max_cases, rng), cap
+        _simulate_counts(
+            model, rule, n_initial, o.max_time, o.max_cases, rng, o.max_generations
+        ), cap
     )
     o.parallel && Threads.nthreads() > 1 &&
         return _simulate_n_threaded(run, Bool, n, o.rng)

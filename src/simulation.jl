@@ -62,11 +62,12 @@ days throughout.
 A model with a discrete generation time on whole days and nothing about
 individuals feeding back on transmission (see
 [`EpiBranch.count_rule`](@ref)) runs on a count-level path when
-`max_generations = nothing`, there are no `stopping_rules`, `condition`,
-`index_types` or `initial_cases`, and `max_time` is finite or `max_cases` is
-set. A run with `max_cases` stops at the end of the first day on which the
-total reaches it, and may hold more cases than that. A run with
-`max_generations` is simulated as individuals. The result is a
+`max_generations` is not left at its default, there are no `stopping_rules`,
+`condition`, `index_types` or `initial_cases`, and `max_time` is finite or
+`max_cases` is set. A run with `max_cases` stops at the end of the first day
+on which the total reaches it, and may hold more cases than that. A
+`max_generations` is applied exactly, at a cost that grows with its value.
+Leaving it at its default runs individuals. The result is a
 [`CountSimulationState`](@ref). Its daily counts have the same distribution as
 those of the individual simulation of the same model, and its people are built
 when they are asked for. Any other run returns a [`SimulationState`](@ref).
@@ -123,7 +124,9 @@ function simulate(
         stopping_rules, condition, rng
     )
     rule === nothing ||
-        return _simulate_counts(model, rule, sim_opts.n_initial, max_time, max_cases, rng)
+        return _simulate_counts(
+            model, rule, sim_opts.n_initial, max_time, max_cases, rng, max_generations
+        )
     return _run_once_or_retry(
         model, sim_opts, condition, max_attempts; _layers(model)..., rng
     )
