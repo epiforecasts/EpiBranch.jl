@@ -220,6 +220,17 @@ using EpiBranch, Distributions, Random, StableRNGs, Statistics, DataFrames
             @test state.day == 4
             @test length(state.counts) == 5
         end
+
+        Random.seed!(1234)
+        state = simulate(
+            model; n_initial = 4, max_time = 4, max_cases = nothing,
+            max_generations = nothing
+        )
+        other = copy(state)
+        simulate(model, other; max_time = 8)
+        simulate(model, state; max_time = 8)
+        @test other.counts == state.counts
+        @test isequal(linelist(other), linelist(state))
     end
 
     @testset "extinction" begin

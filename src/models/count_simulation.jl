@@ -160,10 +160,13 @@ function Base.copy(s::CountSimulationState)
     return CountSimulationState(
         s.model, s.layers, s.rule, copy(s.counts), copy(s.cohort_infectiousness),
         deepcopy(s.cohort_members), deepcopy(s.inflow), s.day, s.cumulative_cases,
-        s.extinct, deepcopy(s.rng), copy(s.individual_stream),
+        s.extinct, _copy_count_rng(s.rng), copy(s.individual_stream),
         s.built === nothing ? nothing : copy(s.built)
     )
 end
+
+_copy_count_rng(rng::Random.TaskLocalRNG) = copy(rng)
+_copy_count_rng(rng::AbstractRNG) = deepcopy(rng)
 
 # The total infectiousness of a cohort of `n`, and the infectiousness of each
 # member where it has to be kept. A point mass or a gamma `ν` needs no members:
