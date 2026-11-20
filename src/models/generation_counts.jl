@@ -285,20 +285,15 @@ number.
 The doses of generation `g` cover `[g * generation_length, (g + 1) *
 generation_length)` and go to the contacts made by the cases of generation `g`,
 which are generation `g + 1`. Each contact is given a dose in the order the
-contacts are made, until the budget is spent, as the individual-based simulation
-does, and a dosed contact is blocked with probability `efficacy`, whatever the
-effect `mode`. The `budget_per_period` is shared by the types, as in every model:
-the doses go to the first contacts made of all the types together. A
-[`PerGroup`](@ref) budget gives each type the doses of its own budget instead.
-The doses are those of the periods that start in the interval; with `carry_over`,
-doses not yet given stay available, including those from before a window opens
-and after it closes, and are counted in the state's `doses_used`. Without it,
-a period's doses that no contact uses are lost. Where a model has several
-campaigns, each doses the first contacts made, so a contact can have more than
-one dose. A person is not followed from one generation to the next, so a dosed
-person who is not infected is not protected against later contacts, as in the
-individual-based simulation. The `eligibility` of the campaign is not read: the
-doses are given whether or not a case has triggered them.
+contacts are made, until the budget is spent, and a dosed contact is blocked
+with probability `efficacy`, whatever the effect `mode`. The
+`budget_per_period` is shared by the types: the doses go to the first contacts
+made of all the types together. A [`PerGroup`](@ref) budget gives each type the
+doses of its own budget instead. The doses are those of the periods that start
+in the interval; with `carry_over`, doses not yet given stay available and are
+counted in the state's `doses_used`. Several campaigns each dose the first
+contacts made. A dosed person who is not infected is not protected against
+later contacts. The `eligibility` of the campaign is not read.
 
 Doses are dated by the interval, not the day: every contact of generation
 `g + 1` can use any dose of the interval.
