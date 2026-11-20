@@ -63,7 +63,7 @@ A model with a discrete generation time on whole days and nothing about
 individuals feeding back on transmission (see
 [`EpiBranch.count_rule`](@ref)) runs on a count-level path when
 `max_generations` is not left at its default, there are no `stopping_rules`,
-`condition` or `initial_cases`, `index_types` is at most a vector, and `max_time` is finite or
+`condition` or `initial_cases`, `index_types` is unset or a vector, and `max_time` is finite or
 `max_cases` is set. A run with `max_cases` stops at the end of the first day
 on which the total reaches it, and may hold more cases than that. A
 `max_generations` is applied exactly, at a cost that grows with its value.
