@@ -329,7 +329,7 @@ using EpiBranch, Distributions, Random, StableRNGs, Statistics, DataFrames
                 5 * hypot(std(on_counts), std(on_individuals)) / sqrt(1000)
             @test abs(mean(on_counts .== 1) - mean(on_individuals .== 1)) < 0.05
         end
-        # Containment under a cap agrees with individuals, and the default cap is applied.
+        # Containment under a cap agrees with individuals. The default cap is applied.
         m = BranchingProcess(Poisson(1.3), gt)
         kw = (; max_cases = 200, n_initial = 1)
         a = containment_probability(m, 4000; kw..., max_generations = 4, rng = StableRNG(5))
