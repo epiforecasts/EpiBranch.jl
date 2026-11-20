@@ -88,7 +88,8 @@ end
     containment_difference(a, b; max_cases=NoCases(), paired=false)
 
 The difference in containment probability between two sets of simulations,
-`a` minus `b`, each a vector of [`SimulationState`](@ref)s. Returns a named
+`a` minus `b`, each a vector of [`SimulationState`](@ref)s or
+[`CountSimulationState`](@ref)s. Returns a named
 tuple `(; difference, mcse, a, b, paired)`, where `a` and `b` are the
 proportions contained and `mcse` is the Monte Carlo standard error of the
 difference. It reflects simulation error only.

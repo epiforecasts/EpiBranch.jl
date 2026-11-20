@@ -236,7 +236,9 @@ end
     simulate(model, n::Int; parallel=false, kwargs...)
 
 Simulate `n` independent outbreaks from the same model and return them as a
-vector of [`SimulationState`](@ref)s. It takes the same stopping keywords
+vector of [`SimulationState`](@ref)s, or of [`CountSimulationState`](@ref)s
+when the model qualifies for the count-level path, as for the single-outbreak
+method. It takes the same stopping keywords
 (`max_cases`, `max_generations`, `max_time`, `stopping_rules`), `n_initial`,
 `initial_cases`, `index_types` and `rng` as the single-outbreak method;
 `condition` is not available here. The usual next step is
