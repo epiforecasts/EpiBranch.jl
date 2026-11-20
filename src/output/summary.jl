@@ -63,9 +63,8 @@ as above. It takes the keywords of `simulate(model, n)`. Simulated as individual
 max_cases)`. Each outbreak is checked once it has run and then discarded, so
 memory holds one outbreak at a time. Use it when only the containment
 probability is needed. A model that qualifies for the count-level path
-(see [`simulate`](@ref); `max_generations = nothing` is needed for it) is
-simulated as daily counts, which has the same distribution but not the same
-draws.
+(see [`simulate`](@ref)) is simulated as daily counts, with the same
+distribution but not the same draws.
 
 # Examples
 
@@ -197,9 +196,7 @@ end
 
 _is_contained(s::AbstractSimulationState, cap) = s.extinct && !_check_max_cases(s, cap)
 
-# Whether each of `n` runs was contained. A model that runs on counts
-# (see `simulate`) is run as counts, which gives the same event: the total only
-# grows, so a run reaches `cap` cases whether or not it stops there.
+# Whether each of `n` runs was contained, run as counts where `simulate` would.
 function _contained_each(model, n::Int, cap; kwargs...)
     o = merge(
         (;

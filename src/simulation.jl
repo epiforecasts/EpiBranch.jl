@@ -64,9 +64,8 @@ individuals feeding back on transmission (see
 [`EpiBranch.count_rule`](@ref)) runs on a count-level path when
 `max_generations = nothing`, there are no `stopping_rules`, `condition`,
 `index_types` or `initial_cases`, and `max_time` is finite or `max_cases` is
-set. A day's cohort cannot be cut part-way, so a run with `max_cases` stops at
-the end of the first day on which the total reaches it, and may hold more cases
-than that. A generation is not a quantity of the daily counts, so a run with
+set. A run with `max_cases` stops at the end of the first day on which the
+total reaches it, and may hold more cases than that. A run with
 `max_generations` is simulated as individuals. The result is a
 [`CountSimulationState`](@ref). Its daily counts have the same distribution as
 those of the individual simulation of the same model, and its people are built

@@ -248,11 +248,7 @@ end
 process_of(model::TransmissionModel) = model
 process_of(spec::ModelSpec) = spec.process
 
-# Hand-off from `simulate`: the rule when counts can answer the request. A run
-# that stops on a generation or a rule, or that asks for a particular index
-# case, a repeated run or a shared random stream, is simulated as individuals,
-# because those are decided per person. A run with neither a finite `max_time`
-# nor a `max_cases` has no end.
+# Hand-off from `simulate`: the rule when counts can answer the request.
 function _count_route(
         model, initial_cases, index_types, max_cases, max_generations, max_time,
         stopping_rules, condition, rng
@@ -278,8 +274,7 @@ end
 
 Continue `state`, a [`CountSimulationState`](@ref), up to a later `max_time`.
 Every cohort already there keeps the infectiousness it was given, so the
-continuation extends the same run, whether it stopped at a `max_time` or at
-a `max_cases`. `state` is mutated in place and returned.
+continuation extends the same run. `state` is mutated in place and returned.
 The people built from it so far are dropped and built again when next asked
 for. `model` must still run on the count-level path.
 """
