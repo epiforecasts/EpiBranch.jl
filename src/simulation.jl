@@ -290,8 +290,13 @@ function _simulate_each(
         model, initial_cases, index_types, max_cases, max_generations, max_time,
         stopping_rules, nothing, rng
     )
-    rule === nothing ||
-        return _simulate_n_counts(each, T, model, rule, n, sim_opts.n_initial, max_time::Real, rng, parallel)
+    if rule !== nothing
+        run(rng) = each(_simulate_counts(model, rule, sim_opts.n_initial, max_time::Real, rng))
+        if parallel && Threads.nthreads() > 1
+            return _simulate_n_threaded(run, T === SimulationState ? CountSimulationState : T, n, rng)
+        end
+        return [run(rng) for _ in 1:n]
+    end
     return _simulate_n(each, T, model, n, sim_opts; _layers(model)..., rng, parallel)
 end
 

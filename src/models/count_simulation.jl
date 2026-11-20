@@ -263,16 +263,6 @@ function _count_route(
     return count_rule(model)
 end
 
-# `simulate(model, n)` on the count-level path: `n` independent runs, with
-# `each` applied to every one as it finishes.
-function _simulate_n_counts(each, ::Type{T}, model, rule, n, n_initial, max_time, rng, parallel) where {T}
-    run(rng) = each(_simulate_counts(model, rule, n_initial, max_time, rng))
-    if parallel && Threads.nthreads() > 1
-        return _simulate_n_threaded(run, T === SimulationState ? CountSimulationState : T, n, rng)
-    end
-    return [run(rng) for _ in 1:n]
-end
-
 """
     simulate(model, state::CountSimulationState; max_time::Real,
              rng::AbstractRNG = state.rng)
