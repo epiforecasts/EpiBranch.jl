@@ -192,7 +192,7 @@ EpiBranch.trigger_time(e::_EligibleAt, infector, state) = e.time
             ModelSpec(discrete(); interventions = [late]), first_part; max_generations = 7
         )
         @test continued.doses_used == whole.doses_used
-        # Without `carry_over` a period's doses are lost if they are not used.
+        # Without `carry_over` the doses of a period are lost if they are not used.
         lost = CapacityConstrained(
             group(); budget_per_period = 1.0e6, period = 14.0, carry_over = false
         )

@@ -291,7 +291,7 @@ with probability `efficacy`, whatever the effect `mode`. The
 made of all the types together. A [`PerGroup`](@ref) budget gives each type the
 doses of its own budget instead. The doses are those of the periods that start
 in the interval; with `carry_over`, doses not yet given stay available and are
-counted in the state's `doses_used`. Several campaigns each dose the first
+counted in `doses_used` of the state. Several campaigns each dose the first
 contacts made. A dosed person who is not infected is not protected against
 later contacts. The `eligibility` of the campaign is not read.
 
@@ -575,7 +575,7 @@ function _run_generations(
     )
 end
 
-# How many doses each campaign has given so far, per budget: the state's own,
+# How many doses each campaign has given so far, per budget: those in the state,
 # or zeros for campaigns it has not met. A continuation without campaigns
 # leaves them as they were.
 function _doses_used(state::GenerationCounts, campaigns)

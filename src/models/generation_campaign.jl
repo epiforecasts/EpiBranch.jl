@@ -209,7 +209,7 @@ _doses_of(c::_Campaign, budgets::AbstractVector, t0, t1, used) =
     [_doses_left(c, b, t0, t1, u) for (b, u) in zip(budgets, used)]
 
 # With `carry_over` (or a single budget) the doses not yet given, up to the end
-# of the interval; without it, only the interval's own.
+# of the interval; without it, only those of the interval.
 function _doses_left(c::_Campaign, cc::CapacityConstrained, t0, t1, used)
     (cc.carry_over || isinf(cc.period)) || return _interval_doses(c, t0, t1, cc)
     s, e = c.window
