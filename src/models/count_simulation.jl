@@ -125,8 +125,9 @@ Fields:
 - `max_generation`: the generation at which cases make no contacts, or
   `nothing` when generations are not tracked.
 - `generation_counts`: for each day, the number infected in each generation
-  from 0 up to `max_generation` (a single entry, the day's count, when
-  generations are not tracked).
+  from 0 up to `max_generation`, or up to the day itself where that is
+  earlier, since a generation cannot exceed the day it is infected (a single
+  entry, the day's count, when generations are not tracked).
 - `day`: the last day simulated.
 - `cumulative_cases`: the total number of cases.
 - `extinct`: whether transmission had died out.
@@ -195,12 +196,15 @@ end
 _n_classes(max_generation) = max_generation === nothing ? 1 : max_generation + 1
 _infects(max_generation, k) = max_generation === nothing || k <= max_generation
 _next_class(max_generation, k) = max_generation === nothing ? k : k + 1
+# A generation is at least one day after the last, so day `d` holds at most
+# `d + 1` classes however large the cap.
+_classes_on(max_generation, d) = min(_n_classes(max_generation), d + 1)
 
 # Whether the last cohorts that can still infect anyone are all empty.
 function _count_exhausted(s::CountSimulationState)
     first_day = max(0, s.day - length(s.rule.g) + 1)
     g = s.max_generation
-    for d in (first_day + 1):(s.day + 1), k in 1:_n_classes(g)
+    for d in (first_day + 1):(s.day + 1), k in eachindex(s.generation_counts[d])
         _infects(g, k) && s.generation_counts[d][k] > 0 && return false
     end
     return true
@@ -208,7 +212,7 @@ end
 
 function _count_extinct(s::CountSimulationState)
     g = s.max_generation
-    g !== nothing && any(c -> c[g + 1] > 0, s.generation_counts) && return false
+    g !== nothing && any(c -> length(c) > g && c[g + 1] > 0, s.generation_counts) && return false
     return _count_exhausted(s)
 end
 
@@ -217,10 +221,10 @@ function _count_step!(s::CountSimulationState)
     g = s.max_generation
     t = s.day + 1
     r = _renewal_R_at(rule.R, t)
-    ncls = _n_classes(g)
+    ncls = _classes_on(g, t)
     inflow = zeros(Int, length(rule.g), ncls)
     by_class = zeros(Int, ncls)
-    for lag in 1:min(length(rule.g), t), k in 1:min(ncls, t)
+    for lag in 1:min(length(rule.g), t), k in eachindex(s.generation_counts[t - lag + 1])
         _infects(g, k) || continue
         n = s.generation_counts[t - lag + 1][k]
         n == 0 && continue
@@ -277,7 +281,7 @@ function _simulate_counts(
         attributes = attributes(model), progression = progression(model),
         observation = observation(model),
     )
-    ncls = _n_classes(max_generations)
+    ncls = _classes_on(max_generations, 0)
     by_class = zeros(Int, ncls)
     by_class[1] = n_initial
     state = CountSimulationState(
@@ -362,12 +366,11 @@ function _realise!(s::CountSimulationState)
         _settle_case!(sim, ind, (), i)
     end
     g = s.max_generation
-    ncls = _n_classes(g)
-    ids = [[Int[] for _ in 1:ncls] for _ in 0:s.day]
+    ids = [[Int[] for _ in 1:_classes_on(g, d)] for d in 0:s.day]
     append!(ids[1][1], 1:n0)
-    shares = [[Float64[] for _ in 1:ncls] for _ in 0:s.day]
+    shares = [[Float64[] for _ in 1:_classes_on(g, d)] for d in 0:s.day]
     for d in 1:s.day
-        for lag in axes(s.inflow[d + 1], 1), k in 1:ncls
+        for lag in axes(s.inflow[d + 1], 1), k in eachindex(s.generation_counts[max(d - lag, 0) + 1])
             x = s.inflow[d + 1][lag, k]
             x == 0 && continue
             src = d - lag

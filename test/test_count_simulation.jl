@@ -299,8 +299,16 @@ using EpiBranch, Distributions, Random, StableRNGs, Statistics, DataFrames
         )
         gens = [i.generation for i in individuals(state)]
         @test maximum(gens) <= 4
-        @test [count(==(k), gens) for k in 0:4] == sum(state.generation_counts)
+        padded = [vcat(c, zeros(Int, 5 - length(c))) for c in state.generation_counts]
+        @test [count(==(k), gens) for k in 0:4] == sum(padded)
         @test state.counts == sum.(state.generation_counts)
+        # A cap beyond what the run can reach costs no more than the days run.
+        loose = simulate(
+            model; n_initial = 3, max_time = 30, max_cases = nothing,
+            max_generations = 10_000_000, rng = StableRNG(1)
+        )
+        @test maximum(length, loose.generation_counts) <= 31
+        @test sum(loose.counts) == loose.cumulative_cases
         # A run that reaches the cap is not extinct; one that dies out first is.
         capped = simulate(
             BranchingProcess(Poisson(4.0), gt); max_time = 40, max_cases = nothing,
