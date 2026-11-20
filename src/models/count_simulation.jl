@@ -157,11 +157,12 @@ A reference obtained before copying can still change a person in both states;
 access the person through the state again after copying.
 """
 function Base.copy(s::CountSimulationState)
+    built = s.built
     return CountSimulationState(
         s.model, s.layers, s.rule, copy(s.counts), copy(s.cohort_infectiousness),
         deepcopy(s.cohort_members), deepcopy(s.inflow), s.day, s.cumulative_cases,
         s.extinct, _copy_count_rng(s.rng), copy(s.individual_stream),
-        s.built === nothing ? nothing : copy(s.built)
+        built === nothing ? nothing : copy(built)
     )
 end
 
