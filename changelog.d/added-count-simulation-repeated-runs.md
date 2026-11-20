@@ -1,1 +1,1 @@
-`simulate(model, n)` and `containment_probability(model, n)` run a model that qualifies for the count-level path as daily counts, giving a vector of `CountSimulationState`. The vector methods of `containment_probability` and `containment_difference` accept them.
+`simulate(model, n)` and `containment_probability(model, n)` run a model that qualifies for the count-level path as daily counts. `simulate` returns a vector of `CountSimulationState`, which the vector methods of `containment_probability` and `containment_difference` accept.

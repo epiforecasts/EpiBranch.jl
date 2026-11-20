@@ -286,7 +286,7 @@ using EpiBranch, Distributions, Random, StableRNGs, Statistics, DataFrames
         # `parallel` gives count states too.
         par = simulate(model, 20; kw..., rng = StableRNG(3), parallel = true)
         @test all(s -> s isa CountSimulationState, par)
-        # So does a spec that qualifies, for runs and for containment.
+        # A qualifying spec also gives count states, for runs and for containment.
         spec = ModelSpec(model)
         spec_states = simulate(spec, 5; kw..., rng = StableRNG(3))
         @test all(s -> s isa CountSimulationState, spec_states)
