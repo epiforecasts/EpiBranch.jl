@@ -91,20 +91,12 @@ function count_rule(model::BranchingProcess)
     n = n_types(model)
     n == 1 && length(windows) == 1 &&
         return _count_rule(only(windows).offspring, only(windows).kernel)
-    return _count_rules(windows, n)
-end
-
-# Several windows of a single-type model: one channel for each.
-function _count_rules(windows, n::Int)
     channels = [_window_channels(w.offspring, w.kernel, n) for w in windows]
     any(isnothing, channels) && return nothing
     return CountRules(reduce(vcat, first.(channels)), last.(channels))
 end
 
-# The channels of one window, a row of the `windows × types` matrix, and its
-# allocation of infections between types. A multi-type window has a law for
-# each type of infector from its offspring matrix; a type that infects no one
-# has a rate of zero.
+# The row of channels of one window and its allocation between types.
 function _window_channels(o, kernel, n::Int)
     n == 1 || return nothing
     rule = _count_rule(o, kernel)
