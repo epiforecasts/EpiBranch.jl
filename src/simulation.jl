@@ -286,6 +286,12 @@ function _simulate_each(
         model, n_initial, initial_cases, index_types, max_cases, max_generations,
         max_time, stopping_rules
     )
+    rule = _count_route(
+        model, initial_cases, index_types, max_cases, max_generations, max_time,
+        stopping_rules, nothing, rng
+    )
+    rule === nothing ||
+        return _simulate_n_counts(each, T, model, rule, n, sim_opts.n_initial, max_time::Real, rng, parallel)
     return _simulate_n(each, T, model, n, sim_opts; _layers(model)..., rng, parallel)
 end
 

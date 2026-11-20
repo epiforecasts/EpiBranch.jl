@@ -1,5 +1,5 @@
 """
-    containment_probability(states::Vector{<:SimulationState}; max_cases=NoCases())
+    containment_probability(states::Vector{<:AbstractSimulationState}; max_cases=NoCases())
 
 Containment probability: the proportion of simulated outbreaks that died out,
 from a vector of simulations such as `simulate(model, n)`. Returns a named
@@ -48,7 +48,7 @@ containment_probability(states; max_cases = 5000).proportion
 ```
 """
 function containment_probability(
-        states::Vector{<:SimulationState};
+        states::Vector{<:AbstractSimulationState};
         max_cases::Union{Int, NoCases} = NoCases()
     )
     n_contained = count(s -> _is_contained(s, max_cases), states)
@@ -115,7 +115,7 @@ containment_difference(treated, base; max_cases = 500, paired = true)
 ```
 """
 function containment_difference(
-        a::Vector{<:SimulationState}, b::Vector{<:SimulationState};
+        a::Vector{<:AbstractSimulationState}, b::Vector{<:AbstractSimulationState};
         max_cases::Union{Int, NoCases} = NoCases(), paired::Bool = false
     )
     ca = [_is_contained(s, max_cases) for s in a]
@@ -192,11 +192,11 @@ function _binomial_estimate(k::Int, n::Int)
     )
 end
 
-_is_contained(s::SimulationState, cap) = s.extinct && !_check_max_cases(s, cap)
+_is_contained(s::AbstractSimulationState, cap) = s.extinct && !_check_max_cases(s, cap)
 
 """Whether a simulation has exceeded the max_cases cap (false if no cap)."""
-_check_max_cases(::SimulationState, ::NoCases) = false
-_check_max_cases(state::SimulationState, cap::Int) = state.cumulative_cases >= cap
+_check_max_cases(::AbstractSimulationState, ::NoCases) = false
+_check_max_cases(state::AbstractSimulationState, cap::Int) = state.cumulative_cases >= cap
 
 """
     is_extinct(state::SimulationState; by_week=nothing, max_cases=NoCases())

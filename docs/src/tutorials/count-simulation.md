@@ -8,6 +8,8 @@ The model must have a generation time that is a discrete distribution on whole d
 
 The run must be asked for in a way counts can answer: a `max_time`, with `max_cases` and `max_generations` set to `nothing`, no `stopping_rules`, `condition`, `index_types` or `initial_cases`, and no [`CommonRandomNumbers`](@ref). Every other run is an individual simulation, as before.
 
+`simulate(model, n)` takes the same keywords and gives a vector of `n` count-level runs, and `containment_probability(model, n)` and the vector methods of `containment_probability` read their `extinct` flag. A run is contained when transmission has died out by `max_time`.
+
 ## Discretising a continuous generation time
 
 A generation time measured in continuous time becomes a discrete one by double interval censoring: the infector's infection time is uniform within its day, and the infectee's is recorded as a whole day. With CensoredDistributions.jl loaded, `double_interval_censored` gives this distribution. Drop the mass on day 0 and renormalise, because a count-level step moves forward at least one day, then put the probabilities on the lags with `DiscreteNonParametric`:
