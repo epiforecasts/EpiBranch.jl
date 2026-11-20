@@ -122,6 +122,12 @@ Fields:
 
 - `counts`: the number of people infected on each day, from day 0 (the index
   cases) to `day`.
+- `max_generation`: the generation at which cases make no contacts, or
+  `nothing` when generations are not tracked.
+- `generation_counts`: for each day, the number infected in each generation
+  from 0 up to `max_generation`, or up to the day itself where that is
+  earlier, because a generation cannot exceed the day of infection (a single
+  entry, the count for the day, when generations are not tracked).
 - `day`: the last day simulated.
 - `cumulative_cases`: the total number of cases.
 - `extinct`: whether transmission had died out.
@@ -131,9 +137,11 @@ mutable struct CountSimulationState{M, L, F} <: AbstractSimulationState
     layers::L
     rule::CountRule{F}
     counts::Vector{Int}
-    cohort_infectiousness::Vector{Float64}
-    cohort_members::Vector{Vector{Float64}}
-    inflow::Vector{Vector{Int}}
+    max_generation::Union{Nothing, Int}
+    generation_counts::Vector{Vector{Int}}
+    cohort_infectiousness::Vector{Vector{Float64}}
+    cohort_members::Vector{Vector{Vector{Float64}}}
+    inflow::Vector{Matrix{Int}}
     day::Int
     cumulative_cases::Int
     extinct::Bool
@@ -159,7 +167,8 @@ access the person through the state again after copying.
 function Base.copy(s::CountSimulationState)
     built = s.built
     return CountSimulationState(
-        s.model, s.layers, s.rule, copy(s.counts), copy(s.cohort_infectiousness),
+        s.model, s.layers, s.rule, copy(s.counts), s.max_generation,
+        deepcopy(s.generation_counts), deepcopy(s.cohort_infectiousness),
         deepcopy(s.cohort_members), deepcopy(s.inflow), s.day, s.cumulative_cases,
         s.extinct, _copy_count_rng(s.rng), copy(s.individual_stream),
         built === nothing ? nothing : copy(built)
@@ -183,32 +192,67 @@ function _draw_cohort(ν, n, rng)
     return (sum(members), members)
 end
 
+# Generation classes are `1:(max_generation + 1)`, or one class without a cap.
+_n_classes(max_generation) = max_generation === nothing ? 1 : max_generation + 1
+_infects(max_generation, k) = max_generation === nothing || k <= max_generation
+_next_class(max_generation, k) = max_generation === nothing ? k : k + 1
+# A generation is at least one day after the last, so day `d` holds at most
+# `d + 1` classes however large the cap.
+_classes_on(max_generation, d) = min(_n_classes(max_generation), d + 1)
+
 # Whether the last cohorts that can still infect anyone are all empty.
-function _count_extinct(s::CountSimulationState)
+function _count_exhausted(s::CountSimulationState)
     first_day = max(0, s.day - length(s.rule.g) + 1)
-    return all(iszero, @view s.counts[(first_day + 1):(s.day + 1)])
+    g = s.max_generation
+    for d in (first_day + 1):(s.day + 1), k in eachindex(s.generation_counts[d])
+        _infects(g, k) && s.generation_counts[d][k] > 0 && return false
+    end
+    return true
+end
+
+function _count_extinct(s::CountSimulationState)
+    g = s.max_generation
+    g !== nothing && any(c -> length(c) > g && c[g + 1] > 0, s.generation_counts) && return false
+    return _count_exhausted(s)
 end
 
 function _count_step!(s::CountSimulationState)
     rule = s.rule
+    g = s.max_generation
     t = s.day + 1
     r = _renewal_R_at(rule.R, t)
-    inflow = zeros(Int, length(rule.g))
-    for lag in 1:min(length(rule.g), t)
-        n = s.counts[t - lag + 1]
+    ncls = _classes_on(g, t)
+    inflow = zeros(Int, length(rule.g), ncls)
+    by_class = zeros(Int, ncls)
+    for lag in 1:min(length(rule.g), t), k in eachindex(s.generation_counts[t - lag + 1])
+        _infects(g, k) || continue
+        n = s.generation_counts[t - lag + 1][k]
         n == 0 && continue
-        mean_infections = s.cohort_infectiousness[t - lag + 1] * r * rule.g[lag]
-        inflow[lag] = mean_infections > 0 ? rand(s.rng, Poisson(mean_infections)) : 0
+        mean_infections = s.cohort_infectiousness[t - lag + 1][k] * r * rule.g[lag]
+        x = mean_infections > 0 ? rand(s.rng, Poisson(mean_infections)) : 0
+        inflow[lag, k] = x
+        by_class[_next_class(g, k)] += x
     end
-    n = sum(inflow)
     push!(s.inflow, inflow)
-    push!(s.counts, n)
-    total, members = _draw_cohort(rule, n, s.rng)
-    push!(s.cohort_infectiousness, total)
-    push!(s.cohort_members, members)
-    s.cumulative_cases += n
+    push!(s.counts, sum(by_class))
+    push!(s.generation_counts, by_class)
+    _push_cohorts!(s, by_class)
+    s.cumulative_cases += sum(by_class)
     s.day = t
     s.extinct = _count_extinct(s)
+    return s
+end
+
+# Draw the infectiousness of each generation's cohort of a new day.
+function _push_cohorts!(s::CountSimulationState, by_class)
+    total = zeros(length(by_class))
+    members = [Float64[] for _ in by_class]
+    for k in eachindex(by_class)
+        _infects(s.max_generation, k) || continue
+        total[k], members[k] = _draw_cohort(s.rule, by_class[k], s.rng)
+    end
+    push!(s.cohort_infectiousness, total)
+    push!(s.cohort_members, members)
     return s
 end
 
@@ -220,7 +264,7 @@ end
 
 function _count_advance!(s::CountSimulationState, max_time, max_cases = nothing)
     last_day = max_time === nothing ? typemax(Int) : floor(Int, max_time)
-    while s.day < last_day && !s.extinct &&
+    while s.day < last_day && !_count_exhausted(s) &&
             (max_cases === nothing || s.cumulative_cases < max_cases)
         _count_step!(s)
     end
@@ -229,19 +273,23 @@ function _count_advance!(s::CountSimulationState, max_time, max_cases = nothing)
 end
 
 function _simulate_counts(
-        model, rule::CountRule, n_initial::Int, max_time, max_cases, rng
+        model, rule::CountRule, n_initial::Int, max_time, max_cases, rng,
+        max_generations = nothing
     )
     stream = Xoshiro(rand(rng, UInt64))
     layers = (
         attributes = attributes(model), progression = progression(model),
         observation = observation(model),
     )
-    total, members = _draw_cohort(rule, n_initial, rng)
+    ncls = _classes_on(max_generations, 0)
+    by_class = zeros(Int, ncls)
+    by_class[1] = n_initial
     state = CountSimulationState(
-        process_of(model), layers, rule, [n_initial], [total], [members],
-        [zeros(Int, length(rule.g))],
+        process_of(model), layers, rule, [n_initial], max_generations, [by_class],
+        Vector{Float64}[], Vector{Vector{Float64}}[], [zeros(Int, length(rule.g), ncls)],
         0, n_initial, n_initial == 0, rng, stream, nothing
     )
+    _push_cohorts!(state, by_class)
     return _count_advance!(state, max_time, max_cases)
 end
 
@@ -251,7 +299,7 @@ process_of(spec::ModelSpec) = spec.process
 # Hand-off from `simulate`: the rule when counts can answer the request.
 function _count_route(
         model, initial_cases, index_types, max_cases, max_generations, max_time,
-        stopping_rules, condition, rng
+        stopping_rules, condition, rng; default_generations = false
     )
     bounded = if max_time === nothing
         max_cases !== nothing
@@ -260,7 +308,7 @@ function _count_route(
     end
     bounded || return nothing
     (
-        max_generations === nothing &&
+        (default_generations || max_generations != _DEFAULT_MAX_GENERATIONS) &&
             stopping_rules === nothing && condition === nothing &&
             initial_cases === nothing && index_types === nothing
     ) || return nothing
@@ -317,27 +365,28 @@ function _realise!(s::CountSimulationState)
         ind.state[:index] = true
         _settle_case!(sim, ind, (), i)
     end
-    first_id = Int[1]
-    shares = Vector{Float64}[Float64[]]
+    g = s.max_generation
+    ids = [[Int[] for _ in 1:_classes_on(g, d)] for d in 0:s.day]
+    append!(ids[1][1], 1:n0)
+    shares = [[Float64[] for _ in 1:_classes_on(g, d)] for d in 0:s.day]
     for d in 1:s.day
-        push!(first_id, length(individuals(sim)) + 1)
-        push!(shares, Float64[])
-        for lag in eachindex(s.inflow[d + 1])
-            x = s.inflow[d + 1][lag]
+        for lag in axes(s.inflow[d + 1], 1), k in eachindex(s.generation_counts[max(d - lag, 0) + 1])
+            x = s.inflow[d + 1][lag, k]
             x == 0 && continue
             src = d - lag
-            isempty(shares[src + 1]) &&
-                (shares[src + 1] = _member_shares(s.rule, s.counts[src + 1], s.cohort_members[src + 1], rng))
-            cumulative = shares[src + 1]
+            isempty(shares[src + 1][k]) &&
+                (shares[src + 1][k] = _member_shares(s.rule, s.generation_counts[src + 1][k], s.cohort_members[src + 1][k], rng))
+            cumulative = shares[src + 1][k]
             for _ in 1:x
                 member = min(searchsortedfirst(cumulative, rand(rng)), length(cumulative))
-                parent = individuals(sim)[first_id[src + 1] + member - 1]
+                parent = individuals(sim)[ids[src + 1][k][member]]
                 sim.current_generation = parent.generation
                 child = make_contact!(sim, parent, d)
                 child.state[:infected] = true
                 child.state[:index] = false
                 _set_onset_from_incubation!(child)
                 _settle_case!(sim, child, (), length(individuals(sim)))
+                push!(ids[d + 1][_next_class(g, k)], length(individuals(sim)))
             end
         end
     end

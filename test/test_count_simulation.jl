@@ -130,11 +130,13 @@ using EpiBranch, Distributions, Random, StableRNGs, Statistics, DataFrames
         @test length(state.cohort_members) == state.day + 1
         @test all(
             length(m) == n && sum(m) ≈ total for
-                (m, n, total) in zip(state.cohort_members, state.counts, state.cohort_infectiousness)
+                (m, n, total) in zip(
+                    first.(state.cohort_members), state.counts, first.(state.cohort_infectiousness)
+                )
         )
         @test length(individuals(state)) == state.cumulative_cases
         negbin = count_run(BranchingProcess(NegBin(1.3, 0.8), gt); max_time = 6, rng = StableRNG(4))
-        @test all(isempty, negbin.cohort_members)
+        @test all(isempty ∘ only, negbin.cohort_members)
     end
 
     @testset "the people of a state" begin
@@ -271,7 +273,8 @@ using EpiBranch, Distributions, Random, StableRNGs, Statistics, DataFrames
                 model, 4000; kw..., max_generations = nothing, rng = StableRNG(5)
             )
             on_individuals = containment_probability(
-                model, 4000; kw..., max_generations = 1000, rng = StableRNG(6)
+                model, 4000; kw..., stopping_rules = [MaxCases(60), MaxGenerations(1000)],
+                rng = StableRNG(6)
             )
             @test abs(on_counts.proportion - on_individuals.proportion) <
                 5 * hypot(on_counts.mcse, on_individuals.mcse)
@@ -287,6 +290,72 @@ using EpiBranch, Distributions, Random, StableRNGs, Statistics, DataFrames
         ).n == 50
     end
 
+    @testset "a generation cap" begin
+        model = BranchingProcess(NegativeBinomial(0.8, 0.3), gt)
+        # The people built from the counts have the generations the counts hold.
+        state = simulate(
+            model; n_initial = 3, max_time = 30, max_cases = nothing, max_generations = 4,
+            rng = StableRNG(1)
+        )
+        gens = [i.generation for i in individuals(state)]
+        @test maximum(gens) <= 4
+        padded = [vcat(c, zeros(Int, 5 - length(c))) for c in state.generation_counts]
+        @test [count(==(k), gens) for k in 0:4] == sum(padded)
+        @test state.counts == sum.(state.generation_counts)
+        # A cap beyond what the run can reach costs no more than the days run.
+        loose = simulate(
+            model; n_initial = 3, max_time = 30, max_cases = nothing,
+            max_generations = 10_000_000, rng = StableRNG(1)
+        )
+        @test maximum(length, loose.generation_counts) <= 31
+        @test sum(loose.counts) == loose.cumulative_cases
+        # A run that reaches the cap is not extinct; one that dies out first is.
+        capped = simulate(
+            BranchingProcess(Poisson(4.0), gt); max_time = 40, max_cases = nothing,
+            max_generations = 2, rng = StableRNG(2)
+        )
+        @test !capped.extinct && length(individuals(capped)) == capped.cumulative_cases
+        @test simulate(
+            BranchingProcess(Poisson(0.1), gt); max_time = 100, max_cases = nothing,
+            max_generations = 50, rng = StableRNG(3)
+        ).extinct
+        # The same distribution as the individual simulation under the cap.
+        for (offspring, G) in ((Poisson(1.4), 3), (NegativeBinomial(0.5, 0.3), 5))
+            m = BranchingProcess(offspring, gt)
+            on_counts = [
+                simulate(
+                    m; max_cases = 2000, max_generations = G, rng = StableRNG(i)
+                ).cumulative_cases for i in 1:1000
+            ]
+            on_individuals = [
+                simulate(
+                    m; max_cases = 2000, stopping_rules = [MaxCases(2000), MaxGenerations(G)],
+                    rng = StableRNG(10_000 + i)
+                ).cumulative_cases for i in 1:1000
+            ]
+            @test abs(mean(on_counts) - mean(on_individuals)) <
+                5 * hypot(std(on_counts), std(on_individuals)) / sqrt(1000)
+            @test abs(mean(on_counts .== 1) - mean(on_individuals .== 1)) < 0.05
+        end
+        # Containment under a cap agrees with individuals. The default cap is applied.
+        m = BranchingProcess(Poisson(1.3), gt)
+        kw = (; max_cases = 200, n_initial = 1)
+        a = containment_probability(m, 4000; kw..., max_generations = 4, rng = StableRNG(5))
+        b = containment_probability(
+            m, 4000; kw..., stopping_rules = [MaxCases(200), MaxGenerations(4)], rng = StableRNG(6)
+        )
+        @test abs(a.proportion - b.proportion) < 5 * hypot(a.mcse, b.mcse)
+        @test a.proportion < containment_probability(
+            m, 4000; kw..., max_generations = nothing, rng = StableRNG(7)
+        ).proportion
+        # Continuing keeps the cap.
+        state = simulate(
+            m; max_time = 3, max_cases = nothing, max_generations = 4, rng = StableRNG(8)
+        )
+        simulate(m, state; max_time = 12)
+        @test maximum(i.generation for i in individuals(state)) <= 4
+    end
+
     @testset "which runs take the count-level path" begin
         model = BranchingProcess(Poisson(1.2), gt)
         @test count_run(model; max_time = 5, rng = StableRNG(1)) isa CountSimulationState
@@ -295,7 +364,7 @@ using EpiBranch, Distributions, Random, StableRNGs, Statistics, DataFrames
         @test simulate(model; max_time = 5, rng = StableRNG(1)) isa SimulationState
         @test simulate(model; kw..., max_cases = 100) isa CountSimulationState
         @test simulate(model; kw..., max_time = nothing, max_cases = 100) isa CountSimulationState
-        @test simulate(model; kw..., max_generations = 4) isa SimulationState
+        @test simulate(model; kw..., max_generations = 4) isa CountSimulationState
         @test simulate(model; kw..., stopping_rules = [MaxTime(5.0)]) isa SimulationState
         @test simulate(model; kw..., condition = 1:1000) isa SimulationState
         @test simulate(model; kw..., rng = CommonRandomNumbers(1)) isa SimulationState
