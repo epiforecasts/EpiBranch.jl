@@ -9,8 +9,7 @@
 # binomial offspring law, or `RenewalOffspring` with a finite `k`), `n` when
 # every `ν` is one, and otherwise the sum of `n` draws of `ν` (a Poisson
 # lognormal or Poisson Weibull law, whose `ν` is the rate divided by its
-# mean). Any other discrete offspring law is not of this form: see
-# `OffspringCountRule`. The cohort infects `Poisson(Λ R(t) g(t - s))` people on day `t`, independently for each `t`, with `R(t)` the mean offspring number
+# mean). The cohort infects `Poisson(Λ R(t) g(t - s))` people on day `t`, independently for each `t`, with `R(t)` the mean offspring number
 # at `t` and `g` the generation time on the daily lags.
 #
 # The result keeps, for each day, the count of the cohort, its `Λ` and the
@@ -54,18 +53,14 @@ end
 """
     OffspringCountRule(offspring, g)
 
-The count-level rule ([`EpiBranch.count_rule`](@ref)) for an offspring law
-that is none of the above: any discrete distribution on the non-negative
-integers. Each member of a cohort draws its own number of offspring from
-`offspring`, and each offspring is infected `lag` days later with probability
-`g[lag]`. The state keeps every member's count, so the time and memory grow
-with the number of cases.
+The count-level rule ([`EpiBranch.count_rule`](@ref)) for any other discrete
+offspring law on the non-negative integers. Each cohort member draws its own
+offspring count, and each offspring is infected `lag` days later with
+probability `g[lag]`.
 """
 struct OffspringCountRule{D <: DiscreteUnivariateDistribution}
     offspring::D
     g::Vector{Float64}
-    # The chance that an offspring infected after `lag` days given that it was
-    # not infected earlier.
     conditional::Vector{Float64}
 end
 
@@ -112,7 +107,6 @@ _gamma_unit(k) = isfinite(k) ? Gamma(Float64(k), 1 / Float64(k)) : Dirac(1.0)
 # The rate law of a Poisson mixture divided by its mean.
 _unit_rate_law(o::PoissonLognormal) = LogNormal(-o.σ^2 / 2, Float64(o.σ))
 _unit_rate_law(o::PoissonWeibull) = Weibull(Float64(o.k), Float64(o.λ) / mean(_rate_law(o)))
-# Any other discrete law keeps its members' own counts.
 function _count_rule(o::DiscreteUnivariateDistribution, kernel)
     minimum(o) >= 0 || return nothing
     g = _daily_pmf(kernel)
@@ -220,8 +214,6 @@ _copy_count_rng(rng::AbstractRNG) = deepcopy(rng)
 # the members are drawn first and the total is their sum.
 _draw_cohort(rule::CountRule, n::Int, rng) =
     n == 0 ? (0.0, Float64[]) : _draw_cohort(rule.ν, n, rng)
-# A law of offspring counts keeps every member's count, and the total is the
-# number of offspring the cohort will have.
 function _draw_cohort(rule::OffspringCountRule, n::Int, rng)
     members = Float64[rand(rng, rule.offspring) for _ in 1:n]
     return (sum(members), members)
@@ -257,13 +249,10 @@ function _count_extinct(s::CountSimulationState)
     return _count_exhausted(s)
 end
 
-# The people a cohort infects on day `t`, `lag` days after its own day.
 function _draw_inflow(s, rule::CountRule, t, lag, k, r)
     mean_infections = s.cohort_infectiousness[t - lag + 1][k] * r * rule.g[lag]
     return mean_infections > 0 ? rand(s.rng, Poisson(mean_infections)) : 0
 end
-# The offspring not yet infected are each infected on this lag with the
-# conditional probability that they were not infected earlier.
 function _draw_inflow(s, rule::OffspringCountRule, t, lag, k, r)
     source = t - lag
     left = round(Int, s.cohort_infectiousness[source + 1][k])
@@ -475,9 +464,7 @@ end
 _next_member!(cumulative::Vector{Float64}, rng) =
     min(searchsortedfirst(cumulative, rand(rng)), length(cumulative))
 
-# The offspring of a cohort by the member that causes each, in random order,
-# so that taking them in turn assigns each lag's infections to members without
-# replacement.
+# A cohort's offspring by their parent member, shuffled and taken in turn.
 mutable struct _OffspringPool
     members::Vector{Int}
     next::Int

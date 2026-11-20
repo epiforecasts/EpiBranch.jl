@@ -1,1 +1,1 @@
-`simulate` also runs a branching process with any other discrete offspring law (such as `Binomial` or `Geometric`) as daily counts, as an `EpiBranch.OffspringCountRule`. The state keeps each member's own offspring count, so the time and memory of the count-level path grow with the number of cases.
+`simulate` also runs a branching process with any other discrete offspring law (such as `Binomial` or `Geometric`) as daily counts, as an `EpiBranch.OffspringCountRule`.
