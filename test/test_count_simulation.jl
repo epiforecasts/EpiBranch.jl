@@ -404,9 +404,9 @@ using EpiBranch, Distributions, Random, StableRNGs, Statistics, DataFrames
         # nothing spreads beyond the index cases.
         none = run(spec(Steps([-0.5, 0.5], [0.0, 1.0e6, 0.0])))
         @test all(s.cumulative_cases == 5 for s in none)
-        # A budget of half the people, spent at once, leaves about half of the
-        # susceptibles: 995 * 0.5, all at efficacy one, and the epidemic is
-        # smaller than without it.
+        # A budget of half the people, spent at once at efficacy one, removes
+        # about half of the susceptibles (995 * 0.5). The epidemic is smaller
+        # than without it.
         half = run(spec(Steps([-0.5, 0.5], [0.0, 497.0, 0.0])); n = 100)
         @test mean(s.susceptibles + s.cumulative_cases for s in half) ≈ 1000 - 497 * 995 / 1000 atol = 15
         unvaccinated = run(model; n = 100)
