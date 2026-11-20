@@ -264,6 +264,14 @@ using EpiBranch, Distributions, Random, StableRNGs, Statistics, DataFrames
         ).day == 0
     end
 
+    @testset "initial cases are checked against the population" begin
+        model = BranchingProcess(Poisson(2.0), gt; population = Population(5))
+        @test_throws ArgumentError simulate(
+            model; n_initial = 10, max_time = 5, max_cases = nothing,
+            max_generations = nothing, rng = StableRNG(1)
+        )
+    end
+
     @testset "containment_probability on counts" begin
         # The same event as on individuals: extinct with fewer than `max_cases` cases.
         for offspring in (Poisson(1.3), NegativeBinomial(0.5, 0.3))

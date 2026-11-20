@@ -382,6 +382,9 @@ function _simulate_counts(
     nt = length(_type_rules(rule))
     by_class = _index_counts(index_types, n_initial, nt, rng)
     sizes = _count_sizes(population(process_of(model)))
+    sizes === nothing || all(by_class .<= sizes) || throw(
+        ArgumentError("initial cases cannot exceed the population size of any type")
+    )
     state = CountSimulationState(
         process_of(model), layers, rule, [n_initial], max_generations, [by_class],
         Vector{Float64}[], Vector{Vector{Float64}}[],
