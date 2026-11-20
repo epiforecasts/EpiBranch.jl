@@ -147,6 +147,28 @@ function Base.show(io::IO, s::CountSimulationState)
     return print(io, "CountSimulationState(cases=$(s.cumulative_cases), day=$(s.day), $(status))")
 end
 
+"""
+    copy(state::CountSimulationState) -> CountSimulationState
+
+Copy the counts, random streams and realised people. Either state can then be
+continued independently. The model, layers and count rule are shared.
+Realised people are copied on access, as in [`copy(::SimulationState)`](@ref).
+A reference obtained before copying can still change a person in both states;
+access the person through the state again after copying.
+"""
+function Base.copy(s::CountSimulationState)
+    built = s.built
+    return CountSimulationState(
+        s.model, s.layers, s.rule, copy(s.counts), copy(s.cohort_infectiousness),
+        deepcopy(s.cohort_members), deepcopy(s.inflow), s.day, s.cumulative_cases,
+        s.extinct, _copy_count_rng(s.rng), copy(s.individual_stream),
+        built === nothing ? nothing : copy(built)
+    )
+end
+
+_copy_count_rng(rng::Random.TaskLocalRNG) = copy(rng)
+_copy_count_rng(rng::AbstractRNG) = deepcopy(rng)
+
 # The total infectiousness of a cohort of `n`, and the infectiousness of each
 # member where it has to be kept. A point mass or a gamma `ν` needs no members:
 # the split among them is independent of the total, so it is drawn when the
