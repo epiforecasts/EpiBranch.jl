@@ -201,7 +201,8 @@ export MixingLinearNoiseProcess, MixingLinearNoiseState
 export DoseAllocation, TriggeredInPriority, SplitByGroupSize, SplitBySusceptibles
 export ImmuneShare, ImmuneCount
 export HybridProcess, HybridState
-export GenerationCounts, simulate_by_generation
+export GenerationCounts, simulate_by_generation, prepare_generations,
+    GenerationCampaigns
 export AbstractDepletion, PerContactDepletion
 export transmission_timing, implied_R
 export Individual, InfectionEpisode, close_episode!, SimulationState

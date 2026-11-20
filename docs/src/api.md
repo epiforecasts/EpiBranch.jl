@@ -137,6 +137,8 @@ each type between generations.
 ```@docs
 simulate_by_generation
 GenerationCounts
+prepare_generations
+GenerationCampaigns
 AbstractDepletion
 PerContactDepletion
 ```
