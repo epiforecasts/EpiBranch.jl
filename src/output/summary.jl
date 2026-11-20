@@ -202,13 +202,13 @@ function _contained_each(model, n::Int, cap; kwargs...)
         (;
             n_initial = nothing, initial_cases = nothing, index_types = nothing,
             max_cases = _DEFAULT_MAX_CASES, max_generations = _DEFAULT_MAX_GENERATIONS,
-            max_time = nothing, stopping_rules = nothing,
+            max_time = nothing, stopping_rules = nothing, condition = nothing,
             rng = Random.default_rng(), parallel = false,
         ), NamedTuple(kwargs)
     )
     rule = _count_route(
         model, o.initial_cases, o.index_types, o.max_cases, o.max_generations,
-        o.max_time, o.stopping_rules, nothing, o.rng
+        o.max_time, o.stopping_rules, o.condition, o.rng
     )
     rule === nothing &&
         return _simulate_each(s -> _is_contained(s, cap), Bool, model, n; kwargs...)
