@@ -59,8 +59,8 @@ The rule of a model with several infectiousness windows or several types,
 returned by [`EpiBranch.count_rule`](@ref) in place of a [`CountRule`](@ref).
 `channels[w, j]` is the `CountRule` by which a type-`j` case infects through
 window `w`, and `allocation[w][i, j]` the share of those infections that are of
-type `i`. Each case draws its infectiousness for each window independently, so
-the cohort of a type holds one total for each window.
+type `i`. Each case draws its infectiousness for each window independently.
+A cohort of one type therefore holds one total for each window.
 """
 struct CountRules{C <: AbstractMatrix{<:CountRule}}
     channels::C
