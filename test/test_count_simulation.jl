@@ -243,13 +243,58 @@ using EpiBranch, Distributions, Random, StableRNGs, Statistics, DataFrames
         @test is_extinct(state)
     end
 
+    @testset "max_cases ends the run at the end of a day" begin
+        model = BranchingProcess(Poisson(2.0), gt)
+        state = simulate(
+            model; n_initial = 1, max_cases = 50, max_generations = nothing,
+            rng = StableRNG(3)
+        )
+        @test state isa CountSimulationState
+        @test state.cumulative_cases >= 50
+        @test sum(state.counts[1:(end - 1)]) < 50
+        # Continuing runs past the cap.
+        simulate(model, state; max_time = state.day + 3)
+        @test state.day > 0 && length(state.counts) == state.day + 1
+        # A cap met by the index cases ends the run on day 0.
+        @test simulate(
+            model; n_initial = 60, max_cases = 50, max_generations = nothing,
+            rng = StableRNG(3)
+        ).day == 0
+    end
+
+    @testset "containment_probability on counts" begin
+        # The same event as on individuals: extinct with fewer than `max_cases` cases.
+        for offspring in (Poisson(1.3), NegativeBinomial(0.5, 0.3))
+            model = BranchingProcess(offspring, gt)
+            kw = (; max_cases = 60, n_initial = 1)
+            on_counts = containment_probability(
+                model, 4000; kw..., max_generations = nothing, rng = StableRNG(5)
+            )
+            on_individuals = containment_probability(
+                model, 4000; kw..., max_generations = 1000, rng = StableRNG(6)
+            )
+            @test abs(on_counts.proportion - on_individuals.proportion) <
+                5 * hypot(on_counts.mcse, on_individuals.mcse)
+        end
+        # A model that qualifies runs on counts and still returns `n` outcomes.
+        model = BranchingProcess(Poisson(1.3), gt)
+        @test containment_probability(
+            model, 50; max_cases = 60, max_generations = nothing, rng = StableRNG(1)
+        ).n == 50
+        spec = ModelSpec(model)
+        @test containment_probability(
+            spec, 50; max_cases = 60, max_generations = nothing, rng = StableRNG(1)
+        ).n == 50
+    end
+
     @testset "which runs take the count-level path" begin
         model = BranchingProcess(Poisson(1.2), gt)
         @test count_run(model; max_time = 5, rng = StableRNG(1)) isa CountSimulationState
         kw = (; max_time = 5, max_cases = nothing, max_generations = nothing, rng = StableRNG(1))
-        # Anything that stops a run other than its time is decided per person.
+        # A generation limit or a stopping rule needs individuals.
         @test simulate(model; max_time = 5, rng = StableRNG(1)) isa SimulationState
-        @test simulate(model; kw..., max_cases = 100) isa SimulationState
+        @test simulate(model; kw..., max_cases = 100) isa CountSimulationState
+        @test simulate(model; kw..., max_time = nothing, max_cases = 100) isa CountSimulationState
         @test simulate(model; kw..., max_generations = 4) isa SimulationState
         @test simulate(model; kw..., stopping_rules = [MaxTime(5.0)]) isa SimulationState
         @test simulate(model; kw..., condition = 1:1000) isa SimulationState

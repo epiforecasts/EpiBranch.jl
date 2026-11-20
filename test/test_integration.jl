@@ -451,6 +451,9 @@ using Dates
         )
         @test 0.0 <= p.proportion <= 1.0
         @test_throws MethodError containment_probability(model, 10; condition = 1:5)
+        @test_throws MethodError containment_probability(
+            model, 10; max_cases = 60, condition = 5:100
+        )
     end
 
     @testset "max_time terminates simulation" begin

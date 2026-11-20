@@ -59,10 +59,12 @@ end
     containment_probability(model, n::Int; max_cases, rng, parallel=false, ...)
 
 The containment probability over `n` outbreaks simulated from `model`, returned
-as above. It takes the keywords of `simulate(model, n)`. For the same `rng` it gives the same answer as `containment_probability(simulate(model, n; kwargs...);
+as above. It takes the keywords of `simulate(model, n)`. Simulated as individuals, it gives for the same `rng` the same answer as `containment_probability(simulate(model, n; kwargs...);
 max_cases)`. Each outbreak is checked once it has run and then discarded, so
 memory holds one outbreak at a time. Use it when only the containment
-probability is needed.
+probability is needed. A model that qualifies for the count-level path
+(see [`simulate`](@ref)) is simulated as daily counts, with the same
+distribution but not the same draws.
 
 # Examples
 
@@ -80,7 +82,7 @@ function containment_probability(
         model::Union{TransmissionModel, ModelSpec}, n::Int; kwargs...
     )
     cap = something(get(kwargs, :max_cases, nothing), NoCases())
-    contained = _simulate_each(s -> _is_contained(s, cap), Bool, model, n; kwargs...)
+    contained = _contained_each(model, n, cap; kwargs...)
     return _binomial_estimate(count(contained), n)
 end
 
@@ -154,7 +156,7 @@ function containment_difference(
     cap = something(get(kwargs, :max_cases, nothing), NoCases())
     function contained(model)
         opts = paired ? (; kwargs..., rng = CommonRandomNumbers(seed)) : (; kwargs...)
-        return _simulate_each(s -> _is_contained(s, cap), Bool, model, n; opts...)
+        return _contained_each(model, n, cap; opts...)
     end
     ca = contained(model_a)
     cb = contained(model_b)
@@ -192,11 +194,42 @@ function _binomial_estimate(k::Int, n::Int)
     )
 end
 
-_is_contained(s::SimulationState, cap) = s.extinct && !_check_max_cases(s, cap)
+_is_contained(s::AbstractSimulationState, cap) = s.extinct && !_check_max_cases(s, cap)
+
+# Whether each of `n` runs was contained, run as counts where `simulate` would.
+function _contained_each(model, n::Int, cap; kwargs...)
+    o = merge(
+        (;
+            n_initial = nothing, initial_cases = nothing, index_types = nothing,
+            max_cases = _DEFAULT_MAX_CASES, max_generations = _DEFAULT_MAX_GENERATIONS,
+            max_time = nothing, stopping_rules = nothing, condition = nothing,
+            rng = Random.default_rng(), parallel = false,
+        ), NamedTuple(kwargs)
+    )
+    rule = _count_route(
+        model, o.initial_cases, o.index_types, o.max_cases, o.max_generations,
+        o.max_time, o.stopping_rules, o.condition, o.rng
+    )
+    rule === nothing &&
+        return _simulate_each(s -> _is_contained(s, cap), Bool, model, n; kwargs...)
+    process = process_of(model)
+    validate_process_windows(process, progression(process))
+    _warn_incomplete_terminal_coverage(progression(process))
+    n_initial = _build_sim_opts(
+        process, o.n_initial, o.initial_cases, o.index_types, o.max_cases,
+        o.max_generations, o.max_time, o.stopping_rules
+    ).n_initial
+    run(rng) = _is_contained(
+        _simulate_counts(model, rule, n_initial, o.max_time, o.max_cases, rng), cap
+    )
+    o.parallel && Threads.nthreads() > 1 &&
+        return _simulate_n_threaded(run, Bool, n, o.rng)
+    return [run(_replicate_rng(o.rng, i)) for i in 1:n]
+end
 
 """Whether a simulation has exceeded the max_cases cap (false if no cap)."""
-_check_max_cases(::SimulationState, ::NoCases) = false
-_check_max_cases(state::SimulationState, cap::Int) = state.cumulative_cases >= cap
+_check_max_cases(::AbstractSimulationState, ::NoCases) = false
+_check_max_cases(state::AbstractSimulationState, cap::Int) = state.cumulative_cases >= cap
 
 """
     is_extinct(state::SimulationState; by_week=nothing, max_cases=NoCases())

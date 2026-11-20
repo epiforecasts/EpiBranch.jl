@@ -218,16 +218,19 @@ function _renewal_R_at(R, t)
     return r
 end
 
-function _count_advance!(s::CountSimulationState, max_time::Real)
-    last_day = floor(Int, max_time)
-    while s.day < last_day && !s.extinct
+function _count_advance!(s::CountSimulationState, max_time, max_cases = nothing)
+    last_day = max_time === nothing ? typemax(Int) : floor(Int, max_time)
+    while s.day < last_day && !s.extinct &&
+            (max_cases === nothing || s.cumulative_cases < max_cases)
         _count_step!(s)
     end
     s.built = nothing
     return s
 end
 
-function _simulate_counts(model, rule::CountRule, n_initial::Int, max_time::Real, rng)
+function _simulate_counts(
+        model, rule::CountRule, n_initial::Int, max_time, max_cases, rng
+    )
     stream = Xoshiro(rand(rng, UInt64))
     layers = (
         attributes = attributes(model), progression = progression(model),
@@ -239,23 +242,25 @@ function _simulate_counts(model, rule::CountRule, n_initial::Int, max_time::Real
         [zeros(Int, length(rule.g))],
         0, n_initial, n_initial == 0, rng, stream, nothing
     )
-    return _count_advance!(state, max_time)
+    return _count_advance!(state, max_time, max_cases)
 end
 
 process_of(model::TransmissionModel) = model
 process_of(spec::ModelSpec) = spec.process
 
-# Hand-off from `simulate`: the rule when counts can answer the request. A run
-# that stops on anything but a time, or that asks for a particular index case,
-# a repeated run or a shared random stream, is simulated as individuals,
-# because those are decided per person.
+# Hand-off from `simulate`: the rule when counts can answer the request.
 function _count_route(
         model, initial_cases, index_types, max_cases, max_generations, max_time,
         stopping_rules, condition, rng
     )
-    max_time isa Real && isfinite(max_time) && max_time >= 0 || return nothing
+    bounded = if max_time === nothing
+        max_cases !== nothing
+    else
+        max_time isa Real && isfinite(max_time) && max_time >= 0
+    end
+    bounded || return nothing
     (
-        max_cases === nothing && max_generations === nothing &&
+        max_generations === nothing &&
             stopping_rules === nothing && condition === nothing &&
             initial_cases === nothing && index_types === nothing
     ) || return nothing
