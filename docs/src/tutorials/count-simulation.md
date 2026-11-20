@@ -15,6 +15,9 @@ A model with a [`Population`](@ref) of one group runs on counts too. On each day
 A [`ModelSpec`](@ref) with `GroupVaccination` (with `group_key = :type`) under [`CapacityConstrained`](@ref), and optionally `Scheduled` with a `start_time` and `end_time`, qualifies when the population is finite. The doses of the day interval `[t - 1, t)` reach the susceptibles before the contacts of day `t` are drawn, in the way [`simulate_by_generation`](@ref) gives them between generations: a dose reaches a susceptible with probability equal to their share of the population and protects with probability `efficacy`. This approximates the individual simulation, which offers doses to contacts as they are made, and agrees with it only when the budget reaches everyone. A specification this cannot apply runs as individuals.
 
 ```@example count_simulation
+using EpiBranch, Distributions, StableRNGs, DataFrames, Statistics
+
+generation_time = DiscreteNonParametric(1:4, [0.1, 0.4, 0.3, 0.2])
 sized = BranchingProcess(NegBin(2.0, 0.5), generation_time; population = Population(5000))
 campaign = CapacityConstrained(
     GroupVaccination(efficacy = 0.9, group_key = :type);
@@ -43,9 +46,6 @@ generation_time = DiscreteNonParametric(1:15, weights ./ sum(weights))
 The individual simulation of a model with this generation time runs the same discrete model as the count-level path, which allows the two to be compared.
 
 ```@example count_simulation
-using EpiBranch, Distributions, StableRNGs, DataFrames, Statistics
-
-generation_time = DiscreteNonParametric(1:4, [0.1, 0.4, 0.3, 0.2])
 model = BranchingProcess(NegBin(1.3, 0.5), generation_time)
 
 state = simulate(
