@@ -152,6 +152,9 @@ end
 
 Copy the counts, random streams and realised people. Either state can then be
 continued independently. The model, layers and count rule are shared.
+Realised people follow the copy-on-access behaviour of [`copy(::SimulationState)`](@ref):
+a reference obtained before copying can still change a person in both states.
+Access people through the state again after copying.
 """
 function Base.copy(s::CountSimulationState)
     return CountSimulationState(
