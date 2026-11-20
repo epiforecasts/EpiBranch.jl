@@ -26,9 +26,10 @@
 The rule by which [`simulate`](@ref) runs `model` as daily counts rather than
 as individuals, or `nothing` if `model` has to be simulated as individuals.
 A model qualifies when nothing about an individual feeds back on
-transmission and its generation time is a distribution on whole days. Adding a
-method for a new model type gives it the count-level path. The rule is a
-[`CountRule`](@ref).
+transmission, apart from the depletion of a finite population by type, and its
+generation time is a distribution on whole days. Adding a method for a new
+model type gives it the count-level path. The rule is a
+[`CountRule`](@ref), or a [`MultiTypeCountRule`](@ref) for several types.
 """
 count_rule(::TransmissionModel) = nothing
 
@@ -53,6 +54,28 @@ end
 # A gamma shape `k` in place of `ν`; infinite `k` is a point mass.
 CountRule(R, k::Real, g) = CountRule(R, _gamma_unit(k), g)
 
+"""
+    MultiTypeCountRule(types, alloc)
+
+The [`CountRule`](@ref) of a model with several types: `types[j]` is the rule of
+a type-`j` case (its `R` and `ν`, with the generation time `g` shared by every
+type), and `alloc[i, j]` is the probability that a person a type-`j` case
+infects is of type `i`. The infections of type `i` caused by a cohort of type
+`j` on a day are `Poisson(Λ R(t) g[lag] alloc[i, j])`.
+"""
+struct MultiTypeCountRule
+    types::Vector{CountRule}
+    alloc::Matrix{Float64}
+end
+
+_type_rules(rule::CountRule) = (rule,)
+_type_rules(rule::MultiTypeCountRule) = rule.types
+_alloc(::CountRule) = _SINGLE_TYPE_ALLOC
+_alloc(rule::MultiTypeCountRule) = rule.alloc
+_lags(rule::CountRule) = rule.g
+_lags(rule::MultiTypeCountRule) = first(rule.types).g
+const _SINGLE_TYPE_ALLOC = ones(1, 1)
+
 # A `ModelSpec` qualifies when the layers it adds do not act on transmission.
 function count_rule(spec::ModelSpec)
     isempty(spec.interventions) || return nothing
@@ -62,12 +85,36 @@ function count_rule(spec::ModelSpec)
 end
 
 function count_rule(model::BranchingProcess)
-    n_types(model) == 1 && length(model.infectiousness) == 1 || return nothing
+    length(model.infectiousness) == 1 || return nothing
     isempty(transmission_risks(model)) || return nothing
-    population(model) isa NoPopulation || return nothing
+    _counts_population(population(model), n_types(model)) || return nothing
     w = only(model.infectiousness)
     w.from === :infection && isempty(w.until) && w.calendar === nothing || return nothing
-    return _count_rule(w.offspring, w.kernel)
+    rule = _count_rule(w.offspring, w.kernel)
+    rule isa MultiTypeCountRule || n_types(model) == 1 || return nothing
+    return rule
+end
+
+# A population is depleted type by type, so it needs a size for each type.
+_counts_population(::NoPopulation, nt) = true
+_counts_population(::SinglePopulation, nt) = nt == 1
+_counts_population(p::GroupedPopulation, nt) = length(p.sizes) == nt
+
+_count_sizes(::NoPopulation) = nothing
+_count_sizes(p::SinglePopulation) = [p.size]
+_count_sizes(p::GroupedPopulation) = copy(p.sizes)
+
+# The law of the total offspring of each type, as a rule, with the split of a
+# case's offspring between types. A type that infects no one (an all-zero
+# column) has no offspring law to read.
+function _count_rule(o::MultiTypeOffspring, kernel)
+    rules = map(1:_n_types(o)) do j
+        R = o.R_by_type[j]
+        R <= 0 && return _daily_rule(_ConstantR(0.0), Dirac(1.0), kernel)
+        return _count_rule(_type_law(o.dist_fn, R, j), kernel)
+    end
+    any(isnothing, rules) && return nothing
+    return MultiTypeCountRule(CountRule[rules...], Matrix{Float64}(o.alloc_probs))
 end
 
 _count_rule(o::Poisson, kernel) = _daily_rule(_ConstantR(mean(o)), Dirac(1.0), kernel)
@@ -127,21 +174,26 @@ Fields:
 - `generation_counts`: for each day, the number infected in each generation
   from 0 up to `max_generation`, or up to the day itself where that is
   earlier, because a generation cannot exceed the day of infection (a single
-  entry, the count for the day, when generations are not tracked).
+  entry, the count for the day, when generations are not tracked). With several
+  types the entries of type 2 follow those of type 1, and so on.
+- `susceptibles`, `sizes`: the number of susceptibles left in each type and
+  the size of each type, or `nothing` when the population is unlimited.
 - `day`: the last day simulated.
 - `cumulative_cases`: the total number of cases.
 - `extinct`: whether transmission had died out.
 """
-mutable struct CountSimulationState{M, L, F} <: AbstractSimulationState
+mutable struct CountSimulationState{M, L, R} <: AbstractSimulationState
     model::M
     layers::L
-    rule::CountRule{F}
+    rule::R
     counts::Vector{Int}
     max_generation::Union{Nothing, Int}
     generation_counts::Vector{Vector{Int}}
     cohort_infectiousness::Vector{Vector{Float64}}
     cohort_members::Vector{Vector{Vector{Float64}}}
-    inflow::Vector{Matrix{Int}}
+    inflow::Vector{Array{Int, 3}}
+    susceptibles::Union{Nothing, Vector{Int}}
+    sizes::Union{Nothing, Vector{Int}}
     day::Int
     cumulative_cases::Int
     extinct::Bool
@@ -169,12 +221,15 @@ function Base.copy(s::CountSimulationState)
     return CountSimulationState(
         s.model, s.layers, s.rule, copy(s.counts), s.max_generation,
         deepcopy(s.generation_counts), deepcopy(s.cohort_infectiousness),
-        deepcopy(s.cohort_members), deepcopy(s.inflow), s.day, s.cumulative_cases,
+        deepcopy(s.cohort_members), deepcopy(s.inflow), _copy_or_nothing(s.susceptibles),
+        s.sizes, s.day, s.cumulative_cases,
         s.extinct, _copy_count_rng(s.rng), copy(s.individual_stream),
         built === nothing ? nothing : copy(built)
     )
 end
 
+_copy_or_nothing(::Nothing) = nothing
+_copy_or_nothing(x) = copy(x)
 _copy_count_rng(rng::Random.TaskLocalRNG) = copy(rng)
 _copy_count_rng(rng::AbstractRNG) = deepcopy(rng)
 
@@ -199,39 +254,64 @@ _next_class(max_generation, k) = max_generation === nothing ? k : k + 1
 # A generation is at least one day after the last, so day `d` holds at most
 # `d + 1` classes however large the cap.
 _classes_on(max_generation, d) = min(_n_classes(max_generation), d + 1)
+# The cohorts of a day are indexed by type and generation class together: the
+# `m` classes of type `j` follow those of type `j - 1`.
+_cohort_index(m, j, k) = (j - 1) * m + k
+_class_of(c, m) = (c - 1) % m + 1
+_type_of(c, m) = (c - 1) ÷ m + 1
 
 # Whether the last cohorts that can still infect anyone are all empty.
 function _count_exhausted(s::CountSimulationState)
-    first_day = max(0, s.day - length(s.rule.g) + 1)
+    first_day = max(0, s.day - length(_lags(s.rule)) + 1)
     g = s.max_generation
-    for d in (first_day + 1):(s.day + 1), k in eachindex(s.generation_counts[d])
-        _infects(g, k) && s.generation_counts[d][k] > 0 && return false
+    for d in (first_day + 1):(s.day + 1), c in eachindex(s.generation_counts[d])
+        m = _classes_on(g, d - 1)
+        _infects(g, _class_of(c, m)) && s.generation_counts[d][c] > 0 && return false
     end
     return true
 end
 
 function _count_extinct(s::CountSimulationState)
     g = s.max_generation
-    g !== nothing && any(c -> length(c) > g && c[g + 1] > 0, s.generation_counts) && return false
+    if g !== nothing
+        for d in eachindex(s.generation_counts), j in eachindex(_type_rules(s.rule))
+            m = _classes_on(g, d - 1)
+            m == g + 1 && s.generation_counts[d][_cohort_index(m, j, g + 1)] > 0 && return false
+        end
+    end
     return _count_exhausted(s)
 end
 
 function _count_step!(s::CountSimulationState)
-    rule = s.rule
+    rules = _type_rules(s.rule)
+    alloc = _alloc(s.rule)
+    lags = _lags(s.rule)
+    nt = length(rules)
     g = s.max_generation
     t = s.day + 1
-    r = _renewal_R_at(rule.R, t)
-    ncls = _classes_on(g, t)
-    inflow = zeros(Int, length(rule.g), ncls)
-    by_class = zeros(Int, ncls)
-    for lag in 1:min(length(rule.g), t), k in eachindex(s.generation_counts[t - lag + 1])
+    r = [_renewal_R_at(rule.R, t) for rule in rules]
+    m = _classes_on(g, t)
+    inflow = zeros(Int, length(lags), nt * _classes_on(g, t - 1), nt)
+    by_class = zeros(Int, nt * m)
+    # The cohorts that infect on this day, with the mean number each infects.
+    sources = Tuple{Int, Int, Int, Int, Float64}[]
+    for lag in 1:min(length(lags), t), c in eachindex(s.generation_counts[t - lag + 1])
+        ms = _classes_on(g, t - lag)
+        k, j = _class_of(c, ms), _type_of(c, ms)
         _infects(g, k) || continue
-        n = s.generation_counts[t - lag + 1][k]
-        n == 0 && continue
-        mean_infections = s.cohort_infectiousness[t - lag + 1][k] * r * rule.g[lag]
-        x = mean_infections > 0 ? rand(s.rng, Poisson(mean_infections)) : 0
-        inflow[lag, k] = x
-        by_class[_next_class(g, k)] += x
+        s.generation_counts[t - lag + 1][c] == 0 && continue
+        mean_infections = s.cohort_infectiousness[t - lag + 1][c] * r[j] * lags[lag]
+        push!(sources, (lag, c, j, k, mean_infections))
+    end
+    if s.susceptibles === nothing
+        for (lag, c, j, k, mean_infections) in sources, i in 1:nt
+            mu = mean_infections * alloc[i, j]
+            x = mu > 0 ? rand(s.rng, Poisson(mu)) : 0
+            inflow[lag, c, i] = x
+            by_class[_cohort_index(m, i, _next_class(g, k))] += x
+        end
+    else
+        _deplete_sources!(s, sources, alloc, inflow, by_class, m)
     end
     push!(s.inflow, inflow)
     push!(s.counts, sum(by_class))
@@ -243,13 +323,39 @@ function _count_step!(s::CountSimulationState)
     return s
 end
 
+# With a finite population, the contacts of a day are Poisson with the mean of
+# their type, and thinned as in `simulate_by_generation` against the
+# susceptibles of the type. The people infected are then shared among the
+# cohorts in proportion to the contacts each makes.
+function _deplete_sources!(s, sources, alloc, inflow, by_class, m)
+    g = s.max_generation
+    nt = size(alloc, 1)
+    rates = zeros(nt)
+    for (_, _, j, _, mean_infections) in sources, i in 1:nt
+        rates[i] += mean_infections * alloc[i, j]
+    end
+    kept = _deplete!(s.rng, PerContactDepletion(), rates, s.susceptibles, s.sizes)
+    for i in 1:nt
+        kept[i] == 0 && continue
+        weights = [mean_infections * alloc[i, j] for (_, _, j, _, mean_infections) in sources]
+        shares = rand(s.rng, Multinomial(kept[i], weights ./ sum(weights)))
+        for (n, (lag, c, _, k, _)) in zip(shares, sources)
+            inflow[lag, c, i] = n
+            by_class[_cohort_index(m, i, _next_class(g, k))] += n
+        end
+    end
+    return s
+end
+
 # Draw the infectiousness of each generation's cohort of a new day.
 function _push_cohorts!(s::CountSimulationState, by_class)
+    rules = _type_rules(s.rule)
+    m = length(by_class) ÷ length(rules)
     total = zeros(length(by_class))
     members = [Float64[] for _ in by_class]
-    for k in eachindex(by_class)
-        _infects(s.max_generation, k) || continue
-        total[k], members[k] = _draw_cohort(s.rule, by_class[k], s.rng)
+    for c in eachindex(by_class)
+        _infects(s.max_generation, _class_of(c, m)) || continue
+        total[c], members[c] = _draw_cohort(rules[_type_of(c, m)], by_class[c], s.rng)
     end
     push!(s.cohort_infectiousness, total)
     push!(s.cohort_members, members)
@@ -273,25 +379,32 @@ function _count_advance!(s::CountSimulationState, max_time, max_cases = nothing)
 end
 
 function _simulate_counts(
-        model, rule::CountRule, n_initial::Int, max_time, max_cases, rng,
-        max_generations = nothing
+        model, rule, n_initial::Int, max_time, max_cases, rng,
+        max_generations = nothing, index_types = nothing
     )
     stream = Xoshiro(rand(rng, UInt64))
     layers = (
         attributes = attributes(model), progression = progression(model),
         observation = observation(model),
     )
-    ncls = _classes_on(max_generations, 0)
-    by_class = zeros(Int, ncls)
-    by_class[1] = n_initial
+    nt = length(_type_rules(rule))
+    by_class = _index_counts(index_types, n_initial, nt, rng)
+    sizes = _count_sizes(population(process_of(model)))
     state = CountSimulationState(
         process_of(model), layers, rule, [n_initial], max_generations, [by_class],
-        Vector{Float64}[], Vector{Vector{Float64}}[], [zeros(Int, length(rule.g), ncls)],
+        Vector{Float64}[], Vector{Vector{Float64}}[],
+        [zeros(Int, length(_lags(rule)), nt, nt)],
+        sizes === nothing ? nothing : sizes .- by_class, sizes,
         0, n_initial, n_initial == 0, rng, stream, nothing
     )
     _push_cohorts!(state, by_class)
     return _count_advance!(state, max_time, max_cases)
 end
+
+# The index cases of each type: those named by `index_types`, or drawn
+# uniformly over the types as the individual simulation does.
+_index_counts(::Any, n, nt, rng) = nt == 1 ? [n] : rand(rng, Multinomial(n, fill(1 / nt, nt)))
+_index_counts(types::AbstractVector, n, nt, rng) = [count(==(j), types) for j in 1:nt]
 
 process_of(model::TransmissionModel) = model
 process_of(spec::ModelSpec) = spec.process
@@ -310,7 +423,8 @@ function _count_route(
     (
         (default_generations || max_generations != _DEFAULT_MAX_GENERATIONS) &&
             stopping_rules === nothing && condition === nothing &&
-            initial_cases === nothing && index_types === nothing
+            initial_cases === nothing &&
+            (index_types === nothing || index_types isa AbstractVector)
     ) || return nothing
     rng isa CommonRandomNumbers && return nothing
     return count_rule(model)
@@ -358,35 +472,46 @@ function _realise!(s::CountSimulationState)
     rng = copy(s.individual_stream)
     layers = s.layers
     sim = new_state(s.model, layers.progression, layers.attributes, rng)
+    rules = _type_rules(s.rule)
+    nt = length(rules)
     n0 = s.counts[1]
-    add_individuals!(sim, n0, (); infection_time = 0)
+    add_individuals!(
+        sim, n0, (); n_types = nt, infection_time = 0,
+        types = vcat([fill(j, s.generation_counts[1][j]) for j in 1:nt]...)
+    )
     seed!(sim, 1:n0, (), sim.transitions)
     for (i, ind) in enumerate(individuals(sim))
         ind.state[:index] = true
         _settle_case!(sim, ind, (), i)
     end
     g = s.max_generation
-    ids = [[Int[] for _ in 1:_classes_on(g, d)] for d in 0:s.day]
-    append!(ids[1][1], 1:n0)
-    shares = [[Float64[] for _ in 1:_classes_on(g, d)] for d in 0:s.day]
+    ids = [[Int[] for _ in 1:(nt * _classes_on(g, d))] for d in 0:s.day]
+    for j in 1:nt
+        append!(ids[1][j], findall(i -> individual_type(i) == j, individuals(sim)))
+    end
+    shares = [[Float64[] for _ in 1:(nt * _classes_on(g, d))] for d in 0:s.day]
     for d in 1:s.day
-        for lag in axes(s.inflow[d + 1], 1), k in eachindex(s.generation_counts[max(d - lag, 0) + 1])
-            x = s.inflow[d + 1][lag, k]
+        m = _classes_on(g, d)
+        for lag in axes(s.inflow[d + 1], 1), c in axes(s.inflow[d + 1], 2), i in 1:nt
+            x = s.inflow[d + 1][lag, c, i]
             x == 0 && continue
             src = d - lag
-            isempty(shares[src + 1][k]) &&
-                (shares[src + 1][k] = _member_shares(s.rule, s.generation_counts[src + 1][k], s.cohort_members[src + 1][k], rng))
-            cumulative = shares[src + 1][k]
+            k, j = _class_of(c, _classes_on(g, src)), _type_of(c, _classes_on(g, src))
+            isempty(shares[src + 1][c]) &&
+                (shares[src + 1][c] = _member_shares(rules[j], s.generation_counts[src + 1][c], s.cohort_members[src + 1][c], rng))
+            cumulative = shares[src + 1][c]
             for _ in 1:x
                 member = min(searchsortedfirst(cumulative, rand(rng)), length(cumulative))
-                parent = individuals(sim)[ids[src + 1][k][member]]
+                parent = individuals(sim)[ids[src + 1][c][member]]
                 sim.current_generation = parent.generation
-                child = make_contact!(sim, parent, d)
+                child = make_contact!(
+                    sim, parent, d; type_idx = nt > 1 ? i : NoTypeLabels()
+                )
                 child.state[:infected] = true
                 child.state[:index] = false
                 _set_onset_from_incubation!(child)
                 _settle_case!(sim, child, (), length(individuals(sim)))
-                push!(ids[d + 1][_next_class(g, k)], length(individuals(sim)))
+                push!(ids[d + 1][_cohort_index(m, i, _next_class(g, k))], length(individuals(sim)))
             end
         end
     end

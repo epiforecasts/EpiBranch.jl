@@ -356,6 +356,88 @@ using EpiBranch, Distributions, Random, StableRNGs, Statistics, DataFrames
         @test maximum(i.generation for i in individuals(state)) <= 4
     end
 
+    @testset "several types and a finite population" begin
+        M = [1.2 0.4; 0.3 0.9]
+        T = 8
+        by_type(state) = begin
+            out = zeros(Int, T + 1, 2)
+            for ind in individuals(state)
+                get(ind.state, :infected, false) || continue
+                out[Int(ind.infection_time) + 1, individual_type(ind)] += 1
+            end
+            out
+        end
+        # Mean daily cases by type of the count path and the individual
+        # simulation, as a z-score of each cell.
+        function max_z(model; n = 600, init)
+            rng = StableRNG(3)
+            counts = [
+                by_type(
+                    simulate(
+                        model; init..., max_time = T, max_cases = nothing,
+                        max_generations = nothing, rng
+                    )
+                ) for _ in 1:n
+            ]
+            people = [
+                by_type(simulate(model; init..., stopping_rules = [MaxTime(Float64(T))], rng))
+                    for _ in 1:n
+            ]
+            m1, m2 = mean(counts), mean(people)
+            se = sqrt.((var(counts) .+ var(people)) ./ n) .+ 1.0e-9
+            return maximum(abs.((m1 .- m2) ./ se))
+        end
+        init = (; index_types = [1, 1, 2])
+        @test max_z(BranchingProcess(M, R -> NegBin(R, 0.8), gt); init) < 4
+        pop = Population([60, 40])
+        @test max_z(BranchingProcess(M, R -> Poisson(R), gt; population = pop); init) < 4
+        @test max_z(
+            BranchingProcess(1.8 .* M, R -> NegBin(R, 0.8), gt; population = Population([80, 50]));
+            init
+        ) < 4
+        @test max_z(
+            BranchingProcess(NegBin(2.0, 0.8), gt; population = Population(120));
+            init = (; n_initial = 3)
+        ) < 4
+
+        # The people of a state have the types and the susceptibles of its counts.
+        model = BranchingProcess(1.8 .* M, R -> NegBin(R, 0.8), gt; population = Population([80, 50]))
+        state = simulate(
+            model; index_types = [1, 1, 2], max_time = 12, max_cases = nothing,
+            max_generations = nothing, rng = StableRNG(5)
+        )
+        @test state isa CountSimulationState
+        cases(state) = [
+            count(i -> individual_type(i) == j, individuals(state)) for j in 1:2
+        ]
+        @test cases(state) == [80, 50] .- state.susceptibles
+        @test all(state.susceptibles .>= 0)
+        @test sum(cases(state)) == state.cumulative_cases
+        @test [individual_type(i) for i in individuals(state)[1:3]] == [1, 1, 2]
+        @test all(
+            i -> individual_type(i) in 1:2 && (i.parent_id == 0 || i.infection_time > individuals(state)[i.parent_id].infection_time),
+            individuals(state)
+        )
+        # A continuation keeps depleting the same susceptibles.
+        before = copy(state.susceptibles)
+        copied = copy(state)
+        simulate(model, state; max_time = 16)
+        @test all(state.susceptibles .<= before)
+        @test copied.susceptibles == before
+        @test cases(state) == [80, 50] .- state.susceptibles
+
+        # A type that infects no one, and a generation cap.
+        sink = BranchingProcess([1.5 0.0; 0.8 0.0], R -> Poisson(R), gt)
+        state = simulate(
+            sink; index_types = [1, 1], max_time = 6, max_cases = nothing,
+            max_generations = 3, rng = StableRNG(2)
+        )
+        @test state isa CountSimulationState
+        @test all(i -> individual_type(i) == 1 || i.parent_id != 0, individuals(state))
+        @test maximum(i.generation for i in individuals(state)) <= 3
+        @test state.counts == sum.(state.generation_counts)
+    end
+
     @testset "which runs take the count-level path" begin
         model = BranchingProcess(Poisson(1.2), gt)
         @test count_run(model; max_time = 5, rng = StableRNG(1)) isa CountSimulationState
@@ -372,7 +454,16 @@ using EpiBranch, Distributions, Random, StableRNGs, Statistics, DataFrames
         # population, a window that ends and interventions are individual.
         @test EpiBranch.count_rule(BranchingProcess(Poisson(1.2), Gamma(2.0, 1.0))) === nothing
         @test EpiBranch.count_rule(BranchingProcess(Poisson(1.2))) === nothing
-        @test EpiBranch.count_rule(BranchingProcess(Poisson(1.2), gt; population = Population(1000))) === nothing
+        @test EpiBranch.count_rule(BranchingProcess(Poisson(1.2), gt; population = Population(1000))) !== nothing
+        M = [1.2 0.4; 0.3 0.9]
+        two = BranchingProcess(M, R -> NegBin(R, 0.8), gt)
+        @test EpiBranch.count_rule(two) isa EpiBranch.MultiTypeCountRule
+        @test EpiBranch.count_rule(two).alloc ≈ [0.8 0.4 / 1.3; 0.2 0.9 / 1.3] atol = 1.0e-12
+        @test EpiBranch.count_rule(BranchingProcess(M, R -> Poisson(R), gt; population = Population([50, 30]))) !== nothing
+        @test EpiBranch.count_rule(BranchingProcess(M, R -> Poisson(R), gt; population = Population(80))) === nothing
+        @test EpiBranch.count_rule(BranchingProcess(M, R -> Binomial(5, R / 5), gt)) === nothing
+        @test simulate(two; kw..., max_time = 5, index_types = [1, 2]) isa CountSimulationState
+        @test simulate(two; kw..., max_time = 5, index_types = DiscreteUniform(1, 2)) isa SimulationState
         @test EpiBranch.count_rule(BranchingProcess(Binomial(5, 0.3), gt)) === nothing
         @test EpiBranch.count_rule(BranchingProcess(Poisson(1.2), DiscreteNonParametric(0:2, [0.2, 0.5, 0.3]))) ===
             nothing

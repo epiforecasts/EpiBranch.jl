@@ -215,13 +215,14 @@ function _contained_each(model, n::Int, cap; kwargs...)
     process = process_of(model)
     validate_process_windows(process, progression(process))
     _warn_incomplete_terminal_coverage(progression(process))
-    n_initial = _build_sim_opts(
+    sim_opts = _build_sim_opts(
         process, o.n_initial, o.initial_cases, o.index_types, o.max_cases,
         o.max_generations, o.max_time, o.stopping_rules
-    ).n_initial
+    )
     run(rng) = _is_contained(
         _simulate_counts(
-            model, rule, n_initial, o.max_time, o.max_cases, rng, o.max_generations
+            model, rule, sim_opts.n_initial, o.max_time, o.max_cases, rng,
+            o.max_generations, sim_opts.index_types
         ), cap
     )
     o.parallel && Threads.nthreads() > 1 &&
