@@ -1,1 +1,1 @@
-`prepare_generations(spec, state)` builds the vaccination campaigns of a `ModelSpec` once, and `simulate` accepts the result in place of the spec to continue a `GenerationCounts`. Continuing with a `ModelSpec` directly builds the campaigns on every call.
+`prepare_generations(spec, state)` builds the vaccination campaigns of a `ModelSpec` once. `simulate` accepts the result in place of the spec to continue a `GenerationCounts`. Continuing with a `ModelSpec` directly builds the campaigns on every call.

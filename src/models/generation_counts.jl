@@ -468,8 +468,8 @@ end
 """
     prepare_generations(spec::ModelSpec, state::GenerationCounts)
 
-Build the vaccination campaigns of `spec` for continuing `state`, which sets the
-`generation_length` and whether the population is finite. Pass the result to
+Build the vaccination campaigns of `spec` for continuing `state`. The
+`generation_length` and whether the population is finite come from `state`. Pass the result to
 `simulate` in place of `spec`.
 """
 function prepare_generations(spec::ModelSpec, state::GenerationCounts)
