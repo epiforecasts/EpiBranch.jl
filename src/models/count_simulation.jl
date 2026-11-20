@@ -464,7 +464,7 @@ end
 _next_member!(cumulative::Vector{Float64}, rng) =
     min(searchsortedfirst(cumulative, rand(rng)), length(cumulative))
 
-# A cohort's offspring by their parent member, shuffled and taken in turn.
+# The offspring of a cohort, labelled by parent member, shuffled and taken in turn.
 mutable struct _OffspringPool
     members::Vector{Int}
     next::Int
