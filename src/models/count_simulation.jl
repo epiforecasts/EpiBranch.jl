@@ -126,8 +126,8 @@ Fields:
   `nothing` when generations are not tracked.
 - `generation_counts`: for each day, the number infected in each generation
   from 0 up to `max_generation`, or up to the day itself where that is
-  earlier, since a generation cannot exceed the day it is infected (a single
-  entry, the day's count, when generations are not tracked).
+  earlier, because a generation cannot exceed the day of infection (a single
+  entry, the count for the day, when generations are not tracked).
 - `day`: the last day simulated.
 - `cumulative_cases`: the total number of cases.
 - `extinct`: whether transmission had died out.
