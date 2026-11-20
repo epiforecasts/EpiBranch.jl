@@ -470,8 +470,7 @@ end
 
 Build the vaccination campaigns of `spec` for continuing `state`, which sets the
 `generation_length` and whether the population is finite. Pass the result to
-`simulate` in place of `spec`. It holds no shared state, so threads may use it
-at once.
+`simulate` in place of `spec`.
 """
 function prepare_generations(spec::ModelSpec, state::GenerationCounts)
     campaigns = _generation_campaigns(
@@ -489,8 +488,8 @@ end
 Continue `state` as for a `BranchingProcess`, applying the vaccination
 campaigns of `spec` between generations as [`simulate_by_generation`](@ref)
 does. Pass the same `spec` the state was started with: a continuation with the
-bare model applies no campaign. A spec builds its campaigns on every call. For
-many continuations, pass the result of [`prepare_generations`](@ref) instead.
+bare model applies no campaign. Passing a [`prepare_generations`](@ref) result
+instead of `spec` reuses its campaigns.
 """
 function simulate(
         spec::ModelSpec, state::GenerationCounts;
