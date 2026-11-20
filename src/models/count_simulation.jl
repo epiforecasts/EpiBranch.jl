@@ -95,7 +95,6 @@ function count_rule(model::BranchingProcess)
     return rule
 end
 
-# A population is depleted type by type, so it needs a size for each type.
 _counts_population(::NoPopulation, nt) = true
 _counts_population(::SinglePopulation, nt) = nt == 1
 _counts_population(p::GroupedPopulation, nt) = length(p.sizes) == nt
@@ -104,9 +103,7 @@ _count_sizes(::NoPopulation) = nothing
 _count_sizes(p::SinglePopulation) = [p.size]
 _count_sizes(p::GroupedPopulation) = copy(p.sizes)
 
-# The law of the total offspring of each type, as a rule, with the split of a
-# case's offspring between types. A type that infects no one (an all-zero
-# column) has no offspring law to read.
+# A type that infects no one has no offspring law to read.
 function _count_rule(o::MultiTypeOffspring, kernel)
     rules = map(1:_n_types(o)) do j
         R = o.R_by_type[j]
@@ -221,15 +218,13 @@ function Base.copy(s::CountSimulationState)
     return CountSimulationState(
         s.model, s.layers, s.rule, copy(s.counts), s.max_generation,
         deepcopy(s.generation_counts), deepcopy(s.cohort_infectiousness),
-        deepcopy(s.cohort_members), deepcopy(s.inflow), _copy_or_nothing(s.susceptibles),
+        deepcopy(s.cohort_members), deepcopy(s.inflow), s.susceptibles === nothing ? nothing : copy(s.susceptibles),
         s.sizes, s.day, s.cumulative_cases,
         s.extinct, _copy_count_rng(s.rng), copy(s.individual_stream),
         built === nothing ? nothing : copy(built)
     )
 end
 
-_copy_or_nothing(::Nothing) = nothing
-_copy_or_nothing(x) = copy(x)
 _copy_count_rng(rng::Random.TaskLocalRNG) = copy(rng)
 _copy_count_rng(rng::AbstractRNG) = deepcopy(rng)
 
@@ -293,7 +288,6 @@ function _count_step!(s::CountSimulationState)
     m = _classes_on(g, t)
     inflow = zeros(Int, length(lags), nt * _classes_on(g, t - 1), nt)
     by_class = zeros(Int, nt * m)
-    # The cohorts that infect on this day, with the mean number each infects.
     sources = Tuple{Int, Int, Int, Int, Float64}[]
     for lag in 1:min(length(lags), t), c in eachindex(s.generation_counts[t - lag + 1])
         ms = _classes_on(g, t - lag)
@@ -323,10 +317,8 @@ function _count_step!(s::CountSimulationState)
     return s
 end
 
-# With a finite population, the contacts of a day are Poisson with the mean of
-# their type, and thinned as in `simulate_by_generation` against the
-# susceptibles of the type. The people infected are then shared among the
-# cohorts in proportion to the contacts each makes.
+# Thin the day's contacts against the susceptibles of each type, then share the
+# infections among the cohorts in proportion to the contacts each made.
 function _deplete_sources!(s, sources, alloc, inflow, by_class, m)
     g = s.max_generation
     nt = size(alloc, 1)
@@ -401,8 +393,6 @@ function _simulate_counts(
     return _count_advance!(state, max_time, max_cases)
 end
 
-# The index cases of each type: those named by `index_types`, or drawn
-# uniformly over the types as the individual simulation does.
 _index_counts(::Any, n, nt, rng) = nt == 1 ? [n] : rand(rng, Multinomial(n, fill(1 / nt, nt)))
 _index_counts(types::AbstractVector, n, nt, rng) = [count(==(j), types) for j in 1:nt]
 
