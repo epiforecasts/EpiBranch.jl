@@ -276,7 +276,7 @@ using EpiBranch, Distributions, Random, StableRNGs, Statistics, DataFrames
             @test abs(on_counts.proportion - on_individuals.proportion) <
                 5 * hypot(on_counts.mcse, on_individuals.mcse)
         end
-        # The count path ignores a bound it cannot honour only by not being taken.
+        # A model that qualifies runs on counts and still returns `n` outcomes.
         model = BranchingProcess(Poisson(1.3), gt)
         @test containment_probability(
             model, 50; max_cases = 60, max_generations = nothing, rng = StableRNG(1)
@@ -291,7 +291,7 @@ using EpiBranch, Distributions, Random, StableRNGs, Statistics, DataFrames
         model = BranchingProcess(Poisson(1.2), gt)
         @test count_run(model; max_time = 5, rng = StableRNG(1)) isa CountSimulationState
         kw = (; max_time = 5, max_cases = nothing, max_generations = nothing, rng = StableRNG(1))
-        # A generation, or a rule, stops a run by person.
+        # A generation limit or a stopping rule needs individuals.
         @test simulate(model; max_time = 5, rng = StableRNG(1)) isa SimulationState
         @test simulate(model; kw..., max_cases = 100) isa CountSimulationState
         @test simulate(model; kw..., max_time = nothing, max_cases = 100) isa CountSimulationState
