@@ -163,6 +163,9 @@ function _redraw_until_no_onset_by!(ind, state, now)
         no_onset_yet(ind) = get(ind.state, :asymptomatic, false)::Bool ||
             ind.infection_time + _state_real(ind.state, :incubation_period, NaN) > now
         no_onset_yet(ind) && return nothing
+        # The previous draw's flag would otherwise keep a symptomatic case
+        # symptomatic, so an asymptomatic outcome could never come up.
+        delete!(ind.state, :asymptomatic)
         _apply_attributes!(state.attributes, state.rng, ind)
     end
     throw(
@@ -203,9 +206,15 @@ function _initialise_observed(
     T = _timetype(state)
     generation, chain = _generations(obs.parent, obs.inf)
     for i in 1:n
-        ind = _create_individual(state, obs.parent[i], chain[i], i, obs.inf[i])
+        # A case with a listed onset is symptomatic. The flag is set before the
+        # attributes run because traits drawn from `:asymptomatic` read it.
+        listed = !isnan(obs.onset[i])
+        prepare = listed ? (ind -> (ind.state[:asymptomatic] = false)) : _no_prepare
+        ind = _create_individual(
+            state, obs.parent[i], chain[i], i, obs.inf[i]; prepare
+        )
         ind.generation = generation[i]
-        if isnan(obs.onset[i])
+        if !listed
             _redraw_until_no_onset_by!(ind, state, now_)
         else
             ind.state[:incubation_period] = T(obs.onset[i] - obs.inf[i])
@@ -259,7 +268,7 @@ function _initialise_observed(
 end
 
 """
-    initialise_state(model, cases::AbstractDataFrame; now = nothing, rng = Random.default_rng())
+    state_from_cases(model, cases::AbstractDataFrame; now = nothing, rng = Random.default_rng())
 
 Build the [`SimulationState`](@ref) of an outbreak that has already started,
 from a table of the cases observed so far. Continue it with
@@ -316,11 +325,11 @@ cases = DataFrame(
     id = 1:4, parent_id = [missing, 1, 1, 2],
     infection_time = [0.0, 3.1, 4.6, 7.2],
 )
-state = initialise_state(model, cases; rng = Xoshiro(1))
+state = state_from_cases(model, cases; rng = Xoshiro(1))
 simulate(model, state; max_time = 21.0)
 ```
 """
-function initialise_state(
+function state_from_cases(
         model::BranchingProcess, cases::AbstractDataFrame;
         now::Union{Real, Nothing} = nothing, rng::AbstractRNG = Random.default_rng()
     )
@@ -331,7 +340,7 @@ function initialise_state(
     )
 end
 
-function initialise_state(
+function state_from_cases(
         spec::ModelSpec, cases::AbstractDataFrame;
         now::Union{Real, Nothing} = nothing, rng::AbstractRNG = Random.default_rng()
     )

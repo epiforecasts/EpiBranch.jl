@@ -304,11 +304,12 @@ simulation: the cases and the contacts they exposed for a
 
 To project an outbreak that has already started, build its state from a table
 of the cases observed so far with
-[`initialise_state`](@ref EpiBranch.initialise_state) and continue it with
+[`state_from_cases`](@ref) and continue it with
 `simulate(model, state; max_time)`.
 
 ```@docs
 simulate
+state_from_cases
 outbreak_state_space
 SimOpts
 AbstractStoppingRule
@@ -321,7 +322,7 @@ SimulationState
 CountSimulationState
 EpiBranch.count_rule
 EpiBranch.CountRule
-EpiBranch.MultiTypeCountRule
+EpiBranch.CountRules
 EpiBranch.OffspringCountRule
 individuals
 Base.copy(::SimulationState)
