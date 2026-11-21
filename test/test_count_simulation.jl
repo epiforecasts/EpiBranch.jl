@@ -534,8 +534,7 @@ using EpiBranch, Distributions, Random, StableRNGs, Statistics, DataFrames
         @test EpiBranch.count_rule(
             ModelSpec(BranchingProcess(Poisson(2.5), gt); interventions = spec(10.0).interventions)
         ) === nothing
-        # A per-group budget that does not fit the population is an error, not
-        # a reason to run as individuals.
+        # A per-group budget that does not fit the population raises an error.
         @test_throws ArgumentError EpiBranch.count_rule(
             ModelSpec(
                 model;

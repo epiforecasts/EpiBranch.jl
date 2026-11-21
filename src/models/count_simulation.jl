@@ -125,9 +125,9 @@ function count_rule(spec::ModelSpec)
     rule === nothing && return nothing
     isempty(spec.interventions) && return rule
     _count_sizes(population(spec.process)) === nothing && return nothing
-    # Only the reading of the interventions decides eligibility. A budget that
-    # does not fit the population is a configuration error and surfaces, as it
-    # does in `simulate_by_generation`.
+    # Eligibility depends only on how the interventions are read. A budget that
+    # does not fit the population is a configuration error and raises, as in
+    # `simulate_by_generation`.
     campaigns = try
         [_campaign(iv, (0.0, Inf), nothing) for iv in spec.interventions]
     catch err
