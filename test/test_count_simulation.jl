@@ -527,7 +527,7 @@ using EpiBranch, Distributions, Random, StableRNGs, Statistics, DataFrames
         # A dose that protects with probability `efficacy` removes that share.
         partial = run(spec(Steps([-0.5, 0.5], [0.0, 400.0, 0.0]); efficacy = 0.5); n = 100)
         @test mean(only(s.susceptibles) + s.cumulative_cases for s in partial) ≈ 1000 - 200 * 0.995 atol = 15
-        # A campaign a count cannot apply is run as individuals.
+        # A campaign that counts cannot apply runs as individuals.
         @test EpiBranch.count_rule(
             ModelSpec(model; interventions = [GroupVaccination(efficacy = 1.0, group_key = :type)])
         ) === nothing
@@ -549,7 +549,7 @@ using EpiBranch, Distributions, Random, StableRNGs, Statistics, DataFrames
         @test simulate(model; kw..., condition = 1:1000) isa SimulationState
         @test simulate(model; kw..., rng = CommonRandomNumbers(1)) isa SimulationState
         # A continuous generation time, a function-valued offspring, a window
-        # that ends and interventions a count cannot apply are individual.
+        # that ends and interventions that counts cannot apply run as individuals.
         @test EpiBranch.count_rule(BranchingProcess(Poisson(1.2), Gamma(2.0, 1.0))) === nothing
         @test EpiBranch.count_rule(BranchingProcess(Poisson(1.2))) === nothing
         @test EpiBranch.count_rule(BranchingProcess(Poisson(1.2), gt; population = Population(1000))) !== nothing

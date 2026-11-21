@@ -27,7 +27,7 @@ The rule by which [`simulate`](@ref) runs `model` as daily counts rather than
 as individuals, or `nothing` if `model` has to be simulated as individuals.
 A model qualifies when nothing about an individual feeds back on
 transmission, apart from the depletion of a finite population by type and the
-vaccination campaigns that count-level doses can apply to one, and its
+vaccination campaigns that doses given to counts can apply to it, and its
 generation time is a distribution on whole days. Adding a method for a new
 model type gives it the count-level path. The rule is a
 [`CountRule`](@ref), or a [`MultiTypeCountRule`](@ref) for several types.
