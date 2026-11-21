@@ -164,7 +164,11 @@ end
     end
     x0 = [1.2, 0.5, 2.0, 2.0, 0.7, 2.0]
     g_forward = DifferentiationInterface.gradient(moment_loglik, AutoForwardDiff(), x0)
-    for backend in (AutoMooncake(; config = nothing), AutoEnzyme(; mode = Enzyme.Reverse))
+    backends = Any[AutoMooncake(; config = nothing)]
+    # Enzyme's reverse pass through this nested solve crashes the Julia 1.10
+    # (lts) runtime with a segfault, so it is exercised on 1.11 and later only.
+    VERSION >= v"1.11" && push!(backends, AutoEnzyme(; mode = Enzyme.Reverse))
+    for backend in backends
         g = DifferentiationInterface.gradient(moment_loglik, backend, x0)
         @test g ≈ g_forward rtol = 1.0e-6
     end
