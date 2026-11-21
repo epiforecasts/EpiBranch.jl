@@ -403,11 +403,16 @@ function _fold_reporting(progression, base, obs, attrs)
     return ThinnedChainSize(base, ρ)
 end
 
+# Whether `offspring` has a closed-form chain-size law to read.
+function _has_exact_chain_size(offspring)
+    hasmethod(chain_size_distribution, Tuple{typeof(offspring)}) || return false
+    return !(offspring isa GeneratingFunctionOffspring && offspring.pmf === nothing)
+end
+
 # Use simulation when no exact law is available; propagate errors within exact laws.
 # Callable reporting probabilities depend on individuals and require simulation.
 function _exact_reported_chain_size(offspring, prog, obs, attrs)
-    hasmethod(chain_size_distribution, Tuple{typeof(offspring)}) || return nothing
-    offspring isa GeneratingFunctionOffspring && offspring.pmf === nothing && return nothing
+    _has_exact_chain_size(offspring) || return nothing
     count(_is_reporting, prog) > 1 && return nothing
     any(t -> _is_reporting(t) && !(reporting_probability(t) isa Real), prog) && return nothing
     # A progression the closed form cannot read (a terminal step, or a step

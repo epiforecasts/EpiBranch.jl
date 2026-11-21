@@ -3,6 +3,7 @@ using DifferentiationInterface
 import DifferentiationInterfaceTest as DIT
 using FiniteDifferences
 using ForwardDiff
+import Enzyme
 import Mooncake
 using StableRNGs
 
@@ -546,4 +547,22 @@ end
     )
     @test ForwardDiff.derivative(θ -> qred(θ)[1], 0.9) ≈ fdm(θ -> qred(θ)[1], 0.9) rtol = 1.0e-5
     @test ForwardDiff.derivative(θ -> qred(θ)[2], 0.9) == 0
+end
+
+# Reverse-mode Enzyme through the closed-form likelihood of a `ModelSpec` with
+# no progression. The simulation fallback is marked inactive by the extension,
+# so only the analytical path is compiled.
+@testset "AD (Enzyme reverse mode)" begin
+    sizes_data = [1, 2, 1, 3, 1, 5, 2]
+    enzyme = AutoEnzyme(; mode = Enzyme.Reverse)
+    spec(R) = ModelSpec(BranchingProcess(Poisson(R[1])))
+
+    cases = [
+        R -> loglikelihood(ChainSizes(sizes_data), spec(R)),
+        R -> logpdf(chain_size_distribution(spec(R)), 3),
+    ]
+    for f in cases
+        @test DifferentiationInterface.gradient(f, enzyme, [0.5]) ≈
+            DifferentiationInterface.gradient(f, AutoForwardDiff(), [0.5]) rtol = 1.0e-6
+    end
 end
