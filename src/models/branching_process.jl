@@ -439,6 +439,7 @@ end
 # shared accessors (in model_inputs.jl and model_spec.jl) resolve to empty
 # defaults for a bare process, so `_progvec` stays here for the spec to use.
 _progvec(p) = convert(Vector{AbstractClinicalTransition}, p)
+_progvec(::Tuple{}) = AbstractClinicalTransition[]
 
 population(m::BranchingProcess) = m.population
 

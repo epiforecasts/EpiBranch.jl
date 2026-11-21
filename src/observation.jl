@@ -403,6 +403,19 @@ function _fold_reporting(progression, base, obs, attrs)
     return ThinnedChainSize(base, ρ)
 end
 
+# Whether the closed form can read the progression's `Reporting` step. A
+# separate function so reverse-mode AD can treat the check, which carries no
+# derivative, as a constant rather than differentiate through its `try`.
+function _closed_form_reportable(prog, attrs)
+    try
+        _effective_reporting_probability(prog, attrs)
+    catch e
+        e isa ArgumentError && return false
+        rethrow()
+    end
+    return true
+end
+
 # Use simulation when no exact law is available; propagate errors within exact laws.
 # Callable reporting probabilities depend on individuals and require simulation.
 function _exact_reported_chain_size(offspring, prog, obs, attrs)
@@ -412,11 +425,6 @@ function _exact_reported_chain_size(offspring, prog, obs, attrs)
     any(t -> _is_reporting(t) && !(reporting_probability(t) isa Real), prog) && return nothing
     # A progression the closed form cannot read (a terminal step, or a step
     # that overwrites the `from` time) is simulated instead.
-    try
-        _effective_reporting_probability(prog, attrs)
-    catch e
-        e isa ArgumentError && return nothing
-        rethrow()
-    end
+    _closed_form_reportable(prog, attrs) || return nothing
     return _fold_reporting(prog, chain_size_distribution(offspring), obs, attrs)
 end

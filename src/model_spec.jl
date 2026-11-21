@@ -470,6 +470,15 @@ model = ModelSpec(
 state = simulate(model; max_cases = 500)
 ```
 """
+# The checks (and the trait cache fill) run when a model is built. They return
+# nothing, so reverse-mode AD extensions treat them as constants.
+const _MODEL_CHECKS = (
+    validate_process_windows, _warn_incomplete_terminal_coverage,
+    _validate_dose_schedule, _validate_test_triggers, _validate_testing_sensitivity,
+    _warn_unmet_trigger_requirements, _warn_inert_interventions, _warn_contactless,
+    _store_traits!,
+)
+
 function ModelSpec(
         process::TransmissionModel;
         progression = progression(process),

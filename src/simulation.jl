@@ -739,7 +739,7 @@ function new_state(
     return SimulationState(
         Individual{T}[], Int[], 0, rng, 0, false,
         population(model), zero(T), _fresh_attributes(attributes),
-        convert(Vector{AbstractClinicalTransition}, transitions)
+        _progvec(transitions)
     )
 end
 
