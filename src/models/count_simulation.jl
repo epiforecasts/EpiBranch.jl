@@ -65,11 +65,9 @@ CountRule(R, k::Real, g) = CountRule(R, _gamma_unit(k), g)
 """
     OffspringCountRule(law, g)
 
-A rule for an offspring `law` that is not a mixed Poisson (`Binomial` or
-`Geometric`). Each member of a cohort draws its number of offspring from `law`
-when it is infected, and each offspring falls on lag `l` with probability
-`g[l]`. The cost and memory grow with the number of cases, because the draws of
-the members are kept. The rules of a multi-type model are all of one kind.
+A rule for a `Binomial` or `Geometric` offspring `law`. Each member of a
+cohort draws its number of offspring from `law` when infected, and each
+offspring falls on lag `l` with probability `g[l]`.
 """
 struct OffspringCountRule{D <: DiscreteUnivariateDistribution} <: AbstractCountRule
     law::D
@@ -125,8 +123,7 @@ _count_sizes(::NoPopulation) = nothing
 _count_sizes(p::SinglePopulation) = [p.size]
 _count_sizes(p::GroupedPopulation) = copy(p.sizes)
 
-# A type that infects no one has no offspring law to read; it takes the kind of
-# the other types' rules.
+# A type that infects no one has no offspring law to read.
 function _count_rule(o::MultiTypeOffspring, kernel)
     rules = map(1:_n_types(o)) do j
         R = o.R_by_type[j]
@@ -282,8 +279,6 @@ function _draw_cohort(ν, n, rng)
     members = [rand(rng, ν) for _ in 1:n]
     return (sum(members), members)
 end
-# An `OffspringCountRule` cohort holds the offspring still to fall on a later
-# day, and the offspring number of each member.
 function _draw_cohort(rule::OffspringCountRule, n::Int, rng)
     members = Float64[rand(rng, rule.law) for _ in 1:n]
     return (sum(members), members)
@@ -361,9 +356,8 @@ end
 _rate_at(rule::CountRule, t) = _renewal_R_at(rule.R, t)
 _rate_at(::OffspringCountRule, t) = 1.0
 
-# The mean number of people a cohort infects on this lag, or for an
-# `OffspringCountRule` the number of its remaining offspring that fall on it
-# (and takes them off the cohort's remainder).
+# The mean number of people a cohort infects on this lag; for an
+# `OffspringCountRule`, the number of its remaining offspring that fall on it.
 _lag_infections!(s, rule::CountRule, day, c, lag, r) =
     s.cohort_infectiousness[day + 1][c] * r * rule.g[lag]
 function _lag_infections!(s, rule::OffspringCountRule, day, c, lag, r)
@@ -419,9 +413,7 @@ function _deplete_sources!(s, ::CountRule, sources, alloc, inflow, by_class, m)
     return s
 end
 
-# The same for counted contacts: the contacts of each type are thinned as a
-# total, and the ones kept are a random subset of them, so a source's share is
-# hypergeometric.
+# For counted contacts the kept ones are shared among sources by hypergeometric draws.
 function _deplete_sources!(s, ::OffspringCountRule, sources, alloc, inflow, by_class, m)
     g = s.max_generation
     nt = size(alloc, 1)
@@ -639,8 +631,7 @@ function _member_shares(rule::CountRule, n::Int, members, rng)
     return cumulative
 end
 
-# The members of an `OffspringCountRule` cohort, one entry for each offspring
-# it has, in random order: each offspring belongs to one member.
+# One entry for each offspring of the cohort, naming its member, in random order.
 function _member_shares(::OffspringCountRule, n::Int, members, rng)
     return shuffle!(rng, reduce(vcat, [fill(i, Int(c)) for (i, c) in enumerate(members)]; init = Int[]))
 end
