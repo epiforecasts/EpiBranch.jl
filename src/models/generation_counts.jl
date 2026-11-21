@@ -453,8 +453,8 @@ end
              rng::AbstractRNG = state.rng, multiplier = nothing)
 
 Continue `state` as for a `BranchingProcess`, applying the vaccination
-campaigns of `spec` between generations as [`simulate_by_generation`](@ref)
-does. Pass the same `spec` the state was started with: a continuation with the
+campaigns of `spec` by giving their doses to the contacts of each generation
+in order, as [`simulate_by_generation`](@ref) does. Pass the same `spec` the state was started with: a continuation with the
 bare model applies no campaign.
 """
 function simulate(
