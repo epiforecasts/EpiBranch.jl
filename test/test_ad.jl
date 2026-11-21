@@ -21,8 +21,8 @@ using StableRNGs
 # avoids that while still exercising the reverse path over the likelihood.
 # ReverseDiff is left out — no rule for the `logabsgamma` in the NegBin
 # chain-size path. The per-backend-tag scenario pattern from
-# CensoredDistributions.jl is the remaining end state; see #105. Enzyme is
-# covered with Mooncake in the model-route testset below.
+# CensoredDistributions.jl is the remaining end state; see #105. The
+# model-route testset below covers Enzyme as well as Mooncake.
 
 @testset "AD" begin
     sizes_data = [1, 2, 1, 3, 1, 5, 2]
