@@ -454,23 +454,58 @@ function simulate(
 end
 
 """
+    GenerationCampaigns
+
+The vaccination campaigns of a [`ModelSpec`](@ref) and its branching process, as
+returned by [`prepare_generations`](@ref). Hold one to continue many
+[`GenerationCounts`](@ref) without building the campaigns again.
+"""
+struct GenerationCampaigns{M <: BranchingProcess, V <: AbstractVector}
+    model::M
+    campaigns::V
+end
+
+"""
+    prepare_generations(spec::ModelSpec, state::GenerationCounts)
+
+Build the vaccination campaigns of `spec` for continuing `state`. The
+`generation_length` and whether the population is finite come from `state`. Pass the result to
+`simulate` in place of `spec`.
+"""
+function prepare_generations(spec::ModelSpec, state::GenerationCounts)
+    campaigns = _generation_campaigns(
+        spec, state.generation_length, !(state.susceptibles isa NoPopulation)
+    )
+    return GenerationCampaigns(_generation_process(spec), campaigns)
+end
+
+"""
     simulate(spec::ModelSpec, state::GenerationCounts; max_generations,
+             rng::AbstractRNG = state.rng, multiplier = nothing)
+    simulate(prepared::GenerationCampaigns, state::GenerationCounts; max_generations,
              rng::AbstractRNG = state.rng, multiplier = nothing)
 
 Continue `state` as for a `BranchingProcess`, applying the vaccination
 campaigns of `spec` between generations as [`simulate_by_generation`](@ref)
 does. Pass the same `spec` the state was started with: a continuation with the
-bare model applies no campaign.
+bare model applies no campaign. Passing a [`prepare_generations`](@ref) result
+instead of `spec` reuses its campaigns.
 """
 function simulate(
         spec::ModelSpec, state::GenerationCounts;
         max_generations::Integer, rng::AbstractRNG = state.rng, multiplier = nothing
     )
-    campaigns = _cached_generation_campaigns(
-        spec, state.generation_length, !(state.susceptibles isa NoPopulation)
+    return simulate(
+        prepare_generations(spec, state), state; max_generations, rng, multiplier
+    )
+end
+
+function simulate(
+        prepared::GenerationCampaigns, state::GenerationCounts;
+        max_generations::Integer, rng::AbstractRNG = state.rng, multiplier = nothing
     )
     return _continue_generations(
-        _generation_process(spec), state, campaigns; max_generations, rng, multiplier
+        prepared.model, state, prepared.campaigns; max_generations, rng, multiplier
     )
 end
 
