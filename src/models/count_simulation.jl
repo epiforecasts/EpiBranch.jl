@@ -65,7 +65,7 @@ CountRule(R, k::Real, g) = CountRule(R, _gamma_unit(k), g)
 """
     OffspringCountRule(law, g)
 
-A rule for an offspring `law` that is any discrete distribution on the non-negative integers other than a Poisson mixture, such as `Binomial` or `Geometric`. Each member of a
+A rule for an offspring `law` given by a discrete distribution on the non-negative integers that is not a Poisson mixture, such as `Binomial` or `Geometric`. Each member of a
 cohort draws its number of offspring from `law` when infected, and each
 offspring falls on lag `l` with probability `g[l]`.
 """
