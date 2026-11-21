@@ -235,10 +235,10 @@ end
     end
     check(spec_cases[3], [0.5], (enzyme,))
 
-    # Enzyme refuses a chain-length likelihood estimated by simulation, with the
-    # extension's message rather than a compilation error from the simulator. The
-    # chain-size counterpart does not reach the rule: Enzyme cannot yet compile
-    # that route for a spec at all (see the closed-form limit above).
+    # Enzyme refuses a chain-length likelihood estimated by simulation and gives
+    # the extension's message instead of a compilation error from the simulator.
+    # The chain-size version never reaches this rule, because Enzyme cannot yet
+    # compile that route for a spec (see the closed-form limit above).
     simulated(R) = loglikelihood(
         ChainLengths(lengths_data),
         ModelSpec(BranchingProcess(Poisson(R[1])); interventions = [iso], attributes = clinical);
