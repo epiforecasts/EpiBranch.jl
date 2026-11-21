@@ -416,9 +416,6 @@ function _simulate_counts(
     return _count_advance!(state, max_time, max_cases)
 end
 
-_index_counts(::Any, n, nt, rng) = nt == 1 ? [n] : rand(rng, Multinomial(n, fill(1 / nt, nt)))
-_index_counts(types::AbstractVector, n, nt, rng) = [count(==(j), types) for j in 1:nt]
-
 process_of(model::TransmissionModel) = model
 process_of(spec::ModelSpec) = spec.process
 
