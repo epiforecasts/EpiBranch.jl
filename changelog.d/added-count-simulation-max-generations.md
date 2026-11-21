@@ -1,0 +1,1 @@
+The count-level path applies `max_generations` exactly by tracking each day's cohort by generation: `simulate` with a non-default `max_generations` runs on counts when the model qualifies, and `containment_probability` runs on counts without needing `max_generations = nothing`.

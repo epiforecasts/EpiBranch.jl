@@ -1,3 +1,5 @@
+using EpiBranch, Distributions, Random, StableRNGs, Statistics, DataFrames
+
 @testset "Count-level simulation" begin
     gt = DiscreteNonParametric(1:3, [0.3, 0.5, 0.2])
     count_run(model; n_initial = 4, max_time, rng) = simulate(
@@ -41,7 +43,19 @@
         return counts, offspring
     end
 
-    function check_agreement(model, T, L, n)
+    # Correlation across lags of one infector's offspring when the offspring
+    # number has mean `R` and variance `V` and is split over the lags by
+    # `weights`. Each simulation is compared with this value rather than with
+    # the other simulation, whose sampling error is large with a heavy tail.
+    function split_correlation(R, V, weights)
+        v = [w * R + w^2 * (V - R) for w in weights]
+        return [
+            i == j ? 1.0 : weights[i] * weights[j] * (V - R) / sqrt(v[i] * v[j])
+                for i in eachindex(weights), j in eachindex(weights)
+        ]
+    end
+
+    function check_agreement(model, T, L, n; reference = nothing, atol = 0.05)
         counts, offspring = compare(model, T, L, n)
         a, b = counts[:, :, 1], counts[:, :, 2]
         # Daily means, within the sampling error of the difference.
@@ -53,31 +67,121 @@
         for t in 3:(T + 1)
             @test var(a[:, t]) ≈ var(b[:, t]) rtol = 0.25
         end
-        # Autocorrelation of daily counts at lag one.
-        for t in 2:T
-            @test cor(a[:, t], a[:, t + 1]) ≈ cor(b[:, t], b[:, t + 1]) atol = 0.05
-        end
+        # Lag-one autocorrelation of daily counts. The estimate for each day
+        # is noisy, so days are compared loosely one by one. Their average has
+        # far less sampling error and is compared tightly.
+        diffs = [cor(a[:, t], a[:, t + 1]) - cor(b[:, t], b[:, t + 1]) for t in 2:T]
+        @test all(abs.(diffs) .< 0.1)
+        @test abs(mean(diffs)) < 0.03
         # Correlation across days of one infector's offspring.
-        @test cor(offspring[1]) ≈ cor(offspring[2]) atol = 0.03
+        if reference === nothing
+            @test cor(offspring[1]) ≈ cor(offspring[2]) atol = atol
+        else
+            @test cor(offspring[1]) ≈ reference atol = 0.03
+            @test cor(offspring[2]) ≈ reference atol = 0.03
+        end
         @test vec(mean(offspring[1]; dims = 1)) ≈ vec(mean(offspring[2]; dims = 1)) rtol = 0.06
         return cor(offspring[1])
     end
 
     @testset "agrees with the individual simulation" begin
-        c = check_agreement(BranchingProcess(Poisson(1.3), gt), 8, 3, 2000)
+        weights = [0.3, 0.5, 0.2]
+        c = check_agreement(
+            BranchingProcess(Poisson(1.3), gt), 8, 3, 1000;
+            reference = split_correlation(1.3, 1.3, weights)
+        )
         @test all(abs(c[i, j]) < 0.03 for i in 1:3, j in 1:3 if i != j)
 
         # A negative binomial offspring number is correlated across the days
         # of one infector.
-        c = check_agreement(BranchingProcess(NegBin(1.3, 0.8), gt), 8, 3, 2000)
+        c = check_agreement(
+            BranchingProcess(NegBin(1.3, 0.8), gt), 8, 3, 1000;
+            reference = split_correlation(1.3, 1.3 + 1.3^2 / 0.8, weights)
+        )
         @test c[1, 2] > 0.25
 
         R(t) = t < 5 ? 1.6 : 0.8
         renewal = BranchingProcess(
             Infectiousness(RenewalOffspring(R, [0.3, 0.5, 0.2]; k = 1.0))
         )
-        c = check_agreement(renewal, 8, 3, 2000)
+        c = check_agreement(renewal, 8, 3, 1000)
         @test c[1, 2] > 0.25
+    end
+
+    @testset "Poisson mixtures agree with the individual simulation" begin
+        # Offspring numbers are correlated across the days of one infector,
+        # through a rate that is neither gamma nor constant.
+        lognormal = PoissonLognormal(log(1.3) - 0.245, 0.7)
+        weibull = PoissonWeibull(1.4, 1.3 / mean(Weibull(1.4, 1.0)))
+        for offspring in (lognormal, weibull)
+            rule = EpiBranch.count_rule(BranchingProcess(offspring, gt))
+            @test mean(rule.ν) ≈ 1 atol = 1.0e-9
+            @test rule.R(1) ≈ mean(offspring)
+            c = check_agreement(BranchingProcess(offspring, gt), 8, 3, 4000)
+            @test c[1, 2] > 0.1
+        end
+    end
+
+    @testset "other offspring laws agree with the individual simulation" begin
+        # Binomial offspring are less variable than Poisson, so the offspring
+        # of one infector are negatively correlated across the days.
+        weights = [0.3, 0.5, 0.2]
+        c = check_agreement(
+            BranchingProcess(Binomial(5, 0.3), gt), 8, 3, 1000;
+            reference = split_correlation(1.5, 1.05, weights)
+        )
+        @test c[1, 2] < -0.1
+        geometric = Geometric(0.4)
+        c = check_agreement(
+            BranchingProcess(geometric, gt), 8, 3, 2000;
+            reference = split_correlation(mean(geometric), var(geometric), weights)
+        )
+        @test c[1, 2] > 0.1
+    end
+
+    @testset "the members of a cohort keep their own offspring counts" begin
+        model = BranchingProcess(Binomial(5, 0.3), gt)
+        @test EpiBranch.count_rule(model) isa EpiBranch.OffspringCountRule
+        state = count_run(model; max_time = 12, rng = StableRNG(4))
+        members = state.cohort_members
+        @test all(length(m[1]) == n for (m, n) in zip(members, state.counts))
+        people = individuals(state)
+        children = zeros(Int, length(people))
+        for ind in people
+            ind.parent_id > 0 && (children[ind.parent_id] += 1)
+        end
+        # A cohort whose infections all fall by the last day has had all the
+        # offspring of every member, so no member can have more.
+        offset = 0
+        for d in 0:state.day
+            n = state.counts[d + 1]
+            if d + length(gt.support) <= state.day
+                @test children[(offset + 1):(offset + n)] == Int.(members[d + 1][1])
+            end
+            offset += n
+        end
+        @test sum(children) == state.cumulative_cases - state.counts[1]
+        # A law with a point mass at zero ends the run.
+        dead = count_run(BranchingProcess(Binomial(3, 0.0), gt); max_time = 6, rng = StableRNG(1))
+        @test dead.extinct
+        @test dead.cumulative_cases == 4
+    end
+
+    @testset "the members of a cohort keep their infectiousness" begin
+        # With a mixed Poisson law the split of the infections of a cohort
+        # among its members depends on the total, so the members are kept.
+        model = BranchingProcess(PoissonLognormal(-0.2, 0.9), gt)
+        state = count_run(model; max_time = 6, rng = StableRNG(4))
+        @test length(state.cohort_members) == state.day + 1
+        @test all(
+            length(m) == n && sum(m) ≈ total for
+                (m, n, total) in zip(
+                    first.(state.cohort_members), state.counts, first.(state.cohort_infectiousness)
+                )
+        )
+        @test length(individuals(state)) == state.cumulative_cases
+        negbin = count_run(BranchingProcess(NegBin(1.3, 0.8), gt); max_time = 6, rng = StableRNG(4))
+        @test all(isempty ∘ only, negbin.cohort_members)
     end
 
     @testset "the people of a state" begin
@@ -146,6 +250,36 @@
         )
     end
 
+    @testset "independent copies" begin
+        model = BranchingProcess(PoissonLognormal(-0.2, 0.9), gt)
+        for realised in (false, true)
+            state = count_run(model; max_time = 4, rng = StableRNG(11))
+            realised && individuals(state)
+            other = copy(state)
+            @test other !== state
+            @test isequal(linelist(other), linelist(state))
+            @test individuals(other) !== individuals(state)
+            expected = deepcopy(state)
+            simulate(model, other; max_time = 8)
+            simulate(model, expected; max_time = 8)
+            @test other.counts == expected.counts
+            @test isequal(linelist(other), linelist(expected))
+            @test state.day == 4
+            @test length(state.counts) == 5
+        end
+
+        Random.seed!(1234)
+        state = simulate(
+            model; n_initial = 4, max_time = 4, max_cases = nothing,
+            max_generations = nothing
+        )
+        other = copy(state)
+        simulate(model, other; max_time = 8)
+        simulate(model, state; max_time = 8)
+        @test other.counts == state.counts
+        @test isequal(linelist(other), linelist(state))
+    end
+
     @testset "extinction" begin
         state = count_run(
             BranchingProcess(Poisson(0.2), gt); n_initial = 1, max_time = 200, rng = StableRNG(2)
@@ -156,14 +290,223 @@
         @test is_extinct(state)
     end
 
+    @testset "max_cases ends the run at the end of a day" begin
+        model = BranchingProcess(Poisson(2.0), gt)
+        state = simulate(
+            model; n_initial = 1, max_cases = 50, max_generations = nothing,
+            rng = StableRNG(3)
+        )
+        @test state isa CountSimulationState
+        @test state.cumulative_cases >= 50
+        @test sum(state.counts[1:(end - 1)]) < 50
+        # Continuing runs past the cap.
+        simulate(model, state; max_time = state.day + 3)
+        @test state.day > 0 && length(state.counts) == state.day + 1
+        # A cap met by the index cases ends the run on day 0.
+        @test simulate(
+            model; n_initial = 60, max_cases = 50, max_generations = nothing,
+            rng = StableRNG(3)
+        ).day == 0
+    end
+
+    @testset "initial cases are checked against the population" begin
+        model = BranchingProcess(Poisson(2.0), gt; population = Population(5))
+        @test_throws ArgumentError simulate(
+            model; n_initial = 10, max_time = 5, max_cases = nothing,
+            max_generations = nothing, rng = StableRNG(1)
+        )
+    end
+
+    @testset "containment_probability on counts" begin
+        # The same event as on individuals: extinct with fewer than `max_cases` cases.
+        for offspring in (Poisson(1.3), NegativeBinomial(0.5, 0.3))
+            model = BranchingProcess(offspring, gt)
+            kw = (; max_cases = 60, n_initial = 1)
+            on_counts = containment_probability(
+                model, 4000; kw..., max_generations = nothing, rng = StableRNG(5)
+            )
+            on_individuals = containment_probability(
+                model, 4000; kw..., stopping_rules = [MaxCases(60), MaxGenerations(1000)],
+                rng = StableRNG(6)
+            )
+            @test abs(on_counts.proportion - on_individuals.proportion) <
+                5 * hypot(on_counts.mcse, on_individuals.mcse)
+        end
+        # A model that qualifies runs on counts and still returns `n` outcomes.
+        model = BranchingProcess(Poisson(1.3), gt)
+        @test containment_probability(
+            model, 50; max_cases = 60, max_generations = nothing, rng = StableRNG(1)
+        ).n == 50
+        spec = ModelSpec(model)
+        @test containment_probability(
+            spec, 50; max_cases = 60, max_generations = nothing, rng = StableRNG(1)
+        ).n == 50
+    end
+
+    @testset "a generation cap" begin
+        model = BranchingProcess(NegativeBinomial(0.8, 0.3), gt)
+        # The people built from the counts have the generations the counts hold.
+        state = simulate(
+            model; n_initial = 3, max_time = 30, max_cases = nothing, max_generations = 4,
+            rng = StableRNG(1)
+        )
+        gens = [i.generation for i in individuals(state)]
+        @test maximum(gens) <= 4
+        padded = [vcat(c, zeros(Int, 5 - length(c))) for c in state.generation_counts]
+        @test [count(==(k), gens) for k in 0:4] == sum(padded)
+        @test state.counts == sum.(state.generation_counts)
+        # A cap beyond what the run can reach costs no more than the days run.
+        loose = simulate(
+            model; n_initial = 3, max_time = 30, max_cases = nothing,
+            max_generations = 10_000_000, rng = StableRNG(1)
+        )
+        @test maximum(length, loose.generation_counts) <= 31
+        @test sum(loose.counts) == loose.cumulative_cases
+        # A run that reaches the cap is not extinct; one that dies out first is.
+        capped = simulate(
+            BranchingProcess(Poisson(4.0), gt); max_time = 40, max_cases = nothing,
+            max_generations = 2, rng = StableRNG(2)
+        )
+        @test !capped.extinct && length(individuals(capped)) == capped.cumulative_cases
+        @test simulate(
+            BranchingProcess(Poisson(0.1), gt); max_time = 100, max_cases = nothing,
+            max_generations = 50, rng = StableRNG(3)
+        ).extinct
+        alone = simulate(
+            BranchingProcess(Poisson(2.0), gt); n_initial = 2, max_cases = nothing,
+            max_generations = 3, rng = StableRNG(4)
+        )
+        @test alone isa CountSimulationState
+        @test !alone.extinct && alone.day < 100
+        @test maximum(i.generation for i in individuals(alone)) <= 3
+        # The same distribution as the individual simulation under the cap.
+        for (offspring, G) in ((Poisson(1.4), 3), (NegativeBinomial(0.5, 0.3), 5))
+            m = BranchingProcess(offspring, gt)
+            on_counts = [
+                simulate(
+                    m; max_cases = 2000, max_generations = G, rng = StableRNG(i)
+                ).cumulative_cases for i in 1:1000
+            ]
+            on_individuals = [
+                simulate(
+                    m; max_cases = 2000, stopping_rules = [MaxCases(2000), MaxGenerations(G)],
+                    rng = StableRNG(10_000 + i)
+                ).cumulative_cases for i in 1:1000
+            ]
+            @test abs(mean(on_counts) - mean(on_individuals)) <
+                5 * hypot(std(on_counts), std(on_individuals)) / sqrt(1000)
+            @test abs(mean(on_counts .== 1) - mean(on_individuals .== 1)) < 0.05
+        end
+        # Containment under a cap agrees with individuals. The default cap is applied.
+        m = BranchingProcess(Poisson(1.3), gt)
+        kw = (; max_cases = 200, n_initial = 1)
+        a = containment_probability(m, 4000; kw..., max_generations = 4, rng = StableRNG(5))
+        b = containment_probability(
+            m, 4000; kw..., stopping_rules = [MaxCases(200), MaxGenerations(4)], rng = StableRNG(6)
+        )
+        @test abs(a.proportion - b.proportion) < 5 * hypot(a.mcse, b.mcse)
+        @test a.proportion < containment_probability(
+            m, 4000; kw..., max_generations = nothing, rng = StableRNG(7)
+        ).proportion
+        # Continuing keeps the cap.
+        state = simulate(
+            m; max_time = 3, max_cases = nothing, max_generations = 4, rng = StableRNG(8)
+        )
+        simulate(m, state; max_time = 12)
+        @test maximum(i.generation for i in individuals(state)) <= 4
+    end
+
+    @testset "several types and a finite population" begin
+        M = [1.2 0.4; 0.3 0.9]
+        T = 8
+        by_type(state) = begin
+            out = zeros(Int, T + 1, 2)
+            for ind in individuals(state)
+                get(ind.state, :infected, false) || continue
+                out[Int(ind.infection_time) + 1, individual_type(ind)] += 1
+            end
+            out
+        end
+        # Mean daily cases by type of the count path and the individual
+        # simulation, as a z-score of each cell.
+        function max_z(model; n = 600, init)
+            rng = StableRNG(3)
+            counts = [
+                by_type(
+                    simulate(
+                        model; init..., max_time = T, max_cases = nothing,
+                        max_generations = nothing, rng
+                    )
+                ) for _ in 1:n
+            ]
+            people = [
+                by_type(simulate(model; init..., stopping_rules = [MaxTime(Float64(T))], rng))
+                    for _ in 1:n
+            ]
+            m1, m2 = mean(counts), mean(people)
+            se = sqrt.((var(counts) .+ var(people)) ./ n) .+ 1.0e-9
+            return maximum(abs.((m1 .- m2) ./ se))
+        end
+        init = (; index_types = [1, 1, 2])
+        @test max_z(BranchingProcess(M, R -> NegBin(R, 0.8), gt); init) < 4
+        pop = Population([60, 40])
+        @test max_z(BranchingProcess(M, R -> Poisson(R), gt; population = pop); init) < 4
+        @test max_z(
+            BranchingProcess(1.8 .* M, R -> NegBin(R, 0.8), gt; population = Population([80, 50]));
+            init
+        ) < 4
+        @test max_z(
+            BranchingProcess(NegBin(2.0, 0.8), gt; population = Population(120));
+            init = (; n_initial = 3)
+        ) < 4
+
+        # The people of a state have the types and the susceptibles of its counts.
+        model = BranchingProcess(1.8 .* M, R -> NegBin(R, 0.8), gt; population = Population([80, 50]))
+        state = simulate(
+            model; index_types = [1, 1, 2], max_time = 12, max_cases = nothing,
+            max_generations = nothing, rng = StableRNG(5)
+        )
+        @test state isa CountSimulationState
+        cases(state) = [
+            count(i -> individual_type(i) == j, individuals(state)) for j in 1:2
+        ]
+        @test cases(state) == [80, 50] .- state.susceptibles
+        @test all(state.susceptibles .>= 0)
+        @test sum(cases(state)) == state.cumulative_cases
+        @test [individual_type(i) for i in individuals(state)[1:3]] == [1, 1, 2]
+        @test all(
+            i -> individual_type(i) in 1:2 && (i.parent_id == 0 || i.infection_time > individuals(state)[i.parent_id].infection_time),
+            individuals(state)
+        )
+        # A continuation keeps depleting the same susceptibles.
+        before = copy(state.susceptibles)
+        copied = copy(state)
+        simulate(model, state; max_time = 16)
+        @test all(state.susceptibles .<= before)
+        @test copied.susceptibles == before
+        @test cases(state) == [80, 50] .- state.susceptibles
+
+        # A type that infects no one, and a generation cap.
+        sink = BranchingProcess([1.5 0.0; 0.8 0.0], R -> Poisson(R), gt)
+        state = simulate(
+            sink; index_types = [1, 1], max_time = 6, max_cases = nothing,
+            max_generations = 3, rng = StableRNG(2)
+        )
+        @test state isa CountSimulationState
+        @test all(i -> individual_type(i) == 1 || i.parent_id != 0, individuals(state))
+        @test maximum(i.generation for i in individuals(state)) <= 3
+        @test state.counts == sum.(state.generation_counts)
+    end
+
     @testset "which runs take the count-level path" begin
         model = BranchingProcess(Poisson(1.2), gt)
         @test count_run(model; max_time = 5, rng = StableRNG(1)) isa CountSimulationState
         kw = (; max_time = 5, max_cases = nothing, max_generations = nothing, rng = StableRNG(1))
-        # Anything that stops a run other than its time is decided per person.
+        # A generation limit or a stopping rule needs individuals.
         @test simulate(model; max_time = 5, rng = StableRNG(1)) isa SimulationState
-        @test simulate(model; kw..., max_cases = 100) isa SimulationState
-        @test simulate(model; kw..., max_generations = 4) isa SimulationState
+        @test simulate(model; kw..., max_cases = 100) isa CountSimulationState
+        @test simulate(model; kw..., max_time = nothing, max_cases = 100) isa CountSimulationState
+        @test simulate(model; kw..., max_generations = 4) isa CountSimulationState
         @test simulate(model; kw..., stopping_rules = [MaxTime(5.0)]) isa SimulationState
         @test simulate(model; kw..., condition = 1:1000) isa SimulationState
         @test simulate(model; kw..., rng = CommonRandomNumbers(1)) isa SimulationState
@@ -171,8 +514,19 @@
         # population, a window that ends and interventions are individual.
         @test EpiBranch.count_rule(BranchingProcess(Poisson(1.2), Gamma(2.0, 1.0))) === nothing
         @test EpiBranch.count_rule(BranchingProcess(Poisson(1.2))) === nothing
-        @test EpiBranch.count_rule(BranchingProcess(Poisson(1.2), gt; population = Population(1000))) === nothing
-        @test EpiBranch.count_rule(BranchingProcess(Binomial(5, 0.3), gt)) === nothing
+        @test EpiBranch.count_rule(BranchingProcess(Poisson(1.2), gt; population = Population(1000))) !== nothing
+        M = [1.2 0.4; 0.3 0.9]
+        two = BranchingProcess(M, R -> NegBin(R, 0.8), gt)
+        @test EpiBranch.count_rule(two) isa EpiBranch.MultiTypeCountRule
+        @test EpiBranch.count_rule(two).alloc ≈ [0.8 0.4 / 1.3; 0.2 0.9 / 1.3] atol = 1.0e-12
+        @test EpiBranch.count_rule(BranchingProcess(M, R -> Poisson(R), gt; population = Population([50, 30]))) !== nothing
+        @test EpiBranch.count_rule(BranchingProcess(M, R -> Poisson(R), gt; population = Population(80))) === nothing
+        @test EpiBranch.count_rule(BranchingProcess(M, R -> Binomial(5, R / 5), gt)) === nothing
+        @test simulate(two; kw..., max_time = 5, index_types = [1, 2]) isa CountSimulationState
+        @test simulate(two; kw..., max_time = 5, index_types = DiscreteUniform(1, 2)) isa SimulationState
+        @test EpiBranch.count_rule(BranchingProcess(Binomial(5, 0.3), gt)) isa EpiBranch.OffspringCountRule
+        @test EpiBranch.count_rule(BranchingProcess(Binomial(5, 0.3), gt; population = Population(1000))) === nothing
+        @test EpiBranch.count_rule(BranchingProcess(DiscreteUniform(-1, 2), gt)) === nothing
         @test EpiBranch.count_rule(BranchingProcess(Poisson(1.2), DiscreteNonParametric(0:2, [0.2, 0.5, 0.3]))) ===
             nothing
         @test EpiBranch.count_rule(
