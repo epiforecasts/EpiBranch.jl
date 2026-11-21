@@ -1,0 +1,1 @@
+Continuing or running `simulate_by_generation` for a single type no longer allocates vectors for the counts, doses and potential contacts in each generation. The draws are unchanged, so results for a given seed stay the same.

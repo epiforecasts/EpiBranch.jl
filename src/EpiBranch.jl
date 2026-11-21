@@ -1,5 +1,6 @@
 module EpiBranch
 
+using CensoredDistributions: double_interval_censored
 using DataAPI: DataAPI
 using DataFrames
 using Dates
@@ -147,6 +148,8 @@ include("output/tracing.jl")
 include("output/chains.jl")
 include("output/generation_intervals.jl")
 include("output/summary.jl")
+include("analytical/poisson_mixtures.jl")
+include("models/count_simulation.jl")
 
 # Analytical
 include("analytical/reproduction_number.jl")
@@ -158,7 +161,6 @@ include("analytical/likelihood.jl")
 include("analytical/superspreading.jl")
 include("analytical/fitting.jl")
 include("analytical/cluster_mixed.jl")
-include("analytical/poisson_mixtures.jl")
 include("analytical/generating_function_offspring.jl")
 include("analytical/isolation_offspring.jl")
 include("analytical/end_of_outbreak_probability.jl")
@@ -199,11 +201,12 @@ export MixingLinearNoiseProcess, MixingLinearNoiseState
 export DoseAllocation, TriggeredInPriority, SplitByGroupSize, SplitBySusceptibles
 export ImmuneShare, ImmuneCount
 export HybridProcess, HybridState
-export GenerationCounts, simulate_by_generation
+export GenerationCounts, simulate_by_generation, prepare_generations,
+    GenerationCampaigns
 export AbstractDepletion, PerContactDepletion
 export transmission_timing, implied_R
 export Individual, InfectionEpisode, close_episode!, SimulationState
-export AbstractSimulationState, individuals
+export AbstractSimulationState, CountSimulationState, individuals
 export SimOpts
 export AbstractStoppingRule, Extinction, MaxCases, MaxGenerations, MaxTime, should_stop
 export AbstractIntervention, Isolation, ContactTracing, SourceTracing

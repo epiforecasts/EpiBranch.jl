@@ -10,10 +10,7 @@ end
 
 @testset "Attributes builders" begin
     @testset "Callable structs compose with attribute builders" begin
-        for attributes in (
-                (groups(2), _AttributeTagger()),
-                [groups(2), _AttributeTagger()],
-            )
+        for attributes in ((groups(2), _AttributeTagger()), [groups(2), _AttributeTagger()])
             state = simulate(
                 ModelSpec(BranchingProcess(Poisson(0.0), Exponential(5.0)); attributes);
                 n_initial = 3, rng = StableRNG(1)
@@ -37,10 +34,7 @@ end
             groups(1), vaccine_acceptance(propensity = _AttributeValue(0.6)),
         ]
         run = simulate(
-            ModelSpec(
-                BranchingProcess(Poisson(0.0), Exponential(5.0));
-                attributes = attrs
-            );
+            ModelSpec(BranchingProcess(Poisson(0.0), Exponential(5.0)); attributes = attrs);
             n_initial = 3, rng = StableRNG(1)
         )
         @test all(ind.susceptibility == 0.4 for ind in individuals(run))
@@ -154,9 +148,7 @@ end
         # docstring recommends for rules it doesn't cover. It answers the
         # conservative false whatever it actually does.
         @test !EpiBranch.offspring_law_unchanged((rng, ind) -> nothing)
-        @test !EpiBranch.offspring_law_unchanged(
-            (rng, ind) -> (ind.susceptibility = 0.0)
-        )
+        @test !EpiBranch.offspring_law_unchanged((rng, ind) -> (ind.susceptibility = 0.0))
     end
 
     @testset "chain-size likelihood accounts for a closure setting susceptibility directly" begin
@@ -272,10 +264,7 @@ end
             ]
         )
         serial = simulate(model, 10; n_initial = 30, rng = StableRNG(42))
-        parallel = simulate(
-            model, 10; n_initial = 30, rng = StableRNG(42),
-            parallel = true
-        )
+        parallel = simulate(model, 10; n_initial = 30, rng = StableRNG(42), parallel = true)
         probabilities(states) = [
             [
                 ind.state[:reporting_probability]
@@ -283,10 +272,7 @@ end
             ] for run in states
         ]
         @test probabilities(parallel) == probabilities(
-            simulate(
-                model, 10;
-                n_initial = 30, rng = StableRNG(42), parallel = true
-            )
+            simulate(model, 10; n_initial = 30, rng = StableRNG(42), parallel = true)
         )
         @test length(unique(first.(probabilities(serial)))) == 10
         @test length(unique(first.(probabilities(parallel)))) == 10
@@ -324,7 +310,7 @@ end
     end
 
     @testset "vaccine_acceptance draws once per group" begin
-        clinical = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
+        clinical = CLINICAL
         process = BranchingProcess(Poisson(1.0), Exponential(5.0))
         read_acceptance = (rng, ind) -> ind.state[:vaccine_acceptance]
 
@@ -481,9 +467,7 @@ end
             state = EpiBranch.new_state(
                 process, EpiBranch.AbstractClinicalTransition[], attrs, rng
             )
-            people = EpiBranch.add_individuals!(
-                state, n_communities * per_community, []
-            )
+            people = EpiBranch.add_individuals!(state, n_communities * per_community, [])
 
             covered = Dict{Int, Vector{Bool}}()
             for ind in people

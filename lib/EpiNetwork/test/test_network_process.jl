@@ -288,10 +288,7 @@ end
             progression = _sir(Exponential(4.0)), attributes = attrs
         )
         meansize(attrs) = sum(
-            simulate(
-                build(attrs);
-                rng = StableRNG(s), n_initial = 3
-            ).cumulative_cases
+            simulate(build(attrs); rng = StableRNG(s), n_initial = 3).cumulative_cases
                 for s in 1:10
         ) / 10
 
@@ -599,10 +596,7 @@ end
         # settle in member order.
         ring = ring_adjacency(10)
         st = simulate(
-            ModelSpec(
-                NetworkProcess(ring, Exponential(1.0));
-                progression = _sir(3.0)
-            );
+            ModelSpec(NetworkProcess(ring, Exponential(1.0)); progression = _sir(3.0));
             n_initial = 3, rng = StableRNG(42)
         )
         @test [ind.infection_time for ind in individuals(st)] ≈
@@ -614,10 +608,7 @@ end
         @test [ind.parent_id for ind in individuals(st)] == [10, 0, 2, 5, 6, 7, 0, 7, 10, 0]
 
         st = simulate(
-            ModelSpec(
-                NetworkProcess(ring, (i, j) -> Dirac(1.0));
-                progression = _sir(3.0)
-            );
+            ModelSpec(NetworkProcess(ring, (i, j) -> Dirac(1.0)); progression = _sir(3.0));
             n_initial = 3, rng = StableRNG(42)
         )
         @test [ind.infection_time for ind in individuals(st)] ≈
@@ -674,10 +665,7 @@ end
         # over an unbounded window it would seed every node
         @test_throws ArgumentError simulate(
             ModelSpec(
-                NetworkProcess(
-                    ring_adjacency(n), Exponential(2.0);
-                    external_hazard = 0.05
-                );
+                NetworkProcess(ring_adjacency(n), Exponential(2.0); external_hazard = 0.05);
                 progression = _sir(6.0)
             );
             rng = StableRNG(14)
@@ -1185,9 +1173,7 @@ end
             state = ind -> (tick = get(ind.state, :tick, 0)::Int,), watches = (:tick,)
         )
         live_run(proc, s) = simulate(
-            ModelSpec(
-                proc; progression = _sir(6.0), interventions = [_TickHosts()]
-            );
+            ModelSpec(proc; progression = _sir(6.0), interventions = [_TickHosts()]);
             n_initial = 2, rng = StableRNG(s)
         )
         routed_live = RoutedNetwork(
@@ -1648,13 +1634,7 @@ end
         )
         seeds = 200
         traced = sum(
-            count(
-                is_traced,
-                simulate(
-                    m; n_initial = 1,
-                    rng = StableRNG(s)
-                ).individuals
-            )
+            count(is_traced, simulate(m; n_initial = 1, rng = StableRNG(s)).individuals)
                 for s in 1:seeds
         )
         # 11,800 contacts at probability 0.2; the tolerance is about five

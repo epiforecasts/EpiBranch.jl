@@ -1,4 +1,4 @@
-The generation-based simulation engine is removed. Every model now runs on the
+The generation-based simulation loop is removed. Every model now runs on the
 continuous-time race. A model of your own written against `generate_offspring`
 runs as a branching process with one infectiousness window. One written against
 `contacts_of` proposes each exposure the model names at the time it gives, and
@@ -20,7 +20,7 @@ results.
 Also removed are the deprecated `apply_post_transmission!` batch hook,
 `settles_generation_batch` and `continuous_actions`. `EpiBranch.action_candidates`
 now chooses who an intervention's actions are offered to. The warning about hooks the
-continuous-time race does not call is gone with the second engine. In its
+continuous-time race does not call is gone with the second loop. In its
 place, `simulate` warns when contact tracing, or an action that needs the
 contacts of a case, is given a model that names no contacts, such as
 `HomogeneousProcess`.

@@ -4,3 +4,6 @@
 
 # Format with Runic and check it in the suite and pre-commit
 440f2b69aa6c870d9a6b219febcefe4370fa6213
+
+# Join wrapped test calls that fit on one line
+bf19bd1199c9d0c6a7d8b663f22fe710535903c6

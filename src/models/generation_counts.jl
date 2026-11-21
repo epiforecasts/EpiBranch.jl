@@ -6,9 +6,9 @@
 # no ordering between the cases of a generation.
 #
 # `PerContactDepletion` mirrors `_offspring_builtin_risk_blocks` on the
-# individual-based race when there is a single type. With several types the
-# individual-based simulation thins every contact against one shared population
-# fraction, which makes the two differ.
+# individual-based race. Both thin a contact against the susceptible share of
+# the type it would infect. With several types they therefore give the same
+# law for the counts of each generation.
 #
 # A shared `multiplier` is drawn once per generation. With `Poisson` offspring
 # the total of a generation is `Poisson` scaled by the same draw, and
@@ -29,11 +29,10 @@ abstract type AbstractDepletion end
 
 Decide every potential contact one at a time: a contact of a type is kept with
 probability equal to the susceptible share of the type *at that moment*, and
-each kept contact lowers the share for the next. For a single type this is the
-rule of the individual-based simulation. For several types it differs, because
-the individual-based simulation thins every contact against one shared
-population fraction, while this rule uses the share of each type. It is the
-default of [`simulate_by_generation`](@ref).
+each kept contact lowers the share for the next. The individual-based
+simulation follows the same rule for one type or several, depleting each type
+against its own population. This is the default of
+[`simulate_by_generation`](@ref).
 
 The rule is drawn exactly, without visiting every contact. Where the offspring
 law is a mixed Poisson (`Poisson`, with or without `multiplier`, and `NegBin`),
@@ -455,23 +454,58 @@ function simulate(
 end
 
 """
+    GenerationCampaigns
+
+The vaccination campaigns of a [`ModelSpec`](@ref) and its branching process, as
+returned by [`prepare_generations`](@ref). Hold one to continue many
+[`GenerationCounts`](@ref) without building the campaigns again.
+"""
+struct GenerationCampaigns{M <: BranchingProcess, V <: AbstractVector}
+    model::M
+    campaigns::V
+end
+
+"""
+    prepare_generations(spec::ModelSpec, state::GenerationCounts)
+
+Build the vaccination campaigns of `spec` for continuing `state`. The
+`generation_length` and whether the population is finite come from `state`. Pass the result to
+`simulate` in place of `spec`.
+"""
+function prepare_generations(spec::ModelSpec, state::GenerationCounts)
+    campaigns = _generation_campaigns(
+        spec, state.generation_length, !(state.susceptibles isa NoPopulation)
+    )
+    return GenerationCampaigns(_generation_process(spec), campaigns)
+end
+
+"""
     simulate(spec::ModelSpec, state::GenerationCounts; max_generations,
+             rng::AbstractRNG = state.rng, multiplier = nothing)
+    simulate(prepared::GenerationCampaigns, state::GenerationCounts; max_generations,
              rng::AbstractRNG = state.rng, multiplier = nothing)
 
 Continue `state` as for a `BranchingProcess`, applying the vaccination
 campaigns of `spec` between generations as [`simulate_by_generation`](@ref)
 does. Pass the same `spec` the state was started with: a continuation with the
-bare model applies no campaign.
+bare model applies no campaign. Passing a [`prepare_generations`](@ref) result
+instead of `spec` reuses its campaigns.
 """
 function simulate(
         spec::ModelSpec, state::GenerationCounts;
         max_generations::Integer, rng::AbstractRNG = state.rng, multiplier = nothing
     )
-    campaigns = _generation_campaigns(
-        spec, state.generation_length, !(state.susceptibles isa NoPopulation)
+    return simulate(
+        prepare_generations(spec, state), state; max_generations, rng, multiplier
+    )
+end
+
+function simulate(
+        prepared::GenerationCampaigns, state::GenerationCounts;
+        max_generations::Integer, rng::AbstractRNG = state.rng, multiplier = nothing
     )
     return _continue_generations(
-        _generation_process(spec), state, campaigns; max_generations, rng, multiplier
+        prepared.model, state, prepared.campaigns; max_generations, rng, multiplier
     )
 end
 
@@ -487,8 +521,53 @@ function _continue_generations(
         )
     )
     offspring = _generation_offspring(model)
-    template = state.counts
-    counts = _as_vector(state.counts)
+    return _run_generations(
+        model, offspring, state, campaigns, state.counts; max_generations, rng, multiplier
+    )
+end
+
+# A single type keeps its count, susceptibles and size as plain integers and
+# allocates no vectors for them in a generation.
+function _run_generations(
+        model::BranchingProcess, offspring, state::GenerationCounts, campaigns,
+        counts::Int; max_generations::Integer, rng::AbstractRNG, multiplier
+    )
+    susceptibles = state.susceptibles isa NoPopulation ? nothing : _scalar(state.susceptibles)
+    sizes = state.type_sizes isa NoPopulation ? nothing : _scalar(state.type_sizes)
+    cumulative = state.cumulative_cases
+    gen = state.generation
+    while gen < max_generations && counts != 0
+        if susceptibles !== nothing && sizes !== nothing
+            for campaign in campaigns
+                t0, t1 = _generation_interval(state.generation_length, gen)
+                susceptibles = _vaccinate(rng, campaign, t0, t1, susceptibles, sizes)
+            end
+        end
+        m = _single_multiplier(rng, multiplier)
+        potential = _single_potential(rng, offspring, counts, m, susceptibles !== nothing)
+        if susceptibles === nothing
+            # Without a finite population nothing is thinned.
+            counts = potential
+        else
+            counts, susceptibles = _deplete(
+                rng, state.depletion, potential, susceptibles, something(sizes)
+            )
+        end
+        cumulative += counts
+        gen += 1
+    end
+    return GenerationCounts(
+        counts, cumulative, state.population_size,
+        susceptibles === nothing ? NoPopulation() : susceptibles,
+        state.type_sizes, gen, state.generation_length, state.depletion, rng
+    )
+end
+
+function _run_generations(
+        model::BranchingProcess, offspring, state::GenerationCounts, campaigns,
+        template::Vector{Int}; max_generations::Integer, rng::AbstractRNG, multiplier
+    )
+    counts = template
     susceptibles = state.susceptibles isa NoPopulation ? nothing :
         copy(_as_vector(state.susceptibles))
     sizes = state.type_sizes isa NoPopulation ? nothing : _as_vector(state.type_sizes)
@@ -538,10 +617,24 @@ function _generation_interval(::Nothing, gen)
     throw(ArgumentError("a vaccination campaign needs a generation_length"))
 end
 
-_as_vector(x::Int) = [x]
 _as_vector(x::Vector{Int}) = x
-_like(::Int, v::Vector{Int}) = only(v)
+_as_vector(x::Int) = [x]
+_scalar(x::Int) = x
+_scalar(x::Vector{Int}) = only(x)
 _like(::Vector{Int}, v::Vector{Int}) = v
+
+# The multiplier of a single type: no draw, one shared draw, or the one
+# distribution of a vector of length 1.
+_single_multiplier(rng, ::Nothing) = nothing
+function _single_multiplier(rng, multiplier::AbstractVector)
+    length(multiplier) == 1 || throw(
+        ArgumentError(
+            "multiplier has $(length(multiplier)) distributions for 1 types"
+        )
+    )
+    return rand(rng, only(multiplier))
+end
+_single_multiplier(rng, multiplier) = rand(rng, multiplier)
 
 # ── The generation's potential contacts ──────────────────────────────
 
@@ -591,12 +684,15 @@ _type_multiplier(m::AbstractVector, j::Int) = m[j]
 function _generation_potential(
         rng::AbstractRNG, offspring::Distribution, current::Vector{Int}, m, finite::Bool
     )
-    n = only(current)
-    n == 0 && return [0]
+    return [_single_potential(rng, offspring, only(current), m, finite)]
+end
+
+function _single_potential(rng::AbstractRNG, offspring::Distribution, n::Int, m, finite::Bool)
+    n == 0 && return 0
     law = m === nothing ? offspring : scale_mean(offspring, _type_multiplier(m, 1))
     rate = finite ? _contact_rate(rng, law, n) : nothing
-    rate === nothing || return [Float64(rate)]
-    return [sum_offspring(rng, law, n)]
+    rate === nothing || return Float64(rate)
+    return sum_offspring(rng, law, n)
 end
 
 # Multi-type: each type's cases draw their total from its own law, scaled by
@@ -646,8 +742,8 @@ end
 # The contacts kept after thinning `potential` against `susceptibles`, which
 # is lowered by what is kept. Each potential contact is decided in turn
 # against the susceptible share of its type at that moment, as
-# `_offspring_builtin_risk_blocks` does on the individual-based race for a
-# single type; the draws below give that law without visiting every contact.
+# `_offspring_builtin_risk_blocks` does on the individual-based race. The
+# draws below give the same law without visiting every contact.
 
 # Poisson contacts with mean `potential[i]`, spread at random over the `sizes[i]`
 # people of the type. Each receives an independent Poisson number of them.
@@ -663,6 +759,27 @@ function _deplete!(
         susceptibles[i] -= kept[i]
     end
     return kept
+end
+
+# The same draws for a single type, with its susceptibles as an integer:
+# returns the contacts kept and the susceptibles left.
+function _deplete(rng, ::PerContactDepletion, potential::Float64, susceptibles::Int, size::Int)
+    (potential <= 0 || susceptibles <= 0) && return 0, susceptibles
+    reached = -expm1(-potential / size)
+    kept = rand(rng, Binomial(susceptibles, reached))
+    return kept, susceptibles - kept
+end
+
+function _deplete(rng, ::PerContactDepletion, potential::Int, susceptibles::Int, size::Int)
+    remaining = potential
+    kept = 0
+    while remaining > 0 && susceptibles > 0
+        remaining -= rand(rng, Geometric(susceptibles / size)) + 1
+        remaining < 0 && break
+        kept += 1
+        susceptibles -= 1
+    end
+    return kept, susceptibles
 end
 
 # A given number of contacts: the number that fall before the next one that

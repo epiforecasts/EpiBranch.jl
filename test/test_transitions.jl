@@ -60,10 +60,7 @@ EpiBranch.observation(m::SingleSpawnModel) = m.observation
         # Backwards-compat: no transitions kwarg = old behaviour. No new
         # state keys appear on individuals.
         model = BranchingProcess(Poisson(1.5), Exponential(5.0))
-        state = tsim(
-            model; attributes = clinical,
-            max_cases = 20, rng = StableRNG(1)
-        )
+        state = tsim(model; attributes = clinical, max_cases = 20, rng = StableRNG(1))
         for ind in filter(is_infected, individuals(state))
             @test !haskey(ind.state, :reported)
             @test !haskey(ind.state, :admitted)
@@ -320,7 +317,7 @@ EpiBranch.observation(m::SingleSpawnModel) = m.observation
         rng = StableRNG(11)
         # Demographics + clinical so :age and :onset_time are both set.
         attrs = [
-            clinical_presentation(incubation_period = LogNormal(1.5, 0.5)),
+            CLINICAL,
             demographics(age_distribution = Uniform(0, 90)),
         ]
         model = BranchingProcess(Poisson(1.5), Exponential(5.0))
@@ -355,7 +352,7 @@ EpiBranch.observation(m::SingleSpawnModel) = m.observation
         # respect the rule.
         rng = StableRNG(13)
         attrs = [
-            clinical_presentation(incubation_period = LogNormal(1.5, 0.5)),
+            CLINICAL,
             demographics(age_distribution = Uniform(0, 90)),
         ]
         model = BranchingProcess(Poisson(1.5), Exponential(5.0))
@@ -417,10 +414,7 @@ EpiBranch.observation(m::SingleSpawnModel) = m.observation
             delay = (rng, ind) -> 1.0,
             from = ind -> ind.infection_time
         )
-        state = tsim(
-            model; transitions = [rep],
-            max_cases = 30, rng = rng
-        )
+        state = tsim(model; transitions = [rep], max_cases = 30, rng = rng)
         for ind in filter(is_infected, individuals(state))
             @test ind.state[:reported]
             @test ind.state[:reporting_time] ≈ ind.infection_time + 1.0
@@ -572,7 +566,7 @@ end
         # independently at p and 1 - p leave some cases with neither outcome
         # (about p(1 - p) of them). `exclusive_probabilities` fixes that: no
         # case has both, or neither.
-        clinical = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
+        clinical = CLINICAL
         rng = StableRNG(21)
         model = BranchingProcess(Poisson(1.5), Exponential(5.0))
         died_p, recovered_p = exclusive_probabilities([0.36, 0.64])

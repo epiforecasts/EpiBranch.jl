@@ -1,0 +1,1 @@
+The count simulation test now compares the cross-day offspring correlation of the Poisson and negative binomial models with its closed-form value instead of a second noisy estimate. It also compares the lag-one autocorrelation of daily counts through its average over days as well as day by day. The agreement test can therefore run 1000 simulations per model instead of 2000.

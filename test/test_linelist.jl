@@ -2,15 +2,12 @@ using DataFrames
 using Dates
 
 @testset "Line list output" begin
-    clinical = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
+    clinical = CLINICAL
 
     @testset "linelist basic output" begin
         rng = StableRNG(42)
         model = BranchingProcess(Poisson(1.5), Exponential(5.0))
-        state = tsim(
-            model; attributes = clinical,
-            max_cases = 50, rng = rng
-        )
+        state = tsim(model; attributes = clinical, max_cases = 50, rng = rng)
 
         df = linelist(state)
 
@@ -76,13 +73,10 @@ using Dates
         rng = StableRNG(42)
         model = BranchingProcess(Poisson(1.5), Exponential(5.0))
         attrs = [
-            clinical_presentation(incubation_period = LogNormal(1.5, 0.5)),
+            CLINICAL,
             demographics(age_distribution = Normal(40, 15)),
         ]
-        state = tsim(
-            model; attributes = attrs,
-            max_cases = 50, rng = rng
-        )
+        state = tsim(model; attributes = attrs, max_cases = 50, rng = rng)
 
         df = linelist(state)
         @test "age" in names(df)
@@ -94,7 +88,7 @@ using Dates
         rng = StableRNG(42)
         model = BranchingProcess(Poisson(2.0), Exponential(5.0))
         attrs = [
-            clinical_presentation(incubation_period = LogNormal(1.5, 0.5)),
+            CLINICAL,
             demographics(age_distribution = Uniform(0, 90)),
         ]
         # CFR depends on age via a Death probability closure.
@@ -266,10 +260,7 @@ using Dates
     @testset "index cases identifiable via parent_id" begin
         rng = StableRNG(42)
         model = BranchingProcess(Poisson(1.5), Exponential(5.0))
-        state = tsim(
-            model; attributes = clinical,
-            max_cases = 20, n_initial = 3, rng = rng
-        )
+        state = tsim(model; attributes = clinical, max_cases = 20, n_initial = 3, rng = rng)
 
         df = linelist(state)
         n_index = count(df.parent_id .== 0)
@@ -407,10 +398,7 @@ using Dates
             rng, ind
         ) -> (ind.state[:vaccination_time] = ind.infection_time + 7.0)
         attrs = [clinical, risk_group, custom_time]
-        state = tsim(
-            model; attributes = attrs,
-            max_cases = 30, rng = rng
-        )
+        state = tsim(model; attributes = attrs, max_cases = 30, rng = rng)
 
         df = linelist(state)
         @test "risk_group" in names(df)             # pass-through, symbol → string
@@ -444,9 +432,7 @@ end
     end
     df = linelist(state; infected_only = false, reference_date = reference)
     @test isequal(
-        df.date_appointment, [
-            reference + Day(2), reference + Day(3), missing, missing,
-        ]
+        df.date_appointment, [reference + Day(2), reference + Day(3), missing, missing]
     )
     for key in (:date_onset, :date_admission, :date_custom_disease)
         @test all(ismissing, df[2:4, key])
@@ -488,7 +474,7 @@ end
     model = ModelSpec(
         BranchingProcess(Poisson(2.0), Exponential(5.0));
         progression = [Reporting(delay = LogNormal(1.0, 0.3), probability = 0.6)],
-        attributes = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
+        attributes = CLINICAL
     )
     state = simulate(model; max_cases = 200, rng = StableRNG(7))
     ref = Date(2020, 1, 1)
@@ -525,7 +511,7 @@ end
             interventions = [
                 Isolation(delay = Exponential(10.0), duration = Inf),
             ],
-            attributes = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
+            attributes = CLINICAL
         )
         st = simulate(full_model; max_cases = 200, n_initial = 20, rng = StableRNG(11))
         as_of = ref + Day(25)

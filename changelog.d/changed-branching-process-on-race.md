@@ -12,7 +12,7 @@ across generations. This changes a run in these ways:
 - A contact whose infection was still to be decided when a run stopped is left
   out of the output. One that tracing or an intervention's actions had already
   reached stays a contact of its case, with no infection time, and is not
-  listed by `contacts`. Before, the generation engine created every contact of
+  listed by `contacts`. Before, generation-based simulation created every contact of
   the last generation.
 - Intervention hooks run case by case in order of infection time, with the
   state as it stands at each case, rather than once per generation. An action

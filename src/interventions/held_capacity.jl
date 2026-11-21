@@ -121,37 +121,92 @@ end
 # count of their group under a `PerGroup`.
 _places(hc::HeldCapacity, resource) = _budget_of(hc.capacity, _resource_group(resource))
 
-# Everyone's stay, kept in `state.scratch` under the capacity key. Wrappers
-# that share a key share places, and a stay outlives the call that admitted it.
-# Maps a person's id to `(resource, start, end)`.
-const _HeldStays = Dict{Int, Tuple{Any, Float64, Float64}}
-function _held_stays(state, key)
-    return get!(_HeldStays, state.scratch, (:held_capacity, key))::_HeldStays
+# The stays on one resource as two sorted lists: the days stays start and the
+# days they end. A stay holds a place over `[a, b)`, so the places held on a day
+# are the stays started by then less those ended by then, each found by binary
+# search.
+struct _Occupancy
+    starts::Vector{Float64}
+    ends::Vector{Float64}
+end
+_Occupancy() = _Occupancy(Float64[], Float64[])
+
+function _add_sorted!(v::Vector{Float64}, x)
+    insert!(v, Base.searchsortedlast(v, x) + 1, x)
+    return nothing
+end
+function _remove_sorted!(v::Vector{Float64}, x)
+    i = Base.searchsortedfirst(v, x)
+    i <= length(v) && v[i] == x && deleteat!(v, i)
+    return nothing
 end
 
-# The stays of everyone but `exclude` on one resource, as `(start, end)`.
-function _stays_on(stays::_HeldStays, resource, exclude = nothing)
-    out = Tuple{Float64, Float64}[]
-    for (id, (res, a, b)) in stays
-        id == exclude && continue
-        res == resource && push!(out, (a, b))
-    end
-    return out
+_held_at(occ::_Occupancy, m) = Base.searchsortedlast(occ.starts, m) - Base.searchsortedlast(occ.ends, m)
+
+# Everyone's stay, kept in `state.scratch` under the capacity key. Wrappers
+# that share a key share places, and a stay outlives the call that admitted it.
+# `stays` maps a person's id to `(resource, start, end)`; `occupancy` keeps the
+# same stays by resource, in step with it.
+struct _HeldStays
+    stays::Dict{Int, Tuple{Any, Float64, Float64}}
+    occupancy::Dict{Any, _Occupancy}
 end
+_HeldStays() = _HeldStays(Dict{Int, Tuple{Any, Float64, Float64}}(), Dict{Any, _Occupancy}())
+
+function _held_stays(state, key)
+    return get!(() -> _HeldStays(), state.scratch, (:held_capacity, key))::_HeldStays
+end
+
+Base.haskey(h::_HeldStays, id) = haskey(h.stays, id)
+Base.get(h::_HeldStays, id, default) = get(h.stays, id, default)
+
+function Base.setindex!(h::_HeldStays, stay, id::Int)
+    delete!(h, id)
+    resource, a, b = stay
+    h.stays[id] = (resource, Float64(a), Float64(b))
+    occ = get!(() -> _Occupancy(), h.occupancy, resource)
+    _add_sorted!(occ.starts, Float64(a))
+    _add_sorted!(occ.ends, Float64(b))
+    return h
+end
+
+function Base.delete!(h::_HeldStays, id::Int)
+    stay = pop!(h.stays, id, nothing)
+    if stay !== nothing
+        resource, a, b = stay
+        occ = h.occupancy[resource]
+        _remove_sorted!(occ.starts, a)
+        _remove_sorted!(occ.ends, b)
+    end
+    return h
+end
+
+# The stays on one resource.
+_occupancy_on(h::_HeldStays, resource) = get(() -> _Occupancy(), h.occupancy, resource)
 
 # Whether a stay over `[s, e)` keeps the resource within `capacity` throughout.
 # Occupancy only rises where another stay starts and the capacity only falls at
 # one of its breaks, so the tightest moments of the stay are its own start, the
-# start of another stay inside it and a capacity break inside it.
-function _fits_stay(capacity, stays, s, e)
-    moments = Float64[s]
-    for (a, _) in stays
-        s < a < e && push!(moments, a)
+# start of another stay inside it and a capacity break inside it. The starts
+# inside the stay are read off the sorted lists in one pass. A check costs a
+# binary search plus one step per stay that starts within it.
+function _fits_stay(capacity, occ::_Occupancy, s, e)
+    _held_at(occ, s) + 1 <= _capacity_at(capacity, s) || return false
+    (; starts, ends) = occ
+    i = Base.searchsortedlast(starts, s) + 1
+    j = Base.searchsortedfirst(starts, e) - 1
+    if i <= j
+        # Where several starts tie, the last of them sees every one of them.
+        ended = Base.searchsortedlast(ends, starts[i])
+        for k in i:j
+            while ended < length(ends) && ends[ended + 1] <= starts[k]
+                ended += 1
+            end
+            k - ended + 1 <= _capacity_at(capacity, starts[k]) || return false
+        end
     end
-    append!(moments, _capacity_breaks(capacity, s, e))
-    for m in moments
-        held = count(((a, b),) -> a <= m < b, stays)
-        held + 1 <= _capacity_at(capacity, m) || return false
+    for m in _capacity_breaks(capacity, s, e)
+        _held_at(occ, m) + 1 <= _capacity_at(capacity, m) || return false
     end
     return true
 end
@@ -163,9 +218,12 @@ _next_break(schedule, t) = next_calendar_break(schedule, t)
 # place becomes free when a stay is released or the capacity rises, so only
 # release times and capacity breaks are tried.
 function refused_action(::DeferRefused, hc::HeldCapacity, usage, action)
-    stays, duration = usage.stays, usage.duration
+    occ = usage.occupancy::_Occupancy
+    duration = usage.duration
     capacity = usage.capacity
-    times = Float64[b for (_, b) in stays if action.time < b && isfinite(b)]
+    first_release = Base.searchsortedlast(occ.ends, action.time) + 1
+    last_finite = Base.searchsortedfirst(occ.ends, Inf) - 1
+    times = occ.ends[first_release:last_finite]
     last_release = isempty(times) ? action.time : maximum(times)
     append!(times, _capacity_breaks(capacity, action.time, nextfloat(last_release)))
     # After the last release only the capacity matters. Breaks are candidates
@@ -173,11 +231,11 @@ function refused_action(::DeferRefused, hc::HeldCapacity, usage, action)
     t = _next_break(capacity, max(last_release, action.time))
     while isfinite(t)
         push!(times, t)
-        _fits_stay(capacity, stays, t, t + duration) && break
+        _fits_stay(capacity, occ, t, t + duration) && break
         t = _next_break(capacity, t)
     end
     for t in sort!(unique(times))
-        _fits_stay(capacity, stays, t, t + duration) || continue
+        _fits_stay(capacity, occ, t, t + duration) || continue
         return InterventionAction(action.individual, t, action.effect!, action.claim!)
     end
     return nothing
@@ -208,10 +266,10 @@ function _admit_actions!(hc::HeldCapacity, state, actions, admitter = hc)
             action = group[i]
             haskey(stays, action.individual.id) && continue
             duration = _hold_duration(hc, action.individual, state)
-            others = _stays_on(stays, resource)
+            occ = _occupancy_on(stays, resource)
             places = _places(hc, resource)
-            if !_fits_stay(places, others, action.time, action.time + duration)
-                usage = (; stays = others, duration, capacity = places)
+            if !_fits_stay(places, occ, action.time, action.time + duration)
+                usage = (; occupancy = occ, duration, capacity = places)
                 action = refused_action(hc.on_refusal, hc, usage, action)
                 action === nothing && continue
             end
@@ -259,9 +317,9 @@ one everyone shares.
 """
 function held_usage(hc::HeldCapacity, state::SimulationState, at::Real, key = nothing)
     resource = _user_resource(hc.capacity, key)
-    stays = _stays_on(_held_stays(state, capacity_key(hc.intervention)), resource)
+    occ = _occupancy_on(_held_stays(state, capacity_key(hc.intervention)), resource)
     return (
-        held = count(((a, b),) -> a <= at < b, stays),
+        held = _held_at(occ, at),
         capacity = _capacity_at(_places(hc, resource), at),
     )
 end
@@ -281,9 +339,13 @@ function _hold_or_reset!(hc::HeldCapacity, ind::Individual, state)
     e = min(held_until(hc.intervention, ind), s + _hold_duration(hc, ind, state))
     stays = _held_stays(state, key)
     resource = resource_key(hc, ind, state)
-    if _fits_stay(_places(hc, resource), _stays_on(stays, resource, ind.id), s, e)
+    # The person's own earlier stay does not count against the new one.
+    previous = get(stays, ind.id, nothing)
+    delete!(stays, ind.id)
+    if _fits_stay(_places(hc, resource), _occupancy_on(stays, resource), s, e)
         stays[ind.id] = (resource, s, e)
     else
+        previous === nothing || (stays[ind.id] = previous)
         reset!(hc.intervention, ind)
     end
     return nothing
