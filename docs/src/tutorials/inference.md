@@ -416,7 +416,8 @@ isolation and the cap on outbreak size.
 
 !!! note "Choosing a sampler for simulated likelihoods"
     A likelihood estimated by simulation is noisy. NUTS follows the slope of the
-    likelihood and cannot be used. `MH()` (Metropolis-Hastings) needs
+    likelihood and cannot be used: with Mooncake loaded, differentiating
+    such a likelihood raises an error that says so. `MH()` (Metropolis-Hastings) needs
     only likelihood values. It is slower and needs more draws, so check
     convergence as above. To check `n_sim`, change the seed inside the model
     (`StableRNG(1)` above) and refit: if the estimates move, increase `n_sim`.
