@@ -122,6 +122,51 @@ using EpiBranch, Distributions, Random, StableRNGs, Statistics, DataFrames
         end
     end
 
+    @testset "other offspring laws agree with the individual simulation" begin
+        # Binomial offspring are less variable than Poisson, so the offspring
+        # of one infector are negatively correlated across the days.
+        weights = [0.3, 0.5, 0.2]
+        c = check_agreement(
+            BranchingProcess(Binomial(5, 0.3), gt), 8, 3, 1000;
+            reference = split_correlation(1.5, 1.05, weights)
+        )
+        @test c[1, 2] < -0.1
+        geometric = Geometric(0.4)
+        c = check_agreement(
+            BranchingProcess(geometric, gt), 8, 3, 2000;
+            reference = split_correlation(mean(geometric), var(geometric), weights)
+        )
+        @test c[1, 2] > 0.1
+    end
+
+    @testset "the members of a cohort keep their own offspring counts" begin
+        model = BranchingProcess(Binomial(5, 0.3), gt)
+        @test EpiBranch.count_rule(model) isa EpiBranch.OffspringCountRule
+        state = count_run(model; max_time = 12, rng = StableRNG(4))
+        members = state.cohort_members
+        @test all(length(m[1]) == n for (m, n) in zip(members, state.counts))
+        people = individuals(state)
+        children = zeros(Int, length(people))
+        for ind in people
+            ind.parent_id > 0 && (children[ind.parent_id] += 1)
+        end
+        # A cohort whose infections all fall by the last day has had all the
+        # offspring of every member, so no member can have more.
+        offset = 0
+        for d in 0:state.day
+            n = state.counts[d + 1]
+            if d + length(gt.support) <= state.day
+                @test children[(offset + 1):(offset + n)] == Int.(members[d + 1][1])
+            end
+            offset += n
+        end
+        @test sum(children) == state.cumulative_cases - state.counts[1]
+        # A law with a point mass at zero ends the run.
+        dead = count_run(BranchingProcess(Binomial(3, 0.0), gt); max_time = 6, rng = StableRNG(1))
+        @test dead.extinct
+        @test dead.cumulative_cases == 4
+    end
+
     @testset "the members of a cohort keep their infectiousness" begin
         # With a mixed Poisson law the split of the infections of a cohort
         # among its members depends on the total, so the members are kept.
@@ -517,7 +562,9 @@ using EpiBranch, Distributions, Random, StableRNGs, Statistics, DataFrames
         @test EpiBranch.count_rule(BranchingProcess(M, R -> Binomial(5, R / 5), gt)) === nothing
         @test simulate(two; kw..., max_time = 5, index_types = [1, 2]) isa CountSimulationState
         @test simulate(two; kw..., max_time = 5, index_types = DiscreteUniform(1, 2)) isa SimulationState
-        @test EpiBranch.count_rule(BranchingProcess(Binomial(5, 0.3), gt)) === nothing
+        @test EpiBranch.count_rule(BranchingProcess(Binomial(5, 0.3), gt)) isa EpiBranch.OffspringCountRule
+        @test EpiBranch.count_rule(BranchingProcess(Binomial(5, 0.3), gt; population = Population(1000))) === nothing
+        @test EpiBranch.count_rule(BranchingProcess(DiscreteUniform(-1, 2), gt)) === nothing
         @test EpiBranch.count_rule(BranchingProcess(Poisson(1.2), DiscreteNonParametric(0:2, [0.2, 0.5, 0.3]))) ===
             nothing
         @test EpiBranch.count_rule(
