@@ -1,6 +1,6 @@
 # Simulating daily counts without individuals
 
-A branching process in which nothing about a person feeds back on transmission does not need each person simulated to give the right daily counts. [`simulate`](@ref) runs such a model on a count-level path: it draws the number of people infected on each day from the cohorts of earlier days, at a cost that grows with the number of days, whatever the number of cases (a Poisson lognormal, Poisson Weibull, `Binomial` or `Geometric` offspring law is the exception, see below). The result is a [`CountSimulationState`](@ref), which builds the people, and so the line list, only when they are asked for.
+A branching process in which nothing about a person feeds back on transmission does not need each person simulated to give the right daily counts. [`simulate`](@ref) runs such a model on a count-level path: it draws the number of people infected on each day from the cohorts of earlier days, at a cost that grows with the number of days, whatever the number of cases (an offspring law other than `Poisson` or `NegBin` is the exception, see below). The result is a [`CountSimulationState`](@ref), which builds the people, and so the line list, only when they are asked for.
 
 ## When a model runs on counts
 

@@ -65,7 +65,7 @@ CountRule(R, k::Real, g) = CountRule(R, _gamma_unit(k), g)
 """
     OffspringCountRule(law, g)
 
-A rule for a `Binomial` or `Geometric` offspring `law`. Each member of a
+A rule for an offspring `law` that is any discrete distribution on the non-negative integers other than a Poisson mixture, such as `Binomial` or `Geometric`. Each member of a
 cohort draws its number of offspring from `law` when infected, and each
 offspring falls on lag `l` with probability `g[l]`.
 """
@@ -158,7 +158,8 @@ _gamma_unit(k) = isfinite(k) ? Gamma(Float64(k), 1 / Float64(k)) : Dirac(1.0)
 # The rate law of a Poisson mixture divided by its mean.
 _unit_rate_law(o::PoissonLognormal) = LogNormal(-o.σ^2 / 2, Float64(o.σ))
 _unit_rate_law(o::PoissonWeibull) = Weibull(Float64(o.k), Float64(o.λ) / mean(_rate_law(o)))
-function _count_rule(o::Union{Binomial, Geometric}, kernel)
+function _count_rule(o::DiscreteUnivariateDistribution, kernel)
+    minimum(o) >= 0 || return nothing
     g = _daily_lags(kernel)
     return g === nothing ? nothing : OffspringCountRule(o, g)
 end
@@ -630,7 +631,6 @@ function _member_shares(rule::CountRule, n::Int, members, rng)
     cumulative ./= cumulative[end]
     return cumulative
 end
-
 # One entry for each offspring of the cohort, naming its member, in random order.
 function _member_shares(::OffspringCountRule, n::Int, members, rng)
     return shuffle!(rng, reduce(vcat, [fill(i, Int(c)) for (i, c) in enumerate(members)]; init = Int[]))
