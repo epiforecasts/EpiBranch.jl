@@ -320,7 +320,9 @@ AbstractSimulationState
 SimulationState
 CountSimulationState
 EpiBranch.count_rule
+EpiBranch.AbstractCountRule
 EpiBranch.CountRule
+EpiBranch.OffspringCountRule
 EpiBranch.MultiTypeCountRule
 individuals
 Base.copy(::SimulationState)

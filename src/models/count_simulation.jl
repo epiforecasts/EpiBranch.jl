@@ -34,6 +34,14 @@ model type gives it the count-level path. The rule is a
 count_rule(::TransmissionModel) = nothing
 
 """
+    AbstractCountRule
+
+A rule by which a cohort infects people on later days:
+[`CountRule`](@ref) or [`OffspringCountRule`](@ref).
+"""
+abstract type AbstractCountRule end
+
+"""
     CountRule(R, ν, g)
 
 How a cohort of `n` people infected on one day infects people on later days
@@ -45,7 +53,7 @@ binomial offspring law, where `Λ` takes one draw as `Gamma(n k, 1/k)`. Any
 other `ν` takes `n` draws, and the cost and memory grow with the number of
 cases. A shape `k` in place of `ν` stands for `Gamma(k, 1/k)`. `R` is a function of the day.
 """
-struct CountRule{F, D <: UnivariateDistribution}
+struct CountRule{F, D <: UnivariateDistribution} <: AbstractCountRule
     R::F
     ν::D
     g::Vector{Float64}
@@ -53,6 +61,20 @@ end
 
 # A gamma shape `k` in place of `ν`; infinite `k` is a point mass.
 CountRule(R, k::Real, g) = CountRule(R, _gamma_unit(k), g)
+
+"""
+    OffspringCountRule(law, g)
+
+A rule for an offspring `law` that is not a mixed Poisson (`Binomial` or
+`Geometric`). Each member of a cohort draws its number of offspring from `law`
+when it is infected, and each offspring falls on lag `l` with probability
+`g[l]`. The cost and memory grow with the number of cases, because the draws of
+the members are kept. The rules of a multi-type model are all of one kind.
+"""
+struct OffspringCountRule{D <: DiscreteUnivariateDistribution} <: AbstractCountRule
+    law::D
+    g::Vector{Float64}
+end
 
 """
     MultiTypeCountRule(types, alloc)
@@ -63,16 +85,16 @@ type), and `alloc[i, j]` is the probability that a person a type-`j` case
 infects is of type `i`. The infections of type `i` caused by a cohort of type
 `j` on a day are `Poisson(Λ R(t) g[lag] alloc[i, j])`.
 """
-struct MultiTypeCountRule
-    types::Vector{CountRule}
+struct MultiTypeCountRule{T <: AbstractCountRule}
+    types::Vector{T}
     alloc::Matrix{Float64}
 end
 
-_type_rules(rule::CountRule) = (rule,)
+_type_rules(rule::AbstractCountRule) = (rule,)
 _type_rules(rule::MultiTypeCountRule) = rule.types
-_alloc(::CountRule) = _SINGLE_TYPE_ALLOC
+_alloc(::AbstractCountRule) = _SINGLE_TYPE_ALLOC
 _alloc(rule::MultiTypeCountRule) = rule.alloc
-_lags(rule::CountRule) = rule.g
+_lags(rule::AbstractCountRule) = rule.g
 _lags(rule::MultiTypeCountRule) = first(rule.types).g
 const _SINGLE_TYPE_ALLOC = ones(1, 1)
 
@@ -103,15 +125,23 @@ _count_sizes(::NoPopulation) = nothing
 _count_sizes(p::SinglePopulation) = [p.size]
 _count_sizes(p::GroupedPopulation) = copy(p.sizes)
 
-# A type that infects no one has no offspring law to read.
+# A type that infects no one has no offspring law to read; it takes the kind of
+# the other types' rules.
 function _count_rule(o::MultiTypeOffspring, kernel)
     rules = map(1:_n_types(o)) do j
         R = o.R_by_type[j]
-        R <= 0 && return _daily_rule(_ConstantR(0.0), Dirac(1.0), kernel)
+        R <= 0 && return missing
         return _count_rule(_type_law(o.dist_fn, R, j), kernel)
     end
-    any(isnothing, rules) && return nothing
-    return MultiTypeCountRule(CountRule[rules...], Matrix{Float64}(o.alloc_probs))
+    live = collect(skipmissing(rules))
+    any(isnothing, live) && return nothing
+    kind = isempty(live) ? CountRule : typeof(first(live)).name.wrapper
+    all(r -> r isa kind, live) || return nothing
+    sink = kind === CountRule ? _daily_rule(_ConstantR(0.0), Dirac(1.0), kernel) :
+        OffspringCountRule(Binomial(1, 0.0), _lags(first(live)))
+    sink === nothing && return nothing
+    types = kind[ismissing(r) ? sink : r for r in rules]
+    return MultiTypeCountRule(types, Matrix{Float64}(o.alloc_probs))
 end
 
 _count_rule(o::Poisson, kernel) = _daily_rule(_ConstantR(mean(o)), Dirac(1.0), kernel)
@@ -131,17 +161,25 @@ _gamma_unit(k) = isfinite(k) ? Gamma(Float64(k), 1 / Float64(k)) : Dirac(1.0)
 # The rate law of a Poisson mixture divided by its mean.
 _unit_rate_law(o::PoissonLognormal) = LogNormal(-o.σ^2 / 2, Float64(o.σ))
 _unit_rate_law(o::PoissonWeibull) = Weibull(Float64(o.k), Float64(o.λ) / mean(_rate_law(o)))
+function _count_rule(o::Union{Binomial, Geometric}, kernel)
+    g = _daily_lags(kernel)
+    return g === nothing ? nothing : OffspringCountRule(o, g)
+end
 _count_rule(o, kernel) = nothing
 
 # The generation time as a pmf on lags 1, 2, …, when it is a distribution on
 # whole days from 1 with a largest value.
-function _daily_rule(R, ν, kernel)
+function _daily_lags(kernel)
     kernel isa DiscreteUnivariateDistribution || return nothing
     lo, hi = minimum(kernel), maximum(kernel)
     lo >= 1 && isfinite(hi) && hi <= 10_000 || return nothing
     g = Float64[pdf(kernel, lag) for lag in 1:Int(hi)]
-    isapprox(sum(g), 1; atol = 1.0e-9) || return nothing
-    return CountRule(R, ν, g)
+    return isapprox(sum(g), 1; atol = 1.0e-9) ? g : nothing
+end
+
+function _daily_rule(R, ν, kernel)
+    g = _daily_lags(kernel)
+    return g === nothing ? nothing : CountRule(R, ν, g)
 end
 
 """
@@ -244,6 +282,12 @@ function _draw_cohort(ν, n, rng)
     members = [rand(rng, ν) for _ in 1:n]
     return (sum(members), members)
 end
+# An `OffspringCountRule` cohort holds the offspring still to fall on a later
+# day, and the offspring number of each member.
+function _draw_cohort(rule::OffspringCountRule, n::Int, rng)
+    members = Float64[rand(rng, rule.law) for _ in 1:n]
+    return (sum(members), members)
+end
 
 # Generation classes are `1:(max_generation + 1)`, or one class without a cap.
 _n_classes(max_generation) = max_generation === nothing ? 1 : max_generation + 1
@@ -287,7 +331,7 @@ function _count_step!(s::CountSimulationState)
     nt = length(rules)
     g = s.max_generation
     t = s.day + 1
-    r = [_renewal_R_at(rule.R, t) for rule in rules]
+    r = [_rate_at(rule, t) for rule in rules]
     m = _classes_on(g, t)
     inflow = zeros(Int, length(lags), nt * _classes_on(g, t - 1), nt)
     by_class = zeros(Int, nt * m)
@@ -297,18 +341,12 @@ function _count_step!(s::CountSimulationState)
         k, j = _class_of(c, ms), _type_of(c, ms)
         _infects(g, k) || continue
         s.generation_counts[t - lag + 1][c] == 0 && continue
-        mean_infections = s.cohort_infectiousness[t - lag + 1][c] * r[j] * lags[lag]
-        push!(sources, (lag, c, j, k, mean_infections))
+        push!(sources, (lag, c, j, k, _lag_infections!(s, rules[j], t - lag, c, lag, r[j])))
     end
     if s.susceptibles === nothing
-        for (lag, c, j, k, mean_infections) in sources, i in 1:nt
-            mu = mean_infections * alloc[i, j]
-            x = mu > 0 ? rand(s.rng, Poisson(mu)) : 0
-            inflow[lag, c, i] = x
-            by_class[_cohort_index(m, i, _next_class(g, k))] += x
-        end
+        _free_inflow!(s, first(rules), sources, alloc, inflow, by_class, m)
     else
-        _deplete_sources!(s, sources, alloc, inflow, by_class, m)
+        _deplete_sources!(s, first(rules), sources, alloc, inflow, by_class, m)
     end
     push!(s.inflow, inflow)
     push!(s.counts, sum(by_class))
@@ -320,9 +358,48 @@ function _count_step!(s::CountSimulationState)
     return s
 end
 
+_rate_at(rule::CountRule, t) = _renewal_R_at(rule.R, t)
+_rate_at(::OffspringCountRule, t) = 1.0
+
+# The mean number of people a cohort infects on this lag, or for an
+# `OffspringCountRule` the number of its remaining offspring that fall on it
+# (and takes them off the cohort's remainder).
+_lag_infections!(s, rule::CountRule, day, c, lag, r) =
+    s.cohort_infectiousness[day + 1][c] * r * rule.g[lag]
+function _lag_infections!(s, rule::OffspringCountRule, day, c, lag, r)
+    remaining = Int(s.cohort_infectiousness[day + 1][c])
+    tail = sum(@view rule.g[lag:end])
+    x = remaining == 0 ? 0 : rand(s.rng, Binomial(remaining, min(1.0, rule.g[lag] / tail)))
+    s.cohort_infectiousness[day + 1][c] = remaining - x
+    return Float64(x)
+end
+
+function _free_inflow!(s, ::CountRule, sources, alloc, inflow, by_class, m)
+    g = s.max_generation
+    for (lag, c, j, k, mean_infections) in sources, i in axes(alloc, 1)
+        mu = mean_infections * alloc[i, j]
+        x = mu > 0 ? rand(s.rng, Poisson(mu)) : 0
+        inflow[lag, c, i] = x
+        by_class[_cohort_index(m, i, _next_class(g, k))] += x
+    end
+    return s
+end
+
+function _free_inflow!(s, ::OffspringCountRule, sources, alloc, inflow, by_class, m)
+    g = s.max_generation
+    for (lag, c, j, k, x) in sources
+        x == 0 && continue
+        for (i, n) in enumerate(rand(s.rng, Multinomial(Int(x), alloc[:, j])))
+            inflow[lag, c, i] = n
+            by_class[_cohort_index(m, i, _next_class(g, k))] += n
+        end
+    end
+    return s
+end
+
 # Thin the day's contacts against the susceptibles of each type, then share the
 # infections among the cohorts in proportion to the contacts each made.
-function _deplete_sources!(s, sources, alloc, inflow, by_class, m)
+function _deplete_sources!(s, ::CountRule, sources, alloc, inflow, by_class, m)
     g = s.max_generation
     nt = size(alloc, 1)
     rates = zeros(nt)
@@ -337,6 +414,33 @@ function _deplete_sources!(s, sources, alloc, inflow, by_class, m)
         for (n, (lag, c, _, k, _)) in zip(shares, sources)
             inflow[lag, c, i] = n
             by_class[_cohort_index(m, i, _next_class(g, k))] += n
+        end
+    end
+    return s
+end
+
+# The same for counted contacts: the contacts of each type are thinned as a
+# total, and the ones kept are a random subset of them, so a source's share is
+# hypergeometric.
+function _deplete_sources!(s, ::OffspringCountRule, sources, alloc, inflow, by_class, m)
+    g = s.max_generation
+    nt = size(alloc, 1)
+    contacts = zeros(Int, length(sources), nt)
+    for (n, (_, _, j, _, x)) in enumerate(sources)
+        x == 0 && continue
+        contacts[n, :] = rand(s.rng, Multinomial(Int(x), alloc[:, j]))
+    end
+    kept = _deplete!(s.rng, PerContactDepletion(), vec(sum(contacts; dims = 1)), s.susceptibles, s.sizes)
+    for i in 1:nt
+        remaining, pool = kept[i], sum(@view contacts[:, i])
+        for (n, (lag, c, _, k, _)) in enumerate(sources)
+            remaining == 0 && break
+            x = contacts[n, i]
+            take = x == 0 ? 0 : rand(s.rng, Hypergeometric(x, pool - x, remaining))
+            pool -= x
+            remaining -= take
+            inflow[lag, c, i] = take
+            by_class[_cohort_index(m, i, _next_class(g, k))] += take
         end
     end
     return s
@@ -485,7 +589,7 @@ function _realise!(s::CountSimulationState)
     for j in 1:nt
         append!(ids[1][j], findall(i -> individual_type(i) == j, individuals(sim)))
     end
-    shares = [[Float64[] for _ in 1:(nt * _classes_on(g, d))] for d in 0:s.day]
+    shares = [Any[nothing for _ in 1:(nt * _classes_on(g, d))] for d in 0:s.day]
     for d in 1:s.day
         m = _classes_on(g, d)
         for lag in axes(s.inflow[d + 1], 1), c in axes(s.inflow[d + 1], 2), i in 1:nt
@@ -493,11 +597,11 @@ function _realise!(s::CountSimulationState)
             x == 0 && continue
             src = d - lag
             k, j = _class_of(c, _classes_on(g, src)), _type_of(c, _classes_on(g, src))
-            isempty(shares[src + 1][c]) &&
+            shares[src + 1][c] === nothing &&
                 (shares[src + 1][c] = _member_shares(rules[j], s.generation_counts[src + 1][c], s.cohort_members[src + 1][c], rng))
-            cumulative = shares[src + 1][c]
+            pool = shares[src + 1][c]
             for _ in 1:x
-                member = min(searchsortedfirst(cumulative, rand(rng)), length(cumulative))
+                member = _pick_member!(pool, rng)
                 parent = individuals(sim)[ids[src + 1][c][member]]
                 sim.current_generation = parent.generation
                 child = make_contact!(
@@ -534,6 +638,16 @@ function _member_shares(rule::CountRule, n::Int, members, rng)
     cumulative ./= cumulative[end]
     return cumulative
 end
+
+# The members of an `OffspringCountRule` cohort, one entry for each offspring
+# it has, in random order: each offspring belongs to one member.
+function _member_shares(::OffspringCountRule, n::Int, members, rng)
+    return shuffle!(rng, reduce(vcat, [fill(i, Int(c)) for (i, c) in enumerate(members)]; init = Int[]))
+end
+
+_pick_member!(cumulative::Vector{Float64}, rng) =
+    min(searchsortedfirst(cumulative, rand(rng)), length(cumulative))
+_pick_member!(slots::Vector{Int}, rng) = pop!(slots)
 
 individuals(s::CountSimulationState) = individuals(_realise!(s))
 
