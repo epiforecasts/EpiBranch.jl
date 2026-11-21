@@ -131,6 +131,45 @@ using StableRNGs
         @test state.cumulative_cases >= 2
     end
 
+    @testset "a listed onset overrides the asymptomatic draw" begin
+        spec = ModelSpec(
+            model;
+            attributes = clinical_presentation(
+                incubation_period = LogNormal(1.6, 0.5), prob_asymptomatic = 1.0
+            ),
+        )
+        cases = DataFrame(
+            infection_time = [0.0, 2.0], parent_id = [missing, 1],
+            onset_time = [4.0, missing],
+        )
+        state = initialise_state(spec, cases; rng = StableRNG(4))
+        @test !is_asymptomatic(state.individuals[1])
+        @test onset_time(state.individuals[1]) == 4.0
+        @test is_asymptomatic(state.individuals[2])
+        @test isnan(onset_time(state.individuals[2]))
+    end
+
+    @testset "a listed onset is symptomatic for traits drawn from it" begin
+        spec = ModelSpec(
+            model;
+            attributes = [
+                clinical_presentation(
+                    incubation_period = LogNormal(1.6, 0.5), prob_asymptomatic = 1.0
+                ),
+                transmission_traits(
+                    infectiousness = (rng, ind) -> ind.state[:asymptomatic] ? 0.5 : 1.0
+                ),
+            ],
+        )
+        cases = DataFrame(
+            infection_time = [0.0, 2.0], parent_id = [missing, 1],
+            onset_time = [4.0, missing],
+        )
+        state = initialise_state(spec, cases; rng = StableRNG(4))
+        @test state.individuals[1].infectiousness == 1.0
+        @test state.individuals[2].infectiousness == 0.5
+    end
+
     @testset "invalid tables are refused" begin
         @test_throws ArgumentError state_from_cases(model, DataFrame(x = [1.0]))
         @test_throws ArgumentError state_from_cases(

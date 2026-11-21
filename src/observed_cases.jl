@@ -180,10 +180,17 @@ function _initialise_observed(
     T = _timetype(state)
     generation, chain = _generations(obs.parent, obs.inf)
     for i in 1:n
-        ind = _create_individual(state, obs.parent[i], chain[i], i, obs.inf[i])
+        # A case with a listed onset is symptomatic. The flag is set before the
+        # attributes run because traits drawn from `:asymptomatic` read it.
+        listed = !isnan(obs.onset[i])
+        prepare = listed ? (ind -> (ind.state[:asymptomatic] = false)) : _no_prepare
+        ind = _create_individual(
+            state, obs.parent[i], chain[i], i, obs.inf[i]; prepare
+        )
         ind.generation = generation[i]
-        isnan(obs.onset[i]) ||
-            (ind.state[:incubation_period] = T(obs.onset[i] - obs.inf[i]))
+        if listed
+            ind.state[:incubation_period] = T(obs.onset[i] - obs.inf[i])
+        end
         isfinite(obs.isolation[i]) &&
             set_isolated!(ind, obs.isolation[i]; release_time = Inf)
         _initialise!(interventions, ind, state)
