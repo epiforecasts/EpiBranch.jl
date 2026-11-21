@@ -30,9 +30,8 @@ transmission, apart from the depletion of a finite population by type and the
 vaccination campaigns that doses given to counts can apply to it, and its
 generation time is a distribution on whole days. A
 [`BranchingProcess`](@ref) may have several infectiousness windows or several
-types. Adding a method for a new model type gives it the count-level path. The
-rule is a [`CountRule`](@ref), or a [`CountRules`](@ref) for several windows or
-types.
+types. A method for a new model type gives it the count-level path. The rule is
+a [`CountRule`](@ref), or a [`CountRules`](@ref) for several windows or types.
 """
 count_rule(::TransmissionModel) = nothing
 
@@ -81,7 +80,7 @@ end
 The rule of a model with several infectiousness windows or several types,
 returned by [`EpiBranch.count_rule`](@ref) in place of a [`CountRule`](@ref).
 `channels[w, j]` is the `CountRule` by which a type-`j` case infects through
-window `w`, and `allocation[w][i, j]` the share of those infections that are of
+window `w`, and `allocation[w][i, j]` the share of those infections going to
 type `i`. Each case draws its infectiousness for each window independently.
 A cohort of one type therefore holds one total for each window. `campaigns`
 are the vaccination campaigns of a [`ModelSpec`](@ref) on a finite population:
