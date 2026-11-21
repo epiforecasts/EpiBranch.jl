@@ -56,7 +56,7 @@ is ended: new admissions are refused until the places held drop below the new
 capacity. [`DeferRefused`](@ref) moves an action to the first moment a place is
 free for its whole stay, which a release or a rise in capacity can bring about. A person holds at most one place.
 [`held_usage`](@ref) reports the places held. Like `CapacityConstrained`, the
-wrapper splits its places by [`resource_key`](@ref EpiBranch.resource_key) and
+wrapper splits its places by group when `capacity` is a [`PerGroup`](@ref) and
 composes with [`Scheduled`](@ref); the intervention must define
 [`capacity_key`](@ref EpiBranch.capacity_key).
 """
@@ -119,7 +119,7 @@ end
 
 # The places of the resource a person draws on: one count for everyone, or the
 # count of their group under a `PerGroup`.
-_places(hc::HeldCapacity, resource) = _budget_of(hc.capacity, _resource_group(resource))
+_places(hc::HeldCapacity, resource) = _budget_of(hc.capacity, resource)
 
 # The stays on one resource as two sorted lists: the days stays start and the
 # days they end. A stay holds a place over `[a, b)`, so the places held on a day
@@ -311,9 +311,8 @@ end
         -> (held, capacity)
 
 The number of places held at day `at` and the number there are. `key` selects
-one budget when [`resource_key`](@ref EpiBranch.resource_key) splits
-the intervention of `hc` into more than one; the default, `nothing`, is the single
-one everyone shares.
+one budget when `capacity` is a [`PerGroup`](@ref): the name of the group. The
+default, `nothing`, is the one budget everyone shares.
 """
 function held_usage(hc::HeldCapacity, state::SimulationState, at::Real, key = nothing)
     resource = _user_resource(hc.capacity, key)
@@ -338,7 +337,7 @@ function _hold_or_reset!(hc::HeldCapacity, ind::Individual, state)
     isfinite(s) || return nothing
     e = min(held_until(hc.intervention, ind), s + _hold_duration(hc, ind, state))
     stays = _held_stays(state, key)
-    resource = resource_key(hc, ind, state)
+    resource = _resource_of(hc, ind, state)
     # The person's own earlier stay does not count against the new one.
     previous = get(stays, ind.id, nothing)
     delete!(stays, ind.id)

@@ -221,7 +221,7 @@ public LEAKY_REMOVAL_STRETCHES_KEY
 #   - `keep_active` says which targets an intervention still acts on;
 #   - `traces`, `draw_trace_delay` and `apply_trace!` are the methods behind
 #     `TraceRate`, `TraceDelay` and `TraceAction`;
-#   - `capacity_key`, `capacity_time_key`, `resource_key`, `held_until` and
+#   - `capacity_key`, `capacity_time_key`, `held_until` and
 #     `refused_action` are what a capacity-limited intervention defines;
 #   - `InterventionWrapper` is the supertype of a wrapper of your own.
 public keep_active
@@ -230,7 +230,6 @@ public draw_trace_delay
 public apply_trace!
 public capacity_key
 public capacity_time_key
-public resource_key
 public held_until
 public count_dosing
 public GroupDosing

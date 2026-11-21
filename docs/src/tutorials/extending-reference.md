@@ -887,20 +887,12 @@ the capacity check without another charge, though the schedule still applies.
 Ring vaccination uses this for protection from an existing dose at a new
 exposure, with the current simulation time as its action time.
 
-By default every recipient draws on one budget. `EpiBranch.resource_key(iv,
-individual, state)` splits it: each distinct value it returns (a district, a
-treatment centre, say) gets its own usage, checked independently under the
-same `budget_per_period`, `period` and `carry_over`. It is asked of the
-individual rather than the proposed action, so a person already served in an
-earlier call is placed in the same group again from their recorded state,
-with nothing of that call's own proposal kept around. The default, `nothing`,
-puts everyone in a single group, unchanged from an intervention with no
-method of it.
-
-A budget per group of the population needs no method of yours:
+By default every recipient draws on one budget. A budget per group, such as
+one per district or treatment centre, needs no method of yours:
 `PerGroup` as `budget_per_period` (or as the `capacity` of `HeldCapacity`)
-splits the budget by the group of each person, from the population alone. If
-`iv` also has a `resource_key`, each group is split again by it.
+splits the budget by the group of each person in the population of the model.
+Each group has its own budget, checked independently, with the same `period`
+and `carry_over`.
 
 A model that keeps counts of cases by type or compartments by mixing group has
 no individual to offer an intervention to. It applies an intervention only if
@@ -1085,8 +1077,7 @@ before.
 | A start date for an intervention | `Scheduled(iv; start_time = ...)`, with `intervention_time` and `reset!` for `iv` | After each hook |
 | A condition that starts a schedule | A type `<: AbstractTrigger` with `is_triggered!`; `trigger_can_lapse` and `required_transitions` if the defaults do not fit | Each time the schedule is checked |
 | A capacity limit | `CapacityConstrained(iv; budget_per_period = ...)`, with `capacity_key` and `capacity_time_key` for `iv` (or for its `TraceAction`, for `ContactTracing`) | When actions are admitted, once per case; or, for an effect `iv` writes directly in `resolve_individual!`, right after that hook runs |
-| A capacity limit per group of the population | Nothing: `CapacityConstrained(iv; budget_per_period = PerGroup(...))` finds each person's group | When actions are admitted, once per case |
-| A capacity limit per district, centre or other split of your own | `resource_key(iv, individual, state)` for `iv` | When actions are admitted, once per case |
+| A capacity limit per group of the population, such as a district or centre | Nothing: `CapacityConstrained(iv; budget_per_period = PerGroup(...))` finds each person's group | When actions are admitted, once per case |
 | The effect of an intervention on counts of cases or compartments | `EpiBranch.count_dosing(iv)`, returning an `EpiBranch.GroupDosing` | When a model of counts or compartments reads the specification |
 | An exact effect on the offspring distribution | `analytic_offspring_effect` for an intervention | Closed-form results on a `ModelSpec` |
 | A model, attribute or progression transition that leaves the single-type offspring law exactly as drawn | `EpiBranch.offspring_law_unchanged` | The chain-size likelihood's analytical path |

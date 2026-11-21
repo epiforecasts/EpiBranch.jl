@@ -832,21 +832,14 @@ Every proposed recipient is known before admission, including group members
 found by searching a whole group. See [Intervention actions](@ref) for how to
 propose actions and the rules on timing.
 
-By default everyone draws on the same budget. Define
-`EpiBranch.resource_key(iv, individual, state)` to split it instead,
-returning whichever value identifies the group `individual` belongs to, such
-as a district or a treatment centre. Each distinct value gets its own
-budget, tracked under the same `budget_per_period`, `period`, `carry_over`
-and `priority`, independently of every other. It dispatches on the
-individual rather than a proposed action, so someone already served can be
-placed in their group again from their recorded state alone, with nothing of
-the original proposal kept around. `capacity_usage(cc, state, key)` reads
-one group's own usage.
-
-To limit an intervention by the groups of the population, pass
+By default everyone draws on the same budget. To split it by the groups of the
+population, such as districts or treatment centres, pass
 `budget_per_period = PerGroup(...)` to `CapacityConstrained` (or `capacity =
 PerGroup(...)` to `HeldCapacity`). The wrapper finds each person's group
-itself, so your intervention needs no `resource_key` method for it. A model
+itself. Your intervention needs no method for it. Each group gets its own
+budget with the same `period`, `carry_over` and `priority`, tracked
+independently of every other. `capacity_usage(cc, state, group)` reads the
+usage of one group. A model
 that keeps counts or compartments rather than individuals applies an
 intervention only if it defines `EpiBranch.count_dosing`; see [What each model
 applies](@ref).
@@ -882,7 +875,7 @@ reports through `EpiBranch.held_until(iv, individual)`. With the default
 `hold = Inf` a place is kept until `release_capacity!(state, iv, person, at)`
 gives it back; the `effect!` of an action can return a further action dated
 when the stay ends that calls it. `held_usage(hc, state, at)` reports how many
-places are held. `resource_key` splits the places by group as it does for
+places are held. A `PerGroup` capacity splits the places by group as it does for
 `CapacityConstrained`.
 
 ## Requiring values on each person

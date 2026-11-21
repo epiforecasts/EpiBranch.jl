@@ -1,0 +1,1 @@
+`CapacityConstrained` and `HeldCapacity` split a budget by group using the groups of the `Population`. Pass `PerGroup` as `budget_per_period` or `capacity`. The wrapper finds the group of each person, so an intervention written outside the package needs no method for a budget per district or centre. `capacity_usage` and `held_usage` take the group name as `key`.

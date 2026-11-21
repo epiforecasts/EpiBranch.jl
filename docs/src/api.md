@@ -924,7 +924,6 @@ EpiBranch.persistent_competing_risks
 EpiBranch.capacity_key
 EpiBranch.capacity_time_key
 EpiBranch.record_capacity_use!
-EpiBranch.resource_key
 EpiBranch.refused_action
 EpiBranch.held_until
 EpiBranch.count_dosing

@@ -131,11 +131,11 @@ label share one budget, and doses given by another intervention under that
 label count against it; use different labels for separate budgets.
 [`capacity_usage`](@ref) reports the capacity used and available.
 
-By default all groups share one budget, in every model. An intervention with a [`resource_key`](@ref EpiBranch.resource_key)
-method splits it: each distinct value (a district, a treatment centre)
-gets its own `budget_per_period` with the same `period`, `carry_over` and
-`priority`, tracked separately from the others. Pass the value to
-`capacity_usage` to read the usage of one group.
+By default all groups share one budget, in every model. A [`PerGroup`](@ref)
+`budget_per_period` splits it: each group of the population of the model (a
+district, a treatment centre) gets its own budget with the same `period`,
+`carry_over` and `priority`, tracked separately from the others. Pass the group
+name to `capacity_usage` to read the usage of one group.
 
 [`Scheduled`](@ref) and `CapacityConstrained` can be combined in either
 order: both check each action's own proposed date.
@@ -267,48 +267,23 @@ function capacity_time_key(iv::AbstractIntervention)
     )
 end
 
-"""
-    resource_key(intervention, individual, state) -> Any
+# Which of a wrapper's budgets `individual` draws on: `nothing` for one pool
+# shared by everyone, or, for a `PerGroup` budget, the group of the person in
+# the population of the model. It dispatches on `individual` rather than a
+# proposed action, so the same value is found again for someone already served
+# in an earlier call, from their recorded state alone.
+_resource_of(::AbstractIntervention, individual, state) = nothing
 
-For extension authors: which of `intervention`'s budgets `individual` draws on,
-when [`CapacityConstrained`](@ref) is to track more than one at once, such as a
-budget per district or per treatment centre. The default, `nothing`, puts
-everyone on the same budget, exactly as a `CapacityConstrained` with no method
-of it behaves. Each distinct value `resource_key` returns gets its own usage,
-counted separately under `budget_per_period`, `period` and `carry_over`.
-
-Dispatches on `individual` rather than a proposed action, so the same value is
-found again for someone already served in an earlier call, from their recorded
-state alone, with nothing of the original proposal kept around.
-"""
-resource_key(::AbstractIntervention, individual, state) = nothing
-
-resource_key(w::InterventionWrapper, individual, state) =
-    resource_key(w.intervention, individual, state)
-
-# A budget per group splits the budget of the wrapper by the group of the person,
-# whatever the wrapped intervention does. The group is the whole resource
-# unless the intervention splits it further by a `resource_key` of its own.
-struct _GroupResource
-    group::Any
-    inner::Any
-end
+_resource_of(w::InterventionWrapper, individual, state) =
+    _resource_of(w.intervention, individual, state)
 
 _resource_budget(cc::CapacityConstrained) = cc.budget_per_period
 _resource_budget(hc) = hc.capacity
 
-function resource_key(w::_CapacityWrapper, individual, state)
-    inner = resource_key(w.intervention, individual, state)
-    return _split_resource(_resource_budget(w), inner, individual, state)
-end
-_split_resource(budget, inner, individual, state) = inner
-function _split_resource(::PerGroup, inner, individual, state)
-    group = _group_of(state, individual)
-    return inner === nothing ? group : _GroupResource(group, inner)
-end
-
-_resource_group(resource::_GroupResource) = resource.group
-_resource_group(resource) = resource
+_resource_of(w::_CapacityWrapper, individual, state) =
+    _split_resource(_resource_budget(w), individual, state)
+_split_resource(budget, individual, state) = nothing
+_split_resource(::PerGroup, individual, state) = _group_of(state, individual)
 
 # The name of the group `individual` belongs to in the population of `state`:
 # its type for a grouped population of types, and the values of the
@@ -326,7 +301,7 @@ _for_resource(cc::CapacityConstrained, resource) =
     _for_resource(cc.budget_per_period, cc, resource)
 _for_resource(::Any, cc::CapacityConstrained, resource) = cc
 function _for_resource(pg::PerGroup, cc::CapacityConstrained, resource)
-    budget = _budget_of(pg, _resource_group(resource))
+    budget = _budget_of(pg, resource)
     return CapacityConstrained(
         cc.intervention, budget, cc.period, cc.carry_over, cc.priority, cc.on_refusal
     )
@@ -450,13 +425,13 @@ function _capacity_uses(iv, state)
     key = capacity_key(iv)
     time_key = capacity_time_key(iv)
     return (
-        (ind, resource_key(iv, ind, state), get(ind.state, time_key, -Inf))
+        (ind, _resource_of(iv, ind, state), get(ind.state, time_key, -Inf))
             for ind in individuals(state) if _capacity_used(get(ind.state, key, nothing))
     )
 end
 
 # The time each already-given dose counts against, sorted and grouped by
-# `resource_key`: the dose's own recorded date, so a dose a delay dates later
+# resource: the dose's own recorded date, so a dose a delay dates later
 # than its admission is charged to the day it is actually given rather than to
 # whichever call admitted it. Built once per call, in a single pass over the
 # population regardless of how many distinct keys are in play, so the
@@ -471,9 +446,8 @@ function _dose_times_by_key(cc::CapacityConstrained, state)
     return times
 end
 
-# The sorted dose times for one `resource_key` value, `nothing` for an
-# intervention with no method of it, putting every recipient on one shared
-# budget.
+# The sorted dose times for one resource, `nothing` for one budget shared by
+# every recipient.
 function _dose_times(cc::CapacityConstrained, state, key = nothing)
     return get(_dose_times_by_key(cc, state), key, Float64[])
 end
@@ -491,7 +465,7 @@ end
 # label, a direct `record_dose!`) count too: `record_dose!` files them through
 # `_note_capacity_use!` whenever a cache for its label exists, as the tracers do
 # for a trace action. `intervention` is the one the cache was first built for,
-# and every use is filed under its `resource_key` and `capacity_time_key`.
+# and every use is filed under its resource and `capacity_time_key`.
 # `capacity_usage` and `_reset_unless_within_budget!` use the plain scan above,
 # because they are called far less often than an action is admitted.
 mutable struct _CapacityCache
@@ -576,9 +550,9 @@ end
 # earlier trigger (see `may_revise`) moves its date.
 function _record_capacity_use!(
         cache::_CapacityCache, ind, state,
-        times = get!(Vector{Float64}, cache.times, resource_key(cache.intervention, ind, state))
+        times = get!(Vector{Float64}, cache.times, _resource_of(cache.intervention, ind, state))
     )
-    resource = resource_key(cache.intervention, ind, state)
+    resource = _resource_of(cache.intervention, ind, state)
     t = get(ind.state, capacity_time_key(cache.intervention), -Inf)
     if haskey(cache.recorded, ind.id)
         old_resource, old_t = cache.recorded[ind.id]
@@ -687,17 +661,15 @@ function _capacity_usage(cc::CapacityConstrained, state, at = state.max_infectio
     return _usage_at(_for_resource(cc, resource), _dose_times(cc, state, resource), Float64[], at)
 end
 
-# The indices of `individuals` sharing each `resource_key` value, as a vector
-# of groups in the order their key is first seen, so processing one group
-# ahead of another never depends on the order a `Dict`'s own hashing would
-# iterate them in. An intervention with no `resource_key` method of its own
-# puts everyone in a single group, `nothing`, unchanged from before this
-# existed.
+# The indices of `individuals` sharing each resource, as a vector of groups in
+# the order their key is first seen, so processing one group ahead of another
+# never depends on the order a `Dict`'s own hashing would iterate them in. A
+# budget shared by everyone puts everyone in a single group, `nothing`.
 function _resource_groups(cc, state, individuals)
     order = Any[]
     groups = Dict{Any, Vector{Int}}()
     for (i, ind) in enumerate(individuals)
-        key = resource_key(cc, ind, state)
+        key = _resource_of(cc, ind, state)
         haskey(groups, key) || push!(order, key)
         push!(get!(Vector{Int}, groups, key), i)
     end
@@ -749,10 +721,9 @@ this period's own start, and `used` counts the doses dated within it,
 including one given in that period by another intervention sharing the same
 capacity.
 
-`key` selects which budget to report when [`resource_key`](@ref
-EpiBranch.resource_key) splits `cc`'s intervention into more than one; the
-default, `nothing`, is the one budget an intervention with no method of it
-keeps everyone on.
+`key` selects which budget to report when a [`PerGroup`](@ref) budget splits
+`cc` into one per group: the name of the group. The default, `nothing`, is the
+one budget shared by everyone.
 """
 function capacity_usage(cc::CapacityConstrained, state::SimulationState, key = nothing)
     return _capacity_usage(cc, state, state.max_infection_time, key)
@@ -795,12 +766,12 @@ end
 _ration_own_effect!(cc::CapacityConstrained, ind, state) =
     _reset_unless_within_budget!(cc, ind, state)
 
-# As `_dose_times`, but restricted to `excluded`'s own `resource_key` group
+# As `_dose_times`, but restricted to `excluded`'s own resource
 # and leaving out `excluded`'s own record: used to judge whether admitting
 # the effect `resolve_individual!` just wrote on `excluded` keeps every
 # period within budget, which must not count that same use twice.
 function _dose_times(cc::CapacityConstrained, state, excluded::Individual)
-    resource = resource_key(cc, excluded, state)
+    resource = _resource_of(cc, excluded, state)
     times = Float64[]
     for (ind, r, t) in _capacity_uses(cc, state)
         ind.id == excluded.id && continue
@@ -822,7 +793,7 @@ function _reset_unless_within_budget!(cc::CapacityConstrained, ind::Individual, 
     t = intervention_time(cc.intervention, ind)
     isfinite(t) || return nothing
     times = _dose_times(cc, state, ind)
-    own = _for_resource(cc, resource_key(cc, ind, state))
+    own = _for_resource(cc, _resource_of(cc, ind, state))
     _fits_budget(own, times, Float64[], t) || reset!(cc.intervention, ind)
     return nothing
 end
