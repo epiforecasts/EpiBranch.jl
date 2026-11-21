@@ -319,6 +319,7 @@ SimulationState
 CountSimulationState
 EpiBranch.count_rule
 EpiBranch.CountRule
+EpiBranch.MultiTypeCountRule
 individuals
 Base.copy(::SimulationState)
 Individual
