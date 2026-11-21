@@ -199,11 +199,8 @@ _pg_mixing_vaccinated(state, name) = count(
             spec(PerGroup(:under5 => 100.0, :over5 => 30.0)), 14.0, true
         )
         campaign = only(campaigns)
-        doses = EpiBranch._doses_by_type(StableRNG(1), campaign, 0.0, 14.0, [40_000, 160_000])
-        @test doses == [100, 30]
-        s = [40_000, 160_000]
-        EpiBranch._vaccinate!(StableRNG(1), campaign, 0.0, 14.0, s, [40_000, 160_000])
-        @test 40_000 - s[1] <= 100 && 160_000 - s[2] <= 30
+        doses = EpiBranch._generation_doses([campaign], [[0, 0]], 14.0, 0)[1]
+        @test only(doses)[1] == [100, 30]
         @test run(PerGroup(:under5 => 100.0, :over5 => 30.0)) isa GenerationCounts
         @test_throws ArgumentError run(PerGroup(:under5 => 100.0))
         @test_throws ArgumentError run(PerGroup(:under5 => 100.0, :other => 30.0, :over5 => 1.0))

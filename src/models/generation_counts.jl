@@ -64,6 +64,9 @@ single-type model holds an `Int` for each count below, a multi-type one a
 - `generation`: the last generation simulated.
 - `generation_length`: the length of a generation in days, or `nothing` if
   none was given; the state is at day `generation * generation_length`.
+- `doses_used`: for each vaccination campaign, how many doses it has given, per
+  budget (one for a shared budget, one per type for a [`PerGroup`](@ref) one).
+  Empty if no campaign has been applied.
 
 Continue it with `simulate(model, state; max_generations)`.
 """
@@ -81,6 +84,7 @@ struct GenerationCounts{
     generation_length::L
     depletion::D
     rng::R
+    doses_used::Vector{Vector{Int}}
 end
 
 function Base.show(io::IO, s::GenerationCounts)
@@ -267,8 +271,8 @@ Returns a [`GenerationCounts`](@ref); continue it with
 # Vaccination campaigns
 
 Give a [`ModelSpec`](@ref) built on such a `BranchingProcess` instead of the
-process to apply its vaccination campaigns to the susceptibles of each type
-between generations, at the calendar time `generation * generation_length`.
+process to apply its vaccination campaigns to the contacts of each generation,
+at the calendar time `generation * generation_length`.
 This needs a `generation_length` and a finite population. A campaign is a
 [`GroupVaccination`](@ref) with `group_key = :type`, so that its groups are the
 types, wrapped in [`CapacityConstrained`](@ref) for its doses, and in
@@ -279,29 +283,20 @@ raises an `ArgumentError` naming it, as do a `coverage` below one, a
 number.
 
 The doses of generation `g` cover `[g * generation_length, (g + 1) *
-generation_length)` and are applied after generation `g` is drawn and before
-`g + 1` is. The `budget_per_period` is shared by the types, as in every model:
-each dose goes to a type in proportion to its population, as it would to a
-person picked at random. A [`PerGroup`](@ref) budget gives each type the doses of its
-own budget instead. The doses are those of the periods that start in the interval; with
-`carry_over`, budget left from earlier periods, or from before a window opens,
-is given in the first interval open to it. A dose reaches a susceptible of a
-type with probability equal to the share of susceptibles in the population of
-the type at the start of the interval, and protects with probability
-`efficacy`, whatever the effect `mode`: a protected susceptible is removed from
-the susceptibles, as one who would be blocked at each contact. Doses that fall
-on someone already protected are not tracked, so a campaign that gives a type
-more doses than it has people is only approximate. The `eligibility` of the
-campaign is not read: the doses are given whether or not a case has triggered
-them.
+generation_length)` and go to the contacts made by the cases of generation `g`,
+which are generation `g + 1`. Each contact is given a dose in the order the
+contacts are made, until the budget is spent, and a dosed contact is blocked
+with probability `efficacy`, whatever the effect `mode`. The
+`budget_per_period` is shared by the types: the doses go to the first contacts
+made of all the types together. A [`PerGroup`](@ref) budget gives each type the
+doses of its own budget instead. The doses are those of the periods that start
+in the interval; with `carry_over`, doses not yet given stay available and are
+counted in `doses_used` of the state. Several campaigns each dose the first
+contacts made. A dosed person who is not infected is not protected against
+later contacts. The `eligibility` of the campaign is not read.
 
-Vaccinating between generations approximates a model whose generations are
-calendar steps, as in a TSIR, with everyone vaccinated in a step protected
-before the contacts of the next generation are made. It agrees with the
-individual-based simulation only when the budget reaches everyone in the
-window. The simulation gives the doses of a `BranchingProcess` only to
-contacts as they are created. A budget below the number of contacts therefore
-covers a share of contacts, not `doses / population`, and the counts differ.
+Doses are dated by the interval, not the day: every contact of generation
+`g + 1` can use any dose of the interval.
 
 # Examples
 
@@ -392,7 +387,7 @@ function _initial_generation_state(
     )
     gl = _generation_length(generation_length)
     return GenerationCounts(
-        counts, cumulative, pop, susceptibles, sizes, 0, gl, depletion, rng
+        counts, cumulative, pop, susceptibles, sizes, 0, gl, depletion, rng, Vector{Int}[]
     )
 end
 
@@ -486,10 +481,11 @@ end
              rng::AbstractRNG = state.rng, multiplier = nothing)
 
 Continue `state` as for a `BranchingProcess`, applying the vaccination
-campaigns of `spec` between generations as [`simulate_by_generation`](@ref)
-does. Pass the same `spec` the state was started with: a continuation with the
-bare model applies no campaign. Passing a [`prepare_generations`](@ref) result
-instead of `spec` reuses its campaigns.
+campaigns of `spec` by giving their doses to the contacts of each generation
+in order, as [`simulate_by_generation`](@ref) does. Pass the same `spec` the
+state was started with, because a continuation with the bare model applies no
+campaign. A [`prepare_generations`](@ref) result can replace `spec` and
+reuses its campaigns.
 """
 function simulate(
         spec::ModelSpec, state::GenerationCounts;
@@ -536,18 +532,20 @@ function _run_generations(
     sizes = state.type_sizes isa NoPopulation ? nothing : _scalar(state.type_sizes)
     cumulative = state.cumulative_cases
     gen = state.generation
+    used = _doses_used(state, campaigns)
+    doses = zeros(Int, length(campaigns))
     while gen < max_generations && counts != 0
-        if susceptibles !== nothing && sizes !== nothing
-            for campaign in campaigns
-                t0, t1 = _generation_interval(state.generation_length, gen)
-                susceptibles = _vaccinate(rng, campaign, t0, t1, susceptibles, sizes)
-            end
-        end
+        dosed = _scalar_doses!(doses, campaigns, used, state.generation_length, gen)
         m = _single_multiplier(rng, multiplier)
         potential = _single_potential(rng, offspring, counts, m, susceptibles !== nothing)
         if susceptibles === nothing
             # Without a finite population nothing is thinned.
             counts = potential
+        elseif dosed
+            counts, susceptibles = _deplete_dosed(
+                rng, state.depletion, potential, susceptibles, something(sizes),
+                campaigns, doses, used
+            )
         else
             counts, susceptibles = _deplete(
                 rng, state.depletion, potential, susceptibles, something(sizes)
@@ -559,7 +557,7 @@ function _run_generations(
     return GenerationCounts(
         counts, cumulative, state.population_size,
         susceptibles === nothing ? NoPopulation() : susceptibles,
-        state.type_sizes, gen, state.generation_length, state.depletion, rng
+        state.type_sizes, gen, state.generation_length, state.depletion, rng, used
     )
 end
 
@@ -573,13 +571,9 @@ function _run_generations(
     sizes = state.type_sizes isa NoPopulation ? nothing : _as_vector(state.type_sizes)
     cumulative = state.cumulative_cases
     gen = state.generation
+    used = _doses_used(state, campaigns)
     while gen < max_generations && !all(iszero, counts)
-        # The doses of generation `gen`'s interval reach the susceptibles
-        # before the next generation is drawn.
-        for campaign in campaigns
-            t0, t1 = _generation_interval(state.generation_length, gen)
-            _vaccinate!(rng, campaign, t0, t1, susceptibles, sizes)
-        end
+        doses, taken = _generation_doses(campaigns, used, state.generation_length, gen)
         m = if multiplier === nothing
             nothing
         elseif multiplier isa AbstractVector
@@ -597,8 +591,15 @@ function _run_generations(
             rng, offspring, counts, m, susceptibles !== nothing
         )
         # Without a finite population nothing is thinned.
-        counts = susceptibles === nothing ? potential :
+        counts = if susceptibles === nothing
+            potential
+        elseif isempty(doses)
             _deplete!(rng, state.depletion, potential, susceptibles, something(sizes))
+        else
+            _deplete_dosed!(
+                rng, state.depletion, potential, susceptibles, sizes, doses, taken
+            )
+        end
         cumulative += sum(counts)
         gen += 1
     end
@@ -606,8 +607,17 @@ function _run_generations(
         _like(template, counts), cumulative, state.population_size,
         susceptibles === nothing ? NoPopulation() : _like(template, susceptibles),
         state.type_sizes, gen, state.generation_length, state.depletion,
-        rng
+        rng, used
     )
+end
+
+# How many doses each campaign has given so far, per budget: those in the state,
+# or zeros for campaigns it has not met. A continuation without campaigns
+# leaves them as they were.
+function _doses_used(state::GenerationCounts, campaigns)
+    isempty(campaigns) && return state.doses_used
+    length(state.doses_used) == length(campaigns) && return deepcopy(state.doses_used)
+    return [zeros(Int, c.budget isa AbstractVector ? length(c.budget) : 1) for c in campaigns]
 end
 
 # The days the doses of generation `gen` cover. A campaign is only built when

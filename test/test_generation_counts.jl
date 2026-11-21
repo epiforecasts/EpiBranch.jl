@@ -193,7 +193,7 @@ end
         interventions = [
             CapacityConstrained(
                 GroupVaccination(efficacy = 0.9, group_key = :type);
-                budget_per_period = 500.0, period = 1.0
+                budget_per_period = 50.0, period = 1.0
             ),
         ]
     )

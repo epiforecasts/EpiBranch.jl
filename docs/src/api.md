@@ -131,8 +131,8 @@ cost of a generation is independent of the number of cases; with another law it
 is proportional to the number of new infections.
 
 A [`ModelSpec`](@ref) built on the process, with a `generation_length`, also
-runs here, and applies its `GroupVaccination` campaigns to the susceptibles of
-each type between generations.
+runs here. It applies its `GroupVaccination` campaigns by giving their doses to the
+contacts of each generation in order.
 
 ```@docs
 simulate_by_generation
@@ -321,6 +321,7 @@ AbstractSimulationState
 SimulationState
 CountSimulationState
 EpiBranch.count_rule
+EpiBranch.AbstractCountRule
 EpiBranch.CountRule
 EpiBranch.CountRules
 EpiBranch.OffspringCountRule

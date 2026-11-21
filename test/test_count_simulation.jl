@@ -690,6 +690,83 @@ using EpiBranch, Distributions, Random, StableRNGs, Statistics, DataFrames
         )
     end
 
+    @testset "counted offspring laws agree with the individual simulation" begin
+        M = [1.2 0.4; 0.3 0.9]
+        T = 6
+        by_type(state) = begin
+            out = zeros(Int, T + 1, 2)
+            for ind in individuals(state)
+                get(ind.state, :infected, false) || continue
+                out[Int(ind.infection_time) + 1, individual_type(ind)] += 1
+            end
+            out
+        end
+        function max_z(model; n = 300, init)
+            rng = StableRNG(3)
+            run_counts() = simulate(
+                model; init..., max_time = T, max_cases = nothing, max_generations = nothing, rng
+            )
+            counts = [by_type(run_counts()) for _ in 1:n]
+            people = [
+                by_type(simulate(model; init..., stopping_rules = [MaxTime(Float64(T))], rng))
+                    for _ in 1:n
+            ]
+            m1, m2 = mean(counts), mean(people)
+            se = sqrt.((var(counts) .+ var(people)) ./ n) .+ 1.0e-9
+            return maximum(abs.((m1 .- m2) ./ se))
+        end
+        init = (; index_types = [1, 1, 2])
+        @test max_z(BranchingProcess(Binomial(6, 0.25), gt); init = (; n_initial = 3)) < 4
+        @test max_z(BranchingProcess(Geometric(0.45), gt); init = (; n_initial = 3)) < 4
+        @test max_z(BranchingProcess(1.5 .* M, R -> Binomial(8, R / 8), gt); init) < 4
+        @test max_z(BranchingProcess(M, R -> Geometric(1 / (1 + R)), gt); init) < 4
+        @test max_z(
+            BranchingProcess(Geometric(0.3), gt; population = Population(100));
+            init = (; n_initial = 3)
+        ) < 4
+        @test max_z(
+            BranchingProcess(1.5 .* M, R -> Binomial(8, R / 8), gt; population = Population([70, 40]));
+            init
+        ) < 4
+        @test max_z(
+            BranchingProcess(1.5 .* M, R -> Geometric(1 / (1 + R)), gt; population = Population([70, 40]));
+            init
+        ) < 4
+
+        # Each offspring belongs to one member. A person has no more children
+        # than their draw, and the susceptibles match the cases.
+        model = BranchingProcess(
+            1.5 .* M, R -> Binomial(3, R / 3), gt; population = Population([70, 40])
+        )
+        state = simulate(
+            model; index_types = [1, 1, 2], max_time = 10, max_cases = nothing,
+            max_generations = nothing, rng = StableRNG(7)
+        )
+        @test state isa CountSimulationState
+        people = individuals(state)
+        children = zeros(Int, length(people))
+        for ind in people
+            ind.parent_id > 0 && (children[ind.parent_id] += 1)
+        end
+        @test maximum(children) <= 3
+        @test length(people) == state.cumulative_cases
+        @test [count(i -> individual_type(i) == j, people) for j in 1:2] == [70, 40] .- state.susceptibles
+        # A type that infects no one, a generation cap and a continuation.
+        sink = BranchingProcess([1.5 0.0; 0.8 0.0], R -> Binomial(4, R / 4), gt)
+        state = simulate(
+            sink; index_types = [1, 1], max_time = 6, max_cases = nothing,
+            max_generations = 3, rng = StableRNG(2)
+        )
+        @test state isa CountSimulationState
+        @test state.counts == sum.(state.generation_counts)
+        @test maximum(i.generation for i in individuals(state)) <= 3
+        one = BranchingProcess(Geometric(0.4), gt)
+        a = simulate(one; n_initial = 5, max_time = 12, max_cases = nothing, max_generations = nothing, rng = StableRNG(9))
+        b = simulate(one; n_initial = 5, max_time = 6, max_cases = nothing, max_generations = nothing, rng = StableRNG(9))
+        simulate(one, b; max_time = 12)
+        @test length(individuals(b)) == b.cumulative_cases
+    end
+
     @testset "which runs take the count-level path" begin
         model = BranchingProcess(Poisson(1.2), gt)
         @test count_run(model; max_time = 5, rng = StableRNG(1)) isa CountSimulationState
@@ -713,11 +790,14 @@ using EpiBranch, Distributions, Random, StableRNGs, Statistics, DataFrames
         @test EpiBranch.count_rule(two).allocation[1] ≈ [0.8 0.4 / 1.3; 0.2 0.9 / 1.3] atol = 1.0e-12
         @test EpiBranch.count_rule(BranchingProcess(M, R -> Poisson(R), gt; population = Population([50, 30]))) !== nothing
         @test EpiBranch.count_rule(BranchingProcess(M, R -> Poisson(R), gt; population = Population(80))) === nothing
-        @test EpiBranch.count_rule(BranchingProcess(M, R -> Binomial(5, R / 5), gt)) === nothing
+        @test EpiBranch.count_rule(BranchingProcess(M, R -> Binomial(5, R / 5), gt)) isa
+            EpiBranch.CountRules{<:AbstractMatrix{<:EpiBranch.OffspringCountRule}}
+        @test EpiBranch.count_rule(BranchingProcess(M, [Binomial(5, 0.3), NegBin(1.0, 0.5)], gt)) === nothing
         @test simulate(two; kw..., max_time = 5, index_types = [1, 2]) isa CountSimulationState
         @test simulate(two; kw..., max_time = 5, index_types = DiscreteUniform(1, 2)) isa CountSimulationState
         @test EpiBranch.count_rule(BranchingProcess(Binomial(5, 0.3), gt)) isa EpiBranch.OffspringCountRule
-        @test EpiBranch.count_rule(BranchingProcess(Binomial(5, 0.3), gt; population = Population(1000))) === nothing
+        @test EpiBranch.count_rule(BranchingProcess(Geometric(0.4), gt)) isa EpiBranch.OffspringCountRule
+        @test EpiBranch.count_rule(BranchingProcess(Binomial(5, 0.3), Gamma(2.0, 1.0))) === nothing
         @test EpiBranch.count_rule(BranchingProcess(DiscreteUniform(-1, 2), gt)) === nothing
         @test EpiBranch.count_rule(BranchingProcess(Poisson(1.2), DiscreteNonParametric(0:2, [0.2, 0.5, 0.3]))) ===
             nothing
