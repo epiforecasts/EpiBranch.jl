@@ -195,10 +195,13 @@ end
             if engine in case.applies
                 @test outcome === :applied
             else
-                # Every engine that refuses uses the same words.
+                # Every such model uses the same words and points to
+                # `simulate` on a model of individuals.
                 @test outcome isa ArgumentError
-                outcome isa ArgumentError &&
+                if outcome isa ArgumentError
                     @test occursin(EpiBranch._CAMPAIGN_SUPPORT, outcome.msg)
+                    @test occursin("`simulate` on a model of individuals", outcome.msg)
+                end
             end
         end
     end

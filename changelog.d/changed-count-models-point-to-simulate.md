@@ -1,0 +1,1 @@
+`simulate_by_generation`, the mixing approximations and `HybridProcess` name the intervention they cannot apply and point to `simulate` on a model of individuals. The documentation page on what each model applies is now "Interventions with budgets and schedules" and describes each model by its budget, schedule, refusal policy and groups.
