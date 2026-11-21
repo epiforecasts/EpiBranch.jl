@@ -150,9 +150,8 @@ end
     end
 end
 
-# A likelihood that has to be estimated by simulation has no useful gradient,
-# so Mooncake refuses it with a message that says so rather than failing inside
-# the simulator.
+# A likelihood estimated by simulation has no useful gradient. Mooncake refuses
+# it with a clear error instead of failing inside the simulator.
 @testset "AD (Mooncake) refuses a simulation-estimated likelihood" begin
     iso = Isolation(delay = 1.0, duration = 10.0)
     clinical = clinical_presentation(incubation_period = LogNormal(1.0, 0.3))
