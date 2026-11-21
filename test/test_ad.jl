@@ -1,5 +1,6 @@
 using ADTypes
 using DifferentiationInterface
+import Enzyme
 import DifferentiationInterfaceTest as DIT
 using FiniteDifferences
 using ForwardDiff
@@ -19,8 +20,9 @@ using StableRNGs
 # branch) and errors there; a direct gradient comparison against ForwardDiff
 # avoids that while still exercising the reverse path over the likelihood.
 # ReverseDiff is left out — no rule for the `logabsgamma` in the NegBin
-# chain-size path. Enzyme and the per-backend-tag scenario pattern from
-# CensoredDistributions.jl are the remaining end state; see #105.
+# chain-size path. The per-backend-tag scenario pattern from
+# CensoredDistributions.jl is the remaining end state; see #105. Enzyme is
+# covered with Mooncake in the model-route testset below.
 
 @testset "AD" begin
     sizes_data = [1, 2, 1, 3, 1, 5, 2]
@@ -148,6 +150,97 @@ end
         g_forward = DifferentiationInterface.gradient(f, AutoForwardDiff(), x)
         @test g_reverse ≈ g_forward rtol = 1.0e-6
     end
+end
+
+# Reverse mode through the model constructors and the likelihood wrappers, the
+# route the tutorials write (`BranchingProcess(Poisson(R))`) rather than the bare
+# offspring distribution. Each gradient must match ForwardDiff. The summed form
+# scores many sizes against one law built from the model, which an Enzyme
+# gradient got wrong without an error while a single score was right.
+@testset "AD (reverse mode through the model route)" begin
+    sizes_data = [1, 2, 1, 3, 1, 5, 2]
+    lengths_data = [0, 1, 2, 0, 3, 1]
+    many_sizes = [1, 1, 2, 1, 3, 1, 1, 5, 2, 1, 1, 4, 1, 2, 1, 1, 7, 1, 2, 1]
+    summed(law) = sum(y -> logpdf(law, y), many_sizes)
+
+    mooncake = AutoMooncake(; config = nothing)
+    enzyme = AutoEnzyme(; mode = Enzyme.Reverse)
+    # A model carrying an intervention stores constants in memory Enzyme
+    # cannot prove inactive, so it needs runtime activity.
+    enzyme_activity = AutoEnzyme(; mode = Enzyme.set_runtime_activity(Enzyme.Reverse))
+
+    function check(f, x, backends)
+        g_forward = DifferentiationInterface.gradient(f, AutoForwardDiff(), x)
+        for backend in backends
+            g = DifferentiationInterface.gradient(f, backend, x)
+            @test g ≈ g_forward rtol = 1.0e-6
+        end
+        return g_forward
+    end
+
+    bare_model = [
+        (R -> (BranchingProcess(Poisson(R[1])); R[1]^2), [0.5]),
+        (R -> loglikelihood(ChainSizes(sizes_data), BranchingProcess(Poisson(R[1]))), [0.5]),
+        (
+            θ -> loglikelihood(ChainSizes(sizes_data), BranchingProcess(NegBin(θ[1], θ[2]))),
+            [0.5, 0.5],
+        ),
+        (
+            R -> loglikelihood(ChainLengths(lengths_data), BranchingProcess(Poisson(R[1]))),
+            [0.5],
+        ),
+        (R -> summed(chain_size_distribution(BranchingProcess(Poisson(R[1])))), [0.4]),
+        (R -> logpdf(offspring_distribution(BranchingProcess(Poisson(R[1]))), 2), [0.5]),
+        (R -> logpdf(chain_length_distribution(BranchingProcess(Poisson(R[1]))), 2), [0.5]),
+    ]
+    for (f, x) in bare_model
+        check(f, x, (mooncake, enzyme))
+    end
+    # The summed gradient is not the trivial zero a wrong rule could return.
+    @test only(
+        check(
+            R -> summed(chain_size_distribution(BranchingProcess(Poisson(R[1])))),
+            [0.4], (mooncake, enzyme)
+        )
+    ) ≈ 8.5
+
+    clinical = clinical_presentation(
+        incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.0
+    )
+    iso = Isolation(delay = Exponential(1.0), duration = Inf)
+    with_intervention(R) = ModelSpec(
+        BranchingProcess(Poisson(R[1])); interventions = [iso], attributes = clinical
+    )
+    intervention_cases = [
+        R -> (with_intervention(R); R[1]^2),
+        R -> (chain_size_distribution(with_intervention(R)); R[1]^2),
+        R -> (chain_length_distribution(with_intervention(R)); R[1]^2),
+    ]
+    for f in intervention_cases
+        check(f, [0.5], (mooncake,))
+    end
+    check(intervention_cases[1], [0.5], (enzyme_activity,))
+    check(intervention_cases[3], [0.5], (enzyme_activity,))
+
+    # A spec with no intervention scores analytically too.
+    spec_cases = [
+        R -> loglikelihood(
+            ChainSizes(sizes_data),
+            ModelSpec(
+                BranchingProcess(Poisson(R[1]));
+                progression = [Reporting(delay = Dirac(0.0), probability = 0.7, from = :infection)]
+            )
+        ),
+        R -> loglikelihood(
+            ChainSizes(sizes_data),
+            ModelSpec(BranchingProcess(Poisson(R[1])); observation = ChainDetection(0.4))
+        ),
+        R -> logpdf(offspring_distribution(ModelSpec(BranchingProcess(Poisson(R[1])))), 2),
+    ]
+    for f in spec_cases
+        check(f, [0.5], (mooncake,))
+    end
+    check(spec_cases[3], [0.5], (enzyme,))
 end
 
 # A gradient of an outbreak summary through the forward simulator, w.r.t. a
