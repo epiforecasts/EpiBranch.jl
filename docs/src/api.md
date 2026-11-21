@@ -322,6 +322,7 @@ CountSimulationState
 EpiBranch.count_rule
 EpiBranch.CountRule
 EpiBranch.CountRules
+EpiBranch.OffspringCountRule
 individuals
 Base.copy(::SimulationState)
 Individual
