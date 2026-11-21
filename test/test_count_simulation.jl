@@ -342,9 +342,12 @@ using EpiBranch, Distributions, Random, StableRNGs, Statistics, DataFrames
         @test simulate(slow, 3; kw..., rng = StableRNG(3)) isa Vector{<:SimulationState}
 
         n = 3000
-        by_counts = containment_probability(model, n; kw..., rng = StableRNG(4))
+        # A short horizon keeps the individual runs of the surviving lineages small.
+        by_counts = containment_probability(
+            model, n; kw..., max_time = 15, rng = StableRNG(4)
+        )
         by_people = containment_probability(
-            model, n; n_initial = 2, stopping_rules = [MaxTime(40.0)], rng = StableRNG(5)
+            model, n; n_initial = 2, stopping_rules = [MaxTime(15.0)], rng = StableRNG(5)
         )
         @test 0.1 < by_counts.proportion < 0.9
         @test abs(by_counts.proportion - by_people.proportion) <
