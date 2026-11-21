@@ -235,22 +235,18 @@ end
     end
     check(spec_cases[3], [0.5], (enzyme,))
 
-    # Enzyme refuses a likelihood estimated by simulation.
-    simulated = [
-        R -> loglikelihood(
-            ChainSizes(sizes_data),
-            ModelSpec(BranchingProcess(Poisson(R[1])); interventions = [iso], attributes = clinical);
-            n_sim = 20, rng = StableRNG(1)
-        ),
-        R -> loglikelihood(
-            ChainLengths(lengths_data),
-            ModelSpec(BranchingProcess(Poisson(R[1])); interventions = [iso], attributes = clinical);
-            n_sim = 20, rng = StableRNG(1)
-        ),
-    ]
-    for f in simulated
-        @test_throws Exception DifferentiationInterface.gradient(f, enzyme_activity, [0.5])
-    end
+    # Enzyme refuses a chain-length likelihood estimated by simulation, with the
+    # extension's message rather than a compilation error from the simulator. The
+    # chain-size counterpart does not reach the rule: Enzyme cannot yet compile
+    # that route for a spec at all (see the closed-form limit above).
+    simulated(R) = loglikelihood(
+        ChainLengths(lengths_data),
+        ModelSpec(BranchingProcess(Poisson(R[1])); interventions = [iso], attributes = clinical);
+        n_sim = 20, rng = StableRNG(1)
+    )
+    @test_throws "estimated by simulation" DifferentiationInterface.gradient(
+        simulated, enzyme_activity, [0.5]
+    )
 end
 
 # A gradient of an outbreak summary through the forward simulator, w.r.t. a
