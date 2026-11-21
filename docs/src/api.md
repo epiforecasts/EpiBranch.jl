@@ -137,6 +137,8 @@ each type between generations.
 ```@docs
 simulate_by_generation
 GenerationCounts
+prepare_generations
+GenerationCampaigns
 AbstractDepletion
 PerContactDepletion
 ```
@@ -319,6 +321,8 @@ SimulationState
 CountSimulationState
 EpiBranch.count_rule
 EpiBranch.CountRule
+EpiBranch.MultiTypeCountRule
+EpiBranch.OffspringCountRule
 individuals
 Base.copy(::SimulationState)
 Individual

@@ -58,7 +58,7 @@ end
 
 # The campaigns a spec holds, or an error naming every intervention that
 # cannot be applied, and the missing `generation_length` or population.
-function _generation_campaigns(spec::ModelSpec, generation_length, finite_population::Bool)
+function _check_spec_inputs(spec::ModelSpec)
     isempty(progression(spec)) && attributes(spec) isa NoAttributes &&
         observation(spec) isa NoObservation && recorder(spec) isa NoContactRecorder ||
         throw(
@@ -67,24 +67,30 @@ function _generation_campaigns(spec::ModelSpec, generation_length, finite_popula
                 "progression, attributes, observation or recorder"
         )
     )
+    return nothing
+end
+
+function _generation_campaigns(spec::ModelSpec, generation_length, finite_population::Bool)
+    _check_spec_inputs(spec)
     ivs = interventions(spec)
     isempty(ivs) && return _Campaign[]
-    names = join((nameof(typeof(iv)) for iv in ivs), ", ")
     generation_length === nothing && throw(
         ArgumentError(
             "simulate_by_generation needs a generation_length to date the doses of the " *
-                "interventions $names"
+                "interventions $(_intervention_names(ivs))"
         )
     )
     finite_population || throw(
         ArgumentError(
             "simulate_by_generation needs a finite population for the " *
-                "interventions $names to act on"
+                "interventions $(_intervention_names(ivs)) to act on"
         )
     )
     population = EpiBranch.population(process(spec))
     return [_by_type(_campaign(iv, (0.0, Inf), nothing), population) for iv in ivs]
 end
+
+_intervention_names(ivs) = join((nameof(typeof(iv)) for iv in ivs), ", ")
 
 # A budget per group becomes one budget for each type, in the order of the
 # types, checked against the groups of the population. A budget shared by the types
@@ -147,6 +153,20 @@ function _doses_by_type(rng::AbstractRNG, c::_Campaign, ::CapacityConstrained, t
     doses == 0 && return zeros(Int, length(sizes))
     length(sizes) == 1 && return [doses]
     return rand(rng, Multinomial(doses, Float64.(sizes) ./ sum(sizes)))
+end
+
+# The doses of a campaign for a single type, with a shared budget or a budget
+# of one entry per group.
+_single_doses(c::_Campaign{<:AbstractVector}, t0, t1) = _interval_doses(c, t0, t1, only(c.budget))
+_single_doses(c::_Campaign, t0, t1) = _interval_doses(c, t0, t1)
+
+# `_vaccinate!` for a single type: the same draws, with the susceptibles as an
+# integer, returning how many are left.
+function _vaccinate(rng::AbstractRNG, c::_Campaign, t0, t1, susceptibles::Int, size::Int)
+    doses = _single_doses(c, t0, t1)
+    (doses == 0 || susceptibles <= 0 || size <= 0) && return susceptibles
+    reached = min(rand(rng, Binomial(doses, susceptibles / size)), susceptibles)
+    return susceptibles - rand(rng, Binomial(reached, c.efficacy))
 end
 
 # Give a campaign's doses for `[t0, t1)` to the susceptibles. A dose reaches a
