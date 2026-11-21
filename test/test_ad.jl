@@ -235,8 +235,7 @@ end
     end
     check(spec_cases[3], [0.5], (enzyme,))
 
-    # A likelihood estimated by simulation is refused under Enzyme rather
-    # than compiling the simulator.
+    # Enzyme refuses a likelihood estimated by simulation.
     simulated = [
         R -> loglikelihood(
             ChainSizes(sizes_data),
