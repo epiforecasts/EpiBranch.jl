@@ -29,7 +29,7 @@ function _pg_types(budget; names = _PG_NAMES, kwargs...)
     return simulate(
         spec; index_types = [fill(1, 120); fill(2, 120)], max_generations = 3,
         rng = StableRNG(1), max_cases = 10^5,
-        stopping_rules = EpiBranch.AbstractStoppingRule[]
+        stopping_rules = [Extinction(), MaxGenerations(3)]
     )
 end
 
@@ -104,7 +104,8 @@ _pg_mixing_vaccinated(state, name) = count(
         )
         state = simulate(
             spec; index_types = [fill(1, 120); fill(2, 120)], max_generations = 3,
-            rng = StableRNG(1), max_cases = 10^5
+            rng = StableRNG(1), max_cases = 10^5,
+            stopping_rules = [Extinction(), MaxGenerations(3)]
         )
         cc = only(EpiBranch.interventions(spec))
         @test capacity_usage(cc, state, :under5) == (used = 40, available = 40.0)

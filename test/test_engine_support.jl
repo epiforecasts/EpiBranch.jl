@@ -21,7 +21,7 @@ function _support_branching(spec; generations = 3, seed = 1)
     return simulate(
         spec; index_types = [fill(1, 120); fill(2, 120)], max_generations = generations,
         rng = StableRNG(seed), max_cases = 10^5,
-        stopping_rules = EpiBranch.AbstractStoppingRule[]
+        stopping_rules = [Extinction(), MaxGenerations(generations)]
     )
 end
 
