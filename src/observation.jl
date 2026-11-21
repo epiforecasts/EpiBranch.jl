@@ -403,7 +403,7 @@ function _fold_reporting(progression, base, obs, attrs)
     return ThinnedChainSize(base, ρ)
 end
 
-# Whether `offspring` has a closed-form chain-size law to read.
+# Whether `offspring` has a closed-form chain-size distribution.
 function _has_exact_chain_size(offspring)
     hasmethod(chain_size_distribution, Tuple{typeof(offspring)}) || return false
     return !(offspring isa GeneratingFunctionOffspring && offspring.pmf === nothing)

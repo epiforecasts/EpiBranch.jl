@@ -413,10 +413,10 @@ function _chain_size_model_loglik(
     )
 end
 
-# No closed form: simulate clusters grouped by seed count, one batch of
-# `n_sim` runs per distinct value in `data.seeds`, so a k-seed cluster is
-# compared against simulated clusters that also start from k index cases
-# rather than against single-seed ones.
+# Fallback when there is no closed form. Clusters are simulated in batches
+# grouped by seed count, one batch of `n_sim` runs per distinct value in
+# `data.seeds`. A k-seed cluster is then compared with simulated clusters that
+# also start from k index cases.
 function _simulated_chain_size_loglik(
         data, process, ivs, attrs, prog, obs, rec;
         max_cases, max_generations, max_time, stopping_rules, n_sim, rng, prob_concluded

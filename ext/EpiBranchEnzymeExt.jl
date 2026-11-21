@@ -1,6 +1,7 @@
 module EpiBranchEnzymeExt
 
-# Enzyme compiles the simulation fallback even when it does not run, and cannot.
+# Enzyme compiles the simulation fallback even when it is never called, and
+# cannot differentiate it.
 
 using EpiBranch: EpiBranch
 using Enzyme: Enzyme

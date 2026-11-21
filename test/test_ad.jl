@@ -550,8 +550,8 @@ end
 end
 
 # Reverse-mode Enzyme through the closed-form likelihood of a `ModelSpec` with
-# no progression. The simulation fallback is marked inactive by the extension,
-# so only the analytical path is compiled.
+# no progression. The extension marks the simulation fallback inactive, so
+# Enzyme compiles only the analytical path.
 @testset "AD (Enzyme reverse mode)" begin
     sizes_data = [1, 2, 1, 3, 1, 5, 2]
     enzyme = AutoEnzyme(; mode = Enzyme.Reverse)
