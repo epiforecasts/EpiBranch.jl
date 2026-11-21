@@ -1,0 +1,1 @@
+`initialise_state` now draws the incubation period of a case listed without an `onset_time` conditioned on no onset by `now`, so its onset falls after `now` unless the case is asymptomatic. Before, the draw ignored that the case had no symptoms yet, and an intervention timed from onset could act on the case before `now`.

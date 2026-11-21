@@ -152,6 +152,32 @@ function _generations(parent, inf)
     return generation, chain
 end
 
+# A case listed without an onset had none by `now`: it is either asymptomatic
+# or its incubation period ends after `now`. The attributes are drawn again
+# until one of those holds. This conditions the incubation period on the
+# observation for any form the model gives it. The asymptomatic fraction is
+# weighted by how likely each kind of case is to show no onset by `now`.
+function _redraw_until_no_onset_by!(ind, state, now)
+    haskey(ind.state, :incubation_period) || return nothing
+    for _ in 1:_MAX_CONDITIONING_ATTEMPTS
+        no_onset_yet(ind) = get(ind.state, :asymptomatic, false)::Bool ||
+            ind.infection_time + _state_real(ind.state, :incubation_period, NaN) > now
+        no_onset_yet(ind) && return nothing
+        # Clear the flag from the previous draw. Otherwise a symptomatic case
+        # stays symptomatic and a redraw can never be asymptomatic.
+        delete!(ind.state, :asymptomatic)
+        _apply_attributes!(state.attributes, state.rng, ind)
+    end
+    throw(
+        ArgumentError(
+            "case $(ind.id) has no onset by time $now, which is implausible under " *
+                "the model: its incubation period gave no onset after that time in " *
+                "$_MAX_CONDITIONING_ATTEMPTS attempts. Check `onset_time`, or use an " *
+                "incubation period that allows it"
+        )
+    )
+end
+
 function _initialise_observed(
         process::BranchingProcess, cases::AbstractDataFrame;
         interventions, attributes, progression, recorder, now, rng
@@ -188,7 +214,9 @@ function _initialise_observed(
             state, obs.parent[i], chain[i], i, obs.inf[i]; prepare
         )
         ind.generation = generation[i]
-        if listed
+        if !listed
+            _redraw_until_no_onset_by!(ind, state, now_)
+        else
             ind.state[:incubation_period] = T(obs.onset[i] - obs.inf[i])
         end
         isfinite(obs.isolation[i]) &&
@@ -259,7 +287,9 @@ probability that an outbreak is over under interventions with no closed form.
   offspring of an infector are counted from these rows.
 - `onset_time`: when symptoms began, `missing` if they have not. It is used in
   place of the drawn incubation period, so a model that times its contacts or
-  interventions from onset uses the observed one.
+  interventions from onset uses the observed one. A case without one has its
+  incubation period drawn conditioned on onset after `now`, or on being
+  asymptomatic where the model allows it.
 - `isolation_time`: when the case was isolated, `missing` if it has not been.
   The case infects no one from then on, so a case infected after the isolation
   time of its infector is an error.
