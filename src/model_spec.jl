@@ -425,6 +425,13 @@ function _validate_testing_sensitivity(interventions, progression)
     return nothing
 end
 
+const _MODEL_CHECKS = (
+    validate_process_windows, _warn_incomplete_terminal_coverage,
+    _validate_dose_schedule, _validate_test_triggers, _validate_testing_sensitivity,
+    _warn_unmet_trigger_requirements, _warn_inert_interventions, _warn_contactless,
+    _store_traits!,
+)
+
 """
     ModelSpec(process; progression, interventions, attributes, observation, recorder,
               case_definition)
@@ -470,13 +477,6 @@ model = ModelSpec(
 state = simulate(model; max_cases = 500)
 ```
 """
-const _MODEL_CHECKS = (
-    validate_process_windows, _warn_incomplete_terminal_coverage,
-    _validate_dose_schedule, _validate_test_triggers, _validate_testing_sensitivity,
-    _warn_unmet_trigger_requirements, _warn_inert_interventions, _warn_contactless,
-    _store_traits!,
-)
-
 function ModelSpec(
         process::TransmissionModel;
         progression = progression(process),
