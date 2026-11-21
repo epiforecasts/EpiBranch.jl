@@ -242,7 +242,9 @@ end
     simulate(model, n::Int; parallel=false, kwargs...)
 
 Simulate `n` independent outbreaks from the same model and return them as a
-vector of [`SimulationState`](@ref)s. It takes the same stopping keywords
+vector of [`SimulationState`](@ref)s, or of [`CountSimulationState`](@ref)s
+when the model qualifies for the count-level path, as for the single-outbreak
+method. It takes the same stopping keywords
 (`max_cases`, `max_generations`, `max_time`, `stopping_rules`), `n_initial`,
 `initial_cases`, `index_types` and `rng` as the single-outbreak method;
 `condition` is not available here. The usual next step is
@@ -292,7 +294,22 @@ function _simulate_each(
         model, n_initial, initial_cases, index_types, max_cases, max_generations,
         max_time, stopping_rules
     )
+    rule = _count_route(
+        model, initial_cases, index_types, max_cases, max_generations, max_time,
+        stopping_rules, nothing, rng
+    )
+    rule === nothing || return _simulate_n_counts(
+        each, T, model, rule, n, sim_opts.n_initial, max_time, max_cases, rng, parallel
+    )
     return _simulate_n(each, T, model, n, sim_opts; _layers(model)..., rng, parallel)
+end
+
+# The count-level path of `_simulate_each`, for a model or a spec.
+function _simulate_n_counts(each, ::Type{T}, model, rule, n, n_initial, max_time, max_cases, rng, parallel) where {T}
+    run(rng) = each(_simulate_counts(model, rule, n_initial, max_time, max_cases, rng))
+    R = T === SimulationState ? CountSimulationState : T
+    parallel && Threads.nthreads() > 1 && return _simulate_n_threaded(run, R, n, rng)
+    return [run(rng) for _ in 1:n]
 end
 
 _simulate_n(model::TransmissionModel, n::Int, sim_opts::SimOpts; kwargs...) =

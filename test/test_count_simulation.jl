@@ -681,4 +681,40 @@ using EpiBranch, Distributions, Random, StableRNGs, Statistics, DataFrames
         @test EpiBranch.count_rule(ModelSpec(model)) !== nothing
         @test EpiBranch.count_rule(model).g ≈ [0.3, 0.5, 0.2]
     end
+
+    @testset "repeated runs and containment" begin
+        model = BranchingProcess(NegBin(1.5, 0.5), gt)
+        kw = (; n_initial = 2, max_time = 40, max_cases = nothing, max_generations = nothing)
+        states = simulate(model, 20; kw..., rng = StableRNG(3))
+        @test all(s -> s isa CountSimulationState, states)
+        @test length(states) == 20
+        again = simulate(model, 20; kw..., rng = StableRNG(3))
+        @test [s.counts for s in states] == [s.counts for s in again]
+        @test length(unique(s.counts for s in states)) > 1
+        @test containment_probability(states).n_contained == count(s -> s.extinct, states)
+        # `parallel` gives count states too.
+        par = simulate(model, 20; kw..., rng = StableRNG(3), parallel = true)
+        @test all(s -> s isa CountSimulationState, par)
+        # A qualifying spec also gives count states, for runs and for containment.
+        spec = ModelSpec(model)
+        spec_states = simulate(spec, 5; kw..., rng = StableRNG(3))
+        @test all(s -> s isa CountSimulationState, spec_states)
+        @test [s.counts for s in spec_states] == [s.counts for s in states[1:5]]
+        @test 0 <= containment_probability(spec, 50; kw..., rng = StableRNG(3)).proportion <= 1
+        # A model that is not on the count path still gives individual runs.
+        slow = BranchingProcess(NegBin(1.5, 0.5), Gamma(2.0, 1.0))
+        @test simulate(slow, 3; kw..., rng = StableRNG(3)) isa Vector{<:SimulationState}
+
+        n = 3000
+        # A short horizon keeps the individual runs small for surviving lineages.
+        by_counts = containment_probability(
+            model, n; kw..., max_time = 15, rng = StableRNG(4)
+        )
+        by_people = containment_probability(
+            model, n; n_initial = 2, stopping_rules = [MaxTime(15.0)], rng = StableRNG(5)
+        )
+        @test 0.1 < by_counts.proportion < 0.9
+        @test abs(by_counts.proportion - by_people.proportion) <
+            4 * hypot(by_counts.mcse, by_people.mcse)
+    end
 end
