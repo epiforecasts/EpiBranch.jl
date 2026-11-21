@@ -6,6 +6,7 @@
 #
 #   - Comment `/register` on any issue or pull request, or
 #     `/register lib/EpiNetwork` (or `lib/EpiHouseholds`) for a satellite.
+#     The lines after the command become the release notes.
 #   - Run this workflow manually (Actions -> Register -> Run workflow).
 #
 # JuliaRegistrator (the org's GitHub App) then reacts to the commit comment,
@@ -85,16 +86,30 @@ jobs:
           fi
           echo "subdir=$SUBDIR" >> "$GITHUB_OUTPUT"
 
+      # Registrator reads the `Release notes:` block of the comment. General
+      # refuses a breaking version (a minor bump at 0.x) whose notes are
+      # missing or mention neither "breaking" nor "changelog", so the lines
+      # after the command become the notes, and a comment with none gets a
+      # fixed paragraph pointing at the changelog.
       - name: Trigger JuliaRegistrator
         if: steps.check-permissions.outputs.has_permission == 'true'
         env:
           SUBDIR: ${{ steps.target.outputs.subdir }}
+          COMMENT: ${{ github.event.comment.body }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           BODY='@JuliaRegistrator register'
           if [ -n "$SUBDIR" ]; then
             BODY="$BODY subdir=$SUBDIR"
           fi
+          NOTES=""
+          if [ "${{ github.event_name }}" = "issue_comment" ]; then
+            NOTES=$(printf '%s\n' "$COMMENT" | tr -d '\r' | sed '1d' | sed '/[^[:space:]]/,$!d' | sed -e :a -e '/^[[:space:]]*$/{$d;N;ba' -e '}')
+          fi
+          if [ -z "$NOTES" ]; then
+            NOTES="See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) for the changes in this release, including any breaking changes."
+          fi
+          BODY="$BODY"$'\n\n'"Release notes:"$'\n\n'"$NOTES"
           gh api "repos/${{ github.repository }}/commits/main/comments" \
             --method POST --field body="$BODY"
 
