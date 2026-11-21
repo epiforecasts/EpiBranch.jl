@@ -76,8 +76,7 @@ function _step_lag_cdf(delay::Dirac, substeps::Integer = 1)
     return l -> clamp(l + 1 - substeps * delay.value, 0.0, 1.0)
 end
 
-# Kept out of `_bin_cdf` as its own function: the logging macro expands to a
-# try/catch, which reverse-mode Mooncake cannot differentiate.
+# Separate from `_bin_cdf`: the logging macro's try/catch stops Mooncake.
 function _warn_truncated(what, tol, max_lag)
     @warn "The $what has more than $tol of its mass above a lag of " *
         "$max_lag steps, so the discretised pmf is truncated there." maxlog = 1
@@ -330,8 +329,7 @@ function _incidence_log_pgf(
     # by iteration from the value without same-sub-step offspring. The iteration
     # converges, derivatives included, if the expected same-sub-step offspring
     # of a case number fewer than one.
-    # Loops rather than comprehensions and `sum`/`maximum` over generators:
-    # Enzyme's type analysis fails on their union-typed internals.
+    # Plain loops: Enzyme fails on comprehensions and generator `sum`/`maximum`.
     function mix(v, j)
         t = zero(S)
         for i in 1:m

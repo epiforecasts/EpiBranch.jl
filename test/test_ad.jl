@@ -151,10 +151,6 @@ end
     end
 end
 
-# The moment-matched likelihood differentiates the moments of
-# `incidence_moments`, which are themselves ForwardDiff derivatives of the
-# generating function, so a reverse pass has to go through that inner forward
-# pass. The inputs are the offspring, reporting and generation-time parameters.
 @testset "AD (reverse mode) through incidence_moments" begin
     y = [6, 7, 8, 9, 10, 11]
     function moment_loglik(x)
