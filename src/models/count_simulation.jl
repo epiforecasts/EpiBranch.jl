@@ -26,7 +26,8 @@
 The rule by which [`simulate`](@ref) runs `model` as daily counts rather than
 as individuals, or `nothing` if `model` has to be simulated as individuals.
 A model qualifies when nothing about an individual feeds back on
-transmission and its generation time is a distribution on whole days. A
+transmission, apart from the depletion of a finite population by type, and its
+generation time is a distribution on whole days. A
 [`BranchingProcess`](@ref) may have several infectiousness windows or several
 types. Adding a method for a new model type gives it the count-level path. The
 rule is a [`CountRule`](@ref), or a [`CountRules`](@ref) for several windows or
@@ -84,7 +85,7 @@ end
 
 function count_rule(model::BranchingProcess)
     isempty(transmission_risks(model)) || return nothing
-    population(model) isa NoPopulation || return nothing
+    _counts_population(population(model), n_types(model)) || return nothing
     windows = model.infectiousness
     all(w -> w.from === :infection && isempty(w.until) && w.calendar === nothing, windows) ||
         return nothing
@@ -95,6 +96,14 @@ function count_rule(model::BranchingProcess)
     any(isnothing, channels) && return nothing
     return CountRules(reduce(vcat, first.(channels)), last.(channels))
 end
+
+_counts_population(::NoPopulation, nt) = true
+_counts_population(::SinglePopulation, nt) = nt == 1
+_counts_population(p::GroupedPopulation, nt) = length(p.sizes) == nt
+
+_count_sizes(::NoPopulation) = nothing
+_count_sizes(p::SinglePopulation) = [p.size]
+_count_sizes(p::GroupedPopulation) = copy(p.sizes)
 
 # The row of channels of one window and its allocation between types.
 function _window_channels(o, kernel, n::Int)
@@ -178,6 +187,8 @@ Fields:
   it is kept, indexed by window, type and generation.
 - `inflow`: for each day, the number infected by each cohort, indexed by lag,
   window, type and generation of the infector, and type of the infected.
+- `susceptibles`, `sizes`: the number of susceptibles left in each type and
+  the size of each type, or `nothing` when the population is unlimited.
 - `day`: the last day simulated.
 - `cumulative_cases`: the total number of cases.
 - `extinct`: whether transmission had died out.
@@ -192,6 +203,8 @@ mutable struct CountSimulationState{M, L, R <: CountRules} <: AbstractSimulation
     cohort_infectiousness::Vector{Array{Float64, 3}}
     cohort_members::Vector{Array{Vector{Float64}, 3}}
     inflow::Vector{Array{Int, 5}}
+    susceptibles::Union{Nothing, Vector{Int}}
+    sizes::Union{Nothing, Vector{Int}}
     day::Int
     cumulative_cases::Int
     extinct::Bool
@@ -219,11 +232,15 @@ function Base.copy(s::CountSimulationState)
     return CountSimulationState(
         s.model, s.layers, s.rule, copy(s.counts), s.max_generation,
         deepcopy(s.generation_counts), deepcopy(s.cohort_infectiousness),
-        deepcopy(s.cohort_members), deepcopy(s.inflow), s.day, s.cumulative_cases,
+        deepcopy(s.cohort_members), deepcopy(s.inflow), _copy_susceptibles(s.susceptibles),
+        s.sizes, s.day, s.cumulative_cases,
         s.extinct, _copy_count_rng(s.rng), copy(s.individual_stream),
         built === nothing ? nothing : copy(built)
     )
 end
+
+_copy_susceptibles(::Nothing) = nothing
+_copy_susceptibles(s::Vector{Int}) = copy(s)
 
 _copy_count_rng(rng::Random.TaskLocalRNG) = copy(rng)
 _copy_count_rng(rng::AbstractRNG) = deepcopy(rng)
@@ -249,7 +266,6 @@ _next_class(max_generation, k) = max_generation === nothing ? k : k + 1
 # A generation is at least one day after the last, so day `d` holds at most
 # `d + 1` classes however large the cap.
 _classes_on(max_generation, d) = min(_n_classes(max_generation), d + 1)
-
 # Whether the last cohorts that can still infect anyone are all empty.
 function _count_exhausted(s::CountSimulationState)
     first_day = max(0, s.day - _max_lag(s.rule) + 1)
@@ -279,6 +295,7 @@ function _count_step!(s::CountSimulationState)
     max_lag = _max_lag(rules)
     inflow = zeros(Int, max_lag, n_windows, n_types, ncls, n_types)
     by_class = zeros(Int, n_types, ncls)
+    sources = Tuple{Int, Int, Int, Int, Float64}[]
     for lag in 1:min(max_lag, t), k in axes(s.generation_counts[t - lag + 1], 2), j in 1:n_types
         _infects(g, k) || continue
         n = s.generation_counts[t - lag + 1][j, k]
@@ -287,15 +304,19 @@ function _count_step!(s::CountSimulationState)
             lag <= length(channels[w, j].g) || continue
             mean_infections = s.cohort_infectiousness[t - lag + 1][w, j, k] *
                 rates[w, j] * channels[w, j].g[lag]
-            mean_infections > 0 || continue
-            for i in 1:n_types
-                share = rules.allocation[w][i, j]
-                share > 0 || continue
-                x = rand(s.rng, Poisson(mean_infections * share))
-                inflow[lag, w, j, k, i] = x
-                by_class[i, _next_class(g, k)] += x
-            end
+            mean_infections > 0 && push!(sources, (lag, w, j, k, mean_infections))
         end
+    end
+    if s.susceptibles === nothing
+        for (lag, w, j, k, mean_infections) in sources, i in 1:n_types
+            share = rules.allocation[w][i, j]
+            share > 0 || continue
+            x = rand(s.rng, Poisson(mean_infections * share))
+            inflow[lag, w, j, k, i] = x
+            by_class[i, _next_class(g, k)] += x
+        end
+    else
+        _deplete_sources!(s, sources, inflow, by_class)
     end
     push!(s.inflow, inflow)
     push!(s.counts, sum(by_class))
@@ -304,6 +325,29 @@ function _count_step!(s::CountSimulationState)
     s.cumulative_cases += sum(by_class)
     s.day = t
     s.extinct = _count_extinct(s)
+    return s
+end
+
+# Thin the day's contacts against the susceptibles of each type, then share the
+# infections among the cohorts in proportion to the contacts each made.
+function _deplete_sources!(s, sources, inflow, by_class)
+    g = s.max_generation
+    allocation = s.rule.allocation
+    nt = size(s.rule.channels, 2)
+    rates = zeros(nt)
+    for (_, w, j, _, mean_infections) in sources, i in 1:nt
+        rates[i] += mean_infections * allocation[w][i, j]
+    end
+    kept = _deplete!(s.rng, PerContactDepletion(), rates, s.susceptibles, s.sizes)
+    for i in 1:nt
+        kept[i] == 0 && continue
+        weights = [mean_infections * allocation[w][i, j] for (_, w, j, _, mean_infections) in sources]
+        shares = rand(s.rng, Multinomial(kept[i], weights ./ sum(weights)))
+        for (n, (lag, w, j, k, _)) in zip(shares, sources)
+            inflow[lag, w, j, k, i] = n
+            by_class[i, _next_class(g, k)] += n
+        end
+    end
     return s
 end
 
@@ -357,15 +401,23 @@ function _simulate_counts(
     for i in 1:n_initial
         by_class[n_types == 1 ? 1 : _draw_type(rng, index_types, i, n_types), 1] += 1
     end
+    sizes = _count_sizes(population(process_of(model)))
+    sizes === nothing || all(sum(by_class; dims = 2) .<= sizes) || throw(
+        ArgumentError("initial cases cannot exceed the population size of any type")
+    )
     state = CountSimulationState(
         process_of(model), layers, rules, [n_initial], max_generations, [by_class],
         Array{Float64, 3}[], Array{Vector{Float64}, 3}[],
         [zeros(Int, _max_lag(rules), size(rules.channels, 1), n_types, ncls, n_types)],
+        sizes === nothing ? nothing : sizes .- vec(sum(by_class; dims = 2)), sizes,
         0, n_initial, n_initial == 0, rng, stream, nothing
     )
     _push_cohorts!(state, by_class)
     return _count_advance!(state, max_time, max_cases)
 end
+
+_index_counts(::Any, n, nt, rng) = nt == 1 ? [n] : rand(rng, Multinomial(n, fill(1 / nt, nt)))
+_index_counts(types::AbstractVector, n, nt, rng) = [count(==(j), types) for j in 1:nt]
 
 process_of(model::TransmissionModel) = model
 process_of(spec::ModelSpec) = spec.process
@@ -376,7 +428,7 @@ function _count_route(
         stopping_rules, condition, rng; default_generations = false
     )
     bounded = if max_time === nothing
-        max_cases !== nothing
+        max_cases !== nothing || max_generations !== nothing
     else
         max_time isa Real && isfinite(max_time) && max_time >= 0
     end
