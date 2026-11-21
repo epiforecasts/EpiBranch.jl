@@ -150,8 +150,8 @@ using EpiBranch, Distributions, Random, StableRNGs, Statistics, DataFrames
         for ind in people
             ind.parent_id > 0 && (children[ind.parent_id] += 1)
         end
-        # A cohort whose infections all fall by the last day has had all the
-        # offspring of every member, so no member can have more.
+        # Once every infection of a cohort has fallen by the last day, each
+        # member has had all of its offspring.
         offset = 0
         for d in 0:state.day
             n = state.counts[d + 1]
@@ -352,7 +352,7 @@ using EpiBranch, Distributions, Random, StableRNGs, Statistics, DataFrames
         )
         gens = [i.generation for i in individuals(state)]
         @test maximum(gens) <= 4
-        padded = [vcat(c, zeros(Int, 5 - length(c))) for c in state.generation_counts]
+        padded = [vcat(vec(c), zeros(Int, 5 - length(c))) for c in state.generation_counts]
         @test [count(==(k), gens) for k in 0:4] == sum(padded)
         @test state.counts == sum.(state.generation_counts)
         # A cap beyond what the run can reach costs no more than the days run.
@@ -414,6 +414,148 @@ using EpiBranch, Distributions, Random, StableRNGs, Statistics, DataFrames
         )
         simulate(m, state; max_time = 12)
         @test maximum(i.generation for i in individuals(state)) <= 4
+    end
+
+    @testset "several windows agree with the individual simulation" begin
+        gt2 = DiscreteNonParametric(2:4, [0.2, 0.5, 0.3])
+        model = BranchingProcess(
+            Infectiousness(NegBin(0.8, 0.5); kernel = gt, name = :a),
+            Infectiousness(Poisson(0.6); kernel = gt2, name = :b)
+        )
+        rule = EpiBranch.count_rule(model)
+        @test rule isa EpiBranch.CountRules
+        @test size(rule.channels) == (2, 1)
+        @test count_run(model; max_time = 5, rng = StableRNG(1)) isa CountSimulationState
+        # Offspring numbers are correlated across the days of one infector
+        # through the first window only.
+        c = check_agreement(model, 8, 4, 3000; atol = 0.06)
+        @test c[1, 2] > 0.25 && abs(c[1, 4]) < 0.05
+        # Windows of different laws do not share infectiousness.
+        state = count_run(model; max_time = 6, rng = StableRNG(2))
+        @test size(state.cohort_infectiousness[end]) == (2, 1, 1)
+        @test length(individuals(state)) == state.cumulative_cases
+        @test nrow(linelist(state)) == state.cumulative_cases
+        # A window that ends keeps the run on individuals.
+        @test EpiBranch.count_rule(
+            BranchingProcess(
+                Infectiousness(Poisson(0.6); kernel = gt),
+                Infectiousness(Poisson(0.6); kernel = gt, until = (:recovered,), name = :b)
+            )
+        ) === nothing
+    end
+
+    @testset "several types agree with the individual simulation" begin
+        # Per-type daily counts, padded to `T + 1` days.
+        function daily_by_type(state, T)
+            counts = zeros(Int, 2, T + 1)
+            for ind in individuals(state)
+                get(ind.state, :infected, false) || continue
+                counts[individual_type(ind), Int(ind.infection_time) + 1] += 1
+            end
+            return counts
+        end
+        M = [0.9 0.5; 0.4 0.8]
+        T, n = 8, 1500
+        for dist_fn in (R -> NegBin(R, 0.8), [NegBin(1.4, 0.5), Poisson(1.2)])
+            model = BranchingProcess(M, dist_fn, gt)
+            rule = EpiBranch.count_rule(model)
+            @test rule isa EpiBranch.CountRules
+            @test size(rule.channels) == (1, 2)
+            @test rule.allocation[1] ≈ model.infectiousness[1].offspring.alloc_probs
+            a = zeros(Int, n, 2, T + 1)
+            b = zeros(Int, n, 2, T + 1)
+            for i in 1:n
+                kw = (; index_types = [1, 2, 2], max_time = T)
+                x = simulate(
+                    model; kw..., max_cases = nothing, max_generations = nothing,
+                    rng = StableRNG(i)
+                )
+                @test x isa CountSimulationState
+                a[i, :, :] = daily_by_type(x, T)
+                b[i, :, :] = daily_by_type(
+                    simulate(
+                        model; kw..., stopping_rules = [MaxTime(Float64(T))],
+                        rng = StableRNG(5000 + i)
+                    ), T
+                )
+            end
+            for type in 1:2, t in 2:(T + 1)
+                se = sqrt(var(a[:, type, t]) / n + var(b[:, type, t]) / n)
+                @test abs(mean(a[:, type, t]) - mean(b[:, type, t])) < 4.5 * se
+                @test var(a[:, type, t]) ≈ var(b[:, type, t]) rtol = 0.3
+            end
+            # Counts of the two types are correlated through the shared parents.
+            for t in 3:(T + 1)
+                @test cor(a[:, 1, t], a[:, 2, t]) ≈ cor(b[:, 1, t], b[:, 2, t]) atol = 0.1
+            end
+        end
+    end
+
+    @testset "the people of a multi-type state have their types" begin
+        M = [0.9 0.5; 0.4 0.8]
+        model = BranchingProcess(M, R -> NegBin(R, 0.8), gt)
+        state = simulate(
+            model; index_types = [2, 1, 2], max_time = 10, max_cases = nothing,
+            max_generations = nothing, rng = StableRNG(4)
+        )
+        people = individuals(state)
+        @test length(people) == state.cumulative_cases
+        @test sum(state.generation_counts[1]; dims = 2) == reshape([1, 2], 2, 1)
+        @test individual_type.(people[1:3]) == [1, 2, 2]
+        for d in 0:state.day, type in 1:2
+            @test count(
+                ind -> ind.infection_time == d && individual_type(ind) == type, people
+            ) == sum(state.generation_counts[d + 1][type, :])
+        end
+        @test all(people) do ind
+            ind.parent_id == 0 ||
+                ind.infection_time - people[ind.parent_id].infection_time in 1:3
+        end
+        # Types are drawn when none are given, and from a distribution.
+        drawn = simulate(
+            model; n_initial = 200, max_time = 0, max_cases = nothing,
+            max_generations = nothing, rng = StableRNG(1)
+        )
+        @test 60 < drawn.generation_counts[1][1, 1] < 140
+        skewed = simulate(
+            model; n_initial = 200, index_types = Categorical([0.9, 0.1]), max_time = 0,
+            max_cases = nothing, max_generations = nothing, rng = StableRNG(1)
+        )
+        @test skewed.generation_counts[1][1, 1] > 150
+        # A generation cap counts each type's generations.
+        capped = simulate(
+            model; index_types = [1, 2], max_time = 30, max_cases = nothing,
+            max_generations = 3, rng = StableRNG(2)
+        )
+        @test maximum(i.generation for i in individuals(capped)) <= 3
+        @test capped.counts == [sum(c) for c in capped.generation_counts]
+        # A type that infects no one.
+        sink = BranchingProcess([0.4 0.0; 0.5 0.0], R -> Poisson(R), gt)
+        state = simulate(
+            sink; index_types = [1, 1], max_time = 60, max_cases = nothing,
+            max_generations = nothing, rng = StableRNG(3)
+        )
+        @test state isa CountSimulationState
+        @test all(
+            ind -> individual_type(ind) == 1 ||
+                individual_type(individuals(state)[ind.parent_id]) == 1,
+            individuals(state)
+        )
+        @test state.extinct
+        # Each of several windows has its own matrix.
+        two = BranchingProcess(
+            (
+                Infectiousness(EpiBranch.MultiTypeOffspring(M, R -> NegBin(R, 0.8)); kernel = gt, name = :a),
+                Infectiousness(EpiBranch.MultiTypeOffspring(0.3 .* M, R -> Poisson(R)); kernel = gt, name = :b),
+            ); n_types = 2
+        )
+        @test size(EpiBranch.count_rule(two).channels) == (2, 2)
+        # A population with a size for each type stays on counts; a continuous
+        # generation time does not.
+        @test EpiBranch.count_rule(
+            BranchingProcess(M, R -> NegBin(R, 0.8), gt; population = Population([100, 100]))
+        ) !== nothing
+        @test EpiBranch.count_rule(BranchingProcess(M, R -> NegBin(R, 0.8), Gamma(2.0, 1.0))) === nothing
     end
 
     @testset "several types and a finite population" begin
@@ -567,13 +709,13 @@ using EpiBranch, Distributions, Random, StableRNGs, Statistics, DataFrames
         @test EpiBranch.count_rule(BranchingProcess(Poisson(1.2), gt; population = Population(1000))) !== nothing
         M = [1.2 0.4; 0.3 0.9]
         two = BranchingProcess(M, R -> NegBin(R, 0.8), gt)
-        @test EpiBranch.count_rule(two) isa EpiBranch.MultiTypeCountRule
-        @test EpiBranch.count_rule(two).alloc ≈ [0.8 0.4 / 1.3; 0.2 0.9 / 1.3] atol = 1.0e-12
+        @test EpiBranch.count_rule(two) isa EpiBranch.CountRules
+        @test EpiBranch.count_rule(two).allocation[1] ≈ [0.8 0.4 / 1.3; 0.2 0.9 / 1.3] atol = 1.0e-12
         @test EpiBranch.count_rule(BranchingProcess(M, R -> Poisson(R), gt; population = Population([50, 30]))) !== nothing
         @test EpiBranch.count_rule(BranchingProcess(M, R -> Poisson(R), gt; population = Population(80))) === nothing
         @test EpiBranch.count_rule(BranchingProcess(M, R -> Binomial(5, R / 5), gt)) === nothing
         @test simulate(two; kw..., max_time = 5, index_types = [1, 2]) isa CountSimulationState
-        @test simulate(two; kw..., max_time = 5, index_types = DiscreteUniform(1, 2)) isa SimulationState
+        @test simulate(two; kw..., max_time = 5, index_types = DiscreteUniform(1, 2)) isa CountSimulationState
         @test EpiBranch.count_rule(BranchingProcess(Binomial(5, 0.3), gt)) isa EpiBranch.OffspringCountRule
         @test EpiBranch.count_rule(BranchingProcess(Binomial(5, 0.3), gt; population = Population(1000))) === nothing
         @test EpiBranch.count_rule(BranchingProcess(DiscreteUniform(-1, 2), gt)) === nothing

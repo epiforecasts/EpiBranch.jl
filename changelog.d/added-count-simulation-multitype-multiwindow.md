@@ -1,0 +1,1 @@
+The count-level path covers a `BranchingProcess` with several `Infectiousness` windows that start at infection, and a multi-type one built from a next-generation matrix, including `index_types`. `CountSimulationState.generation_counts` is now a matrix of types by generations for each day, and `count_rule` returns a `CountRules` for such models.
