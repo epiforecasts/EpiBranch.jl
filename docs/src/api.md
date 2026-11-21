@@ -324,7 +324,6 @@ EpiBranch.AbstractCountRule
 EpiBranch.CountRule
 EpiBranch.OffspringCountRule
 EpiBranch.MultiTypeCountRule
-EpiBranch.OffspringCountRule
 individuals
 Base.copy(::SimulationState)
 Individual
