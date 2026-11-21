@@ -1,15 +1,8 @@
 module EpiBranchMooncakeExt
 
-# A likelihood estimated by simulation is a noisy, piecewise-constant function
-# of the model's parameters, so a reverse-mode gradient through it carries no
-# information. Mooncake would otherwise fail inside the simulator with an error
-# about an unsupported `ccall`; this rule says what is wrong instead.
-
 using EpiBranch: EpiBranch
 using Mooncake: Mooncake, CoDual
 
-# A state key is a name, with nothing to differentiate, and the checks a
-# `ModelSpec` runs on construction only read the model and return `nothing`.
 Mooncake.@zero_derivative Mooncake.DefaultCtx Tuple{typeof(EpiBranch._resolved_key), Symbol}
 for f in (
         :validate_process_windows, :_validate_test_triggers, :_validate_testing_sensitivity,
