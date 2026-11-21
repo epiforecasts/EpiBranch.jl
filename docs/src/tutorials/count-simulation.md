@@ -4,11 +4,33 @@ A branching process in which nothing about a person feeds back on transmission d
 
 ## When a model runs on counts
 
-The model must have a generation time that is a discrete distribution on whole days, starting at day 1 and ending at a largest value. Nothing about individuals may act on transmission: there are no interventions. The population is unlimited or finite: a finite one is depleted day by day, type by type, as [`simulate_by_generation`](@ref) does for a generation. A model with several types qualifies when it has a population with a size for each type (`Population(sizes)`); a single `Population(size)` shared by several types runs as individuals. The offspring law is a `Poisson`, a negative binomial (`NegBin`), a [`PoissonLognormal`](@ref) or [`PoissonWeibull`](@ref), or a [`RenewalOffspring`](@ref) with a vector generation time. A negative binomial cohort needs one gamma draw for its total infectiousness. A Poisson lognormal or Poisson Weibull cohort needs one draw for each member, and the state keeps these draws to share out the infections of the cohort when the people are built. For these two laws the time and memory grow with the number of cases as well as the number of days. A model with one type, one window and an unlimited population also qualifies with any other discrete offspring law on the non-negative integers, such as `Binomial` or `Geometric`. Each member keeps its own offspring count. The time and memory grow with the number of cases too. A process with several [`Infectiousness`](@ref) windows qualifies when each starts at infection, has no `until` or `calendar`, and meets the conditions above: each case then draws its infectiousness for each window independently. A multi-type process built from a next-generation matrix ([`BranchingProcess`](@ref)`(M, dist_fn, generation_time)`) qualifies too. `index_types` sets the types of the index cases as in the individual simulation, and each infector draws its total infectiousness from the law that `dist_fn` gives for its type. A [`ModelSpec`](@ref) adding `attributes`, `progression` and `observation` also qualifies, because these are drawn for each case once it exists and leave the transmission tree unchanged.
+The model must have a generation time that is a discrete distribution on whole days, starting at day 1 and ending at a largest value. Nothing about individuals may act on transmission: the only interventions allowed are the vaccination campaigns described below. The population is unlimited or finite: a finite one is depleted day by day, type by type, as [`simulate_by_generation`](@ref) does for a generation. A model with several types qualifies when it has a population with a size for each type (`Population(sizes)`); a single `Population(size)` shared by several types runs as individuals. The offspring law is a `Poisson`, a negative binomial (`NegBin`), a [`PoissonLognormal`](@ref) or [`PoissonWeibull`](@ref), or a [`RenewalOffspring`](@ref) with a vector generation time. A negative binomial cohort needs one gamma draw for its total infectiousness. A Poisson lognormal or Poisson Weibull cohort needs one draw for each member. The state keeps these draws to share out the infections of the cohort when the people are built. For these two laws the time and memory grow with the number of cases as well as the number of days. A model with one type, one window and an unlimited population also qualifies with any other discrete offspring law on the non-negative integers, such as `Binomial` or `Geometric`. Each member keeps its own offspring count. The time and memory grow with the number of cases too. A process with several [`Infectiousness`](@ref) windows qualifies when each starts at infection, has no `until` or `calendar`, and meets the conditions above: each case then draws its infectiousness for each window independently. A multi-type process built from a next-generation matrix ([`BranchingProcess`](@ref)`(M, dist_fn, generation_time)`) qualifies too. `index_types` sets the types of the index cases as in the individual simulation. Each infector draws its total infectiousness from the law of `dist_fn` for its type. A [`ModelSpec`](@ref) adding `attributes`, `progression` and `observation` also qualifies, because these are drawn for each case once it exists and leave the transmission tree unchanged.
 
 The run must be asked for in a way counts can answer: a finite `max_time` or a `max_cases`, with `max_generations` set to `nothing` or to a value other than its default, no `stopping_rules`, `condition` or `initial_cases`, and no [`CommonRandomNumbers`](@ref). A run with `max_cases` ends at the end of the first day on which the total reaches it, and can hold more cases than that. A `max_generations` is applied exactly by tracking each day's cohort by generation, at a cost that grows with its value. A run with the default `max_generations`, or any other run not described here, is an individual simulation. [`containment_probability`](@ref)`(model, n; max_cases)` runs on counts for a model that qualifies, with the default `max_generations` applied.
 
 `simulate(model, n)` takes the same keywords and returns a vector of `n` count-level runs. `containment_probability(model, n)` and the vector methods of `containment_probability` read the `extinct` flag of each run. A run is contained when transmission has died out by `max_time`.
+
+## A finite population and vaccination
+
+A finite population runs on counts as described above, and `state.susceptibles` holds the number left in each type. The contacts of the day fall at random on the people of each type, as under [`PerContactDepletion`](@ref), and the infections are shared among the cohorts in proportion to the contacts each made. The cost does not depend on the number of cases.
+
+A [`ModelSpec`](@ref) with `GroupVaccination` (with `group_key = :type`) under [`CapacityConstrained`](@ref), and optionally `Scheduled` with a `start_time` and `end_time`, qualifies when the population is finite. The doses of the day interval `[t - 1, t)` reach the susceptibles before the contacts of day `t` are drawn, in the way [`simulate_by_generation`](@ref) gives them between generations: a dose reaches a susceptible of a type with probability equal to their share of the population of the type and protects with probability `efficacy`. This approximates the individual simulation, which offers doses to contacts as they are made. The two agree only when the budget reaches everyone. A specification this cannot apply runs as individuals.
+
+```@example count_simulation
+using EpiBranch, Distributions, StableRNGs, DataFrames, Statistics
+
+generation_time = DiscreteNonParametric(1:4, [0.1, 0.4, 0.3, 0.2])
+sized = BranchingProcess(NegBin(2.0, 0.5), generation_time; population = Population(5000))
+campaign = CapacityConstrained(
+    GroupVaccination(efficacy = 0.9, group_key = :type);
+    budget_per_period = 100.0, period = 1.0
+)
+vaccinated = simulate(
+    ModelSpec(sized; interventions = [campaign]); n_initial = 10, max_time = 60,
+    max_cases = nothing, max_generations = nothing, rng = StableRNG(3)
+)
+(cases = vaccinated.cumulative_cases, susceptibles = only(vaccinated.susceptibles))
+```
 
 ## Discretising a continuous generation time
 
@@ -26,9 +48,6 @@ generation_time = DiscreteNonParametric(1:15, weights ./ sum(weights))
 The individual simulation of a model with this generation time runs the same discrete model as the count-level path, which allows the two to be compared.
 
 ```@example count_simulation
-using EpiBranch, Distributions, StableRNGs, DataFrames, Statistics
-
-generation_time = DiscreteNonParametric(1:4, [0.1, 0.4, 0.3, 0.2])
 model = BranchingProcess(NegBin(1.3, 0.5), generation_time)
 
 state = simulate(

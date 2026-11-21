@@ -26,12 +26,12 @@
 The rule by which [`simulate`](@ref) runs `model` as daily counts rather than
 as individuals, or `nothing` if `model` has to be simulated as individuals.
 A model qualifies when nothing about an individual feeds back on
-transmission, apart from the depletion of a finite population by type, and its
+transmission, apart from the depletion of a finite population by type and the
+vaccination campaigns that doses given to counts can apply to it, and its
 generation time is a distribution on whole days. A
 [`BranchingProcess`](@ref) may have several infectiousness windows or several
-types. Adding a method for a new model type gives it the count-level path. The
-rule is a [`CountRule`](@ref), or a [`CountRules`](@ref) for several windows or
-types.
+types. A method for a new model type gives it the count-level path. The rule is
+a [`CountRule`](@ref), or a [`CountRules`](@ref) for several windows or types.
 """
 count_rule(::TransmissionModel) = nothing
 
@@ -80,14 +80,20 @@ end
 The rule of a model with several infectiousness windows or several types,
 returned by [`EpiBranch.count_rule`](@ref) in place of a [`CountRule`](@ref).
 `channels[w, j]` is the `CountRule` by which a type-`j` case infects through
-window `w`, and `allocation[w][i, j]` the share of those infections that are of
+window `w`, and `allocation[w][i, j]` the share of those infections going to
 type `i`. Each case draws its infectiousness for each window independently.
-A cohort of one type therefore holds one total for each window.
+A cohort of one type therefore holds one total for each window. `campaigns`
+are the vaccination campaigns of a [`ModelSpec`](@ref) on a finite population:
+the doses of `[t - 1, t)` reach the susceptibles before day `t` is drawn, as
+[`simulate_by_generation`](@ref) gives them between generations.
 """
-struct CountRules{C <: AbstractMatrix{<:Union{CountRule, OffspringCountRule}}}
+struct CountRules{C <: AbstractMatrix{<:Union{CountRule, OffspringCountRule}}, V <: AbstractVector}
     channels::C
     allocation::Vector{Matrix{Float64}}
+    campaigns::V
 end
+
+CountRules(channels, allocation) = CountRules(channels, allocation, [])
 
 _as_rules(rule::Union{CountRule, OffspringCountRule}) = CountRules(fill(rule, 1, 1), [ones(1, 1)])
 _as_rules(rules::CountRules) = rules
@@ -96,12 +102,27 @@ _max_lag(rules::CountRules) = maximum(c -> length(c.g), rules.channels)
 # A gamma shape `k` in place of `ν`; infinite `k` is a point mass.
 CountRule(R, k::Real, g) = CountRule(R, _gamma_unit(k), g)
 
-# A `ModelSpec` qualifies when the layers it adds do not act on transmission.
+# A `ModelSpec` qualifies when the layers it adds do not act on transmission,
+# apart from vaccination campaigns on a finite population.
 function count_rule(spec::ModelSpec)
-    isempty(spec.interventions) || return nothing
     spec.case_definition === nothing || return nothing
     spec.recorder isa NoContactRecorder || return nothing
-    return count_rule(spec.process)
+    rule = count_rule(spec.process)
+    rule === nothing && return nothing
+    isempty(spec.interventions) && return rule
+    _count_sizes(population(spec.process)) === nothing && return nothing
+    # Eligibility depends only on how the interventions are read. A budget that
+    # does not fit the population is a configuration error and raises, as in
+    # `simulate_by_generation`.
+    campaigns = try
+        [_campaign(iv, (0.0, Inf), nothing) for iv in spec.interventions]
+    catch err
+        err isa ArgumentError && return nothing
+        rethrow()
+    end
+    campaigns = [_by_type(c, population(spec.process)) for c in campaigns]
+    rules = _as_rules(rule)
+    return CountRules(rules.channels, rules.allocation, campaigns)
 end
 
 function count_rule(model::BranchingProcess)
@@ -342,6 +363,7 @@ function _count_step!(s::CountSimulationState)
     n_windows, n_types = size(channels)
     g = s.max_generation
     t = s.day + 1
+    _vaccinate_counts!(s, t)
     rates = [_count_R_at(c, t) for c in channels]
     ncls = _classes_on(g, t)
     max_lag = _max_lag(rules)
@@ -377,6 +399,14 @@ function _count_step!(s::CountSimulationState)
     s.cumulative_cases += sum(by_class)
     s.day = t
     s.extinct = _count_extinct(s)
+    return s
+end
+
+# The doses of `[t - 1, t)` reach the susceptibles before day `t` is drawn.
+function _vaccinate_counts!(s::CountSimulationState, t)
+    for c in s.rule.campaigns
+        _vaccinate!(s.rng, c, t - 1, t, s.susceptibles, s.sizes)
+    end
     return s
 end
 
