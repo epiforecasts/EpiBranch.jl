@@ -591,7 +591,13 @@ mutable struct _OffspringPool
     next::Int
 end
 function _member_pool(::OffspringCountRule, n::Int, members, rng)
-    each = reduce(vcat, (fill(i, round(Int, c)) for (i, c) in enumerate(members)); init = Int[])
+    each = Vector{Int}(undef, sum(c -> round(Int, c), members; init = 0))
+    pos = 0
+    for (i, c) in enumerate(members)
+        k = round(Int, c)
+        fill!(view(each, (pos + 1):(pos + k)), i)
+        pos += k
+    end
     return _OffspringPool(shuffle(rng, each), 0)
 end
 function _next_member!(pool::_OffspringPool, rng)
