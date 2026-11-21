@@ -578,7 +578,10 @@ function simulate(
         stopping_rules, condition, rng
     )
     rule === nothing ||
-        return _simulate_counts(spec, rule, sim_opts.n_initial, max_time::Real, rng)
+        return _simulate_counts(
+        spec, rule, sim_opts.n_initial, max_time, max_cases, rng, max_generations,
+        sim_opts.index_types
+    )
     state = _run_once_or_retry(
         spec.process, sim_opts, condition, max_attempts; _layers(spec)..., rng
     )

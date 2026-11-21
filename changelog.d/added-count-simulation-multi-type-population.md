@@ -1,0 +1,1 @@
+`simulate` runs a multi-type `BranchingProcess` built from an offspring matrix, and a model with a finite `Population`, on the count-level path. Each type has its own cohorts. The infections of a day are depleted against the susceptibles of each type, and the people built from the counts have their types. A vector `index_types` is accepted on this path.

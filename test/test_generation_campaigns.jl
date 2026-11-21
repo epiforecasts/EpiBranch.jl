@@ -209,4 +209,25 @@ EpiBranch.trigger_time(e::_EligibleAt, infector, state) = e.time
         a = Individual(id = 1, state = Dict{Symbol, Any}(:type => 1))
         @test EpiBranch.resource_key(gv, a, nothing) === nothing
     end
+
+    @testset "a prepared spec continues a state as the spec does" begin
+        budget = CapacityConstrained(group(); budget_per_period = 500.0, period = 14.0)
+        spec = ModelSpec(discrete(); interventions = [budget])
+        state = run_counts(spec)
+        prepared = prepare_generations(spec, state)
+        @test prepared isa GenerationCampaigns
+        n = state.generation + 2
+        a = simulate(prepared, state; max_generations = n, rng = StableRNG(2))
+        b = simulate(spec, state; max_generations = n, rng = StableRNG(2))
+        @test a.counts == b.counts
+        @test a.susceptibles == b.susceptibles
+
+        # The checks of the spec still apply.
+        @test_throws ArgumentError prepare_generations(
+            ModelSpec(
+                discrete(); interventions = [budget],
+                attributes = clinical_presentation(incubation_period = LogNormal(1.6, 0.5))
+            ), state
+        )
+    end
 end
