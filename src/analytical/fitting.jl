@@ -357,16 +357,10 @@ approximate: a geometric tail is lighter than the true chain-size tail near
 criticality, and large `n_sim` is needed to estimate R tightly. Where the
 model has a closed form, prefer it.
 """
-function loglikelihood(data::ChainSizes, model::TransmissionModel; kwargs...)
+function loglikelihood(data::ChainSizes, m::Union{TransmissionModel, ModelSpec}; kwargs...)
     return _chain_size_model_loglik(
-        data, model, interventions(model), attributes(model),
-        progression(model), observation(model), recorder(model); kwargs...
-    )
-end
-function loglikelihood(data::ChainSizes, spec::ModelSpec; kwargs...)
-    return _chain_size_model_loglik(
-        data, spec.process, interventions(spec), attributes(spec),
-        progression(spec), observation(spec), recorder(spec); kwargs...
+        data, process(m), interventions(m), attributes(m),
+        progression(m), observation(m), recorder(m); kwargs...
     )
 end
 
@@ -467,16 +461,10 @@ length. A run is also censored in the same way once it reaches 100 000 cases,
 which keeps memory bounded for a model whose cases grow without limit. Lower
 `max_generations` to stop such runs sooner.
 """
-function loglikelihood(data::ChainLengths, model::TransmissionModel; kwargs...)
+function loglikelihood(data::ChainLengths, m::Union{TransmissionModel, ModelSpec}; kwargs...)
     return _chain_length_model_loglik(
-        data, model, interventions(model), attributes(model),
-        progression(model), observation(model), recorder(model); kwargs...
-    )
-end
-function loglikelihood(data::ChainLengths, spec::ModelSpec; kwargs...)
-    return _chain_length_model_loglik(
-        data, spec.process, interventions(spec), attributes(spec),
-        progression(spec), observation(spec), recorder(spec); kwargs...
+        data, process(m), interventions(m), attributes(m),
+        progression(m), observation(m), recorder(m); kwargs...
     )
 end
 
