@@ -218,12 +218,15 @@ function Base.copy(s::CountSimulationState)
     return CountSimulationState(
         s.model, s.layers, s.rule, copy(s.counts), s.max_generation,
         deepcopy(s.generation_counts), deepcopy(s.cohort_infectiousness),
-        deepcopy(s.cohort_members), deepcopy(s.inflow), s.susceptibles === nothing ? nothing : copy(s.susceptibles),
+        deepcopy(s.cohort_members), deepcopy(s.inflow), _copy_susceptibles(s.susceptibles),
         s.sizes, s.day, s.cumulative_cases,
         s.extinct, _copy_count_rng(s.rng), copy(s.individual_stream),
         built === nothing ? nothing : copy(built)
     )
 end
+
+_copy_susceptibles(::Nothing) = nothing
+_copy_susceptibles(s::Vector{Int}) = copy(s)
 
 _copy_count_rng(rng::Random.TaskLocalRNG) = copy(rng)
 _copy_count_rng(rng::AbstractRNG) = deepcopy(rng)
