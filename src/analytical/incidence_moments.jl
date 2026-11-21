@@ -76,6 +76,14 @@ function _step_lag_cdf(delay::Dirac, substeps::Integer = 1)
     return l -> clamp(l + 1 - substeps * delay.value, 0.0, 1.0)
 end
 
+# Kept out of `_bin_cdf` as its own function: the logging macro expands to a
+# try/catch, which reverse-mode Mooncake cannot differentiate.
+function _warn_truncated(what, tol, max_lag)
+    @warn "The $what has more than $tol of its mass above a lag of " *
+        "$max_lag steps, so the discretised pmf is truncated there." maxlog = 1
+    return nothing
+end
+
 # Bin the step-lag cumulative distribution `H` onto the integer lags
 # `first_lag`, `first_lag + 1`, ...: the first entry is `H(first_lag) - base`,
 # where `base` is the mass below `first_lag` that the lags cannot represent,
@@ -91,8 +99,7 @@ function _bin_cdf(
     p = [c - base]
     while !(1 - c < tol)
         if lag >= max_lag
-            @warn "The $what has more than $tol of its mass above a lag of " *
-                "$max_lag steps, so the discretised pmf is truncated there." maxlog = 1
+            _warn_truncated(what, tol, max_lag)
             break
         end
         lag += 1
@@ -201,6 +208,8 @@ cost of each evaluation grows with `substeps`. Infector and infectee in the same
 sub-step are kept, so the approximation improves as `substeps` increases.
 
 Requires `using ForwardDiff` for the derivatives of the generating function.
+The moments can themselves be differentiated, in forward mode or in reverse
+mode with Mooncake or Enzyme.
 
 Returns a `(mean, cov)` named tuple: `mean[t]` is the expected count at step
 `t`, and `cov` is their `n × n` covariance matrix, both ignoring susceptible
@@ -321,18 +330,39 @@ function _incidence_log_pgf(
     # by iteration from the value without same-sub-step offspring. The iteration
     # converges, derivatives included, if the expected same-sub-step offspring
     # of a case number fewer than one.
+    # Loops rather than comprehensions and `sum`/`maximum` over generators:
+    # Enzyme's type analysis fails on their union-typed internals.
+    function mix(v, j)
+        t = zero(S)
+        for i in 1:m
+            t += alloc[i, j] * v[i]
+        end
+        return t
+    end
     function solve_substep(q)
-        b = [later(q, i) for i in 1:m]
-        r = [report(q, j) for j in 1:m]
-        x = [r[j] * pgfs[j](sum(alloc[i, j] * b[i] for i in 1:m)) for j in 1:m]
+        b = Vector{S}(undef, m)
+        r = Vector{S}(undef, m)
+        x = Vector{S}(undef, m)
+        for i in 1:m
+            b[i] = later(q, i)
+            r[i] = report(q, i)
+        end
+        for j in 1:m
+            x[j] = r[j] * pgfs[j](mix(b, j))
+        end
         w[1] > 0 || return x
         converged = false
+        arg = Vector{S}(undef, m)
         for _ in 1:max_iter
-            y = [
-                r[j] * pgfs[j](sum(alloc[i, j] * (w[1] * x[i] + b[i]) for i in 1:m))
-                    for j in 1:m
-            ]
-            gap = maximum(_fixed_point_gap(y[j], x[j]) for j in 1:m)
+            for i in 1:m
+                arg[i] = w[1] * x[i] + b[i]
+            end
+            y = Vector{S}(undef, m)
+            gap = 0.0
+            for j in 1:m
+                y[j] = r[j] * pgfs[j](mix(arg, j))
+                gap = max(gap, _fixed_point_gap(y[j], x[j]))
+            end
             x = y
             gap <= 1.0e-13 && (converged = true)
             converged && break

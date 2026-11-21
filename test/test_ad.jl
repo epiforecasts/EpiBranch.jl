@@ -1,4 +1,5 @@
 using ADTypes
+import Enzyme
 using DifferentiationInterface
 import DifferentiationInterfaceTest as DIT
 using FiniteDifferences
@@ -147,6 +148,27 @@ end
         g_reverse = DifferentiationInterface.gradient(f, mooncake, x)
         g_forward = DifferentiationInterface.gradient(f, AutoForwardDiff(), x)
         @test g_reverse ≈ g_forward rtol = 1.0e-6
+    end
+end
+
+# The moment-matched likelihood differentiates the moments of
+# `incidence_moments`, which are themselves ForwardDiff derivatives of the
+# generating function, so a reverse pass has to go through that inner forward
+# pass. The inputs are the offspring, reporting and generation-time parameters.
+@testset "AD (reverse mode) through incidence_moments" begin
+    y = [6, 7, 8, 9, 10, 11]
+    function moment_loglik(x)
+        m = incidence_moments(
+            NegBin(x[1], x[2]), Gamma(x[3], x[4]), length(y); seeds = 5,
+            reporting_probability = x[5], reporting_delay = Gamma(x[6], 1.0)
+        )
+        return logpdf(MvNormal(m.mean, Matrix(m.cov)), y)
+    end
+    x0 = [1.2, 0.5, 2.0, 2.0, 0.7, 2.0]
+    g_forward = DifferentiationInterface.gradient(moment_loglik, AutoForwardDiff(), x0)
+    for backend in (AutoMooncake(; config = nothing), AutoEnzyme(; mode = Enzyme.Reverse))
+        g = DifferentiationInterface.gradient(moment_loglik, backend, x0)
+        @test g ≈ g_forward rtol = 1.0e-6
     end
 end
 
