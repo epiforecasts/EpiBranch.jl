@@ -407,8 +407,6 @@ function _chain_size_model_loglik(
     )
 end
 
-# The simulation estimate is a separate function so that reverse-mode AD can
-# refuse it with a clear error rather than try to compile the simulator.
 function _simulated_chain_size_loglik(
         data, process, ivs, attrs, prog, obs, rec,
         max_cases, max_generations, max_time, stopping_rules, n_sim, rng, prob_concluded
@@ -523,8 +521,6 @@ function _chain_length_assert_full_reporting(prog, attrs)
     )
 end
 
-# Whether the closed-form chain-length law applies: a Poisson or negative
-# binomial offspring with a subcritical mean.
 _has_chain_length_law(offspring::Union{Poisson, NegativeBinomial}) = mean(offspring) < 1
 _has_chain_length_law(_) = false
 
@@ -573,7 +569,6 @@ function _chain_length_model_loglik(
     )
 end
 
-# As for chain sizes, a separate function for reverse-mode AD to refuse.
 function _simulated_chain_length_loglik(
         data, process, ivs, attrs, prog, obs, rec,
         n_initial, max_generations, max_time, stopping_rules, n_sim, rng

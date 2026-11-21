@@ -403,9 +403,7 @@ function _fold_reporting(progression, base, obs, attrs)
     return ThinnedChainSize(base, ρ)
 end
 
-# Whether the closed form can read the progression's `Reporting` step. A
-# separate function so reverse-mode AD can treat the check, which carries no
-# derivative, as a constant rather than differentiate through its `try`.
+# Whether the closed form can read the progression's `Reporting` step.
 function _closed_form_reportable(prog, attrs)
     try
         _effective_reporting_probability(prog, attrs)

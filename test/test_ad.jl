@@ -152,11 +152,8 @@ end
     end
 end
 
-# Reverse mode through the model constructors and the likelihood wrappers, the
-# route the tutorials write (`BranchingProcess(Poisson(R))`) rather than the bare
-# offspring distribution. Each gradient must match ForwardDiff. The summed form
-# scores many sizes against one law built from the model, which an Enzyme
-# gradient got wrong without an error while a single score was right.
+# Reverse mode through the model constructors and likelihood wrappers, each
+# checked against ForwardDiff.
 @testset "AD (reverse mode through the model route)" begin
     sizes_data = [1, 2, 1, 3, 1, 5, 2]
     lengths_data = [0, 1, 2, 0, 3, 1]
@@ -165,8 +162,6 @@ end
 
     mooncake = AutoMooncake(; config = nothing)
     enzyme = AutoEnzyme(; mode = Enzyme.Reverse)
-    # A model carrying an intervention stores constants in memory Enzyme
-    # cannot prove inactive, so it needs runtime activity.
     enzyme_activity = AutoEnzyme(; mode = Enzyme.set_runtime_activity(Enzyme.Reverse))
 
     function check(f, x, backends)
@@ -196,7 +191,6 @@ end
     for (f, x) in bare_model
         check(f, x, (mooncake, enzyme))
     end
-    # The summed gradient is not the trivial zero a wrong rule could return.
     @test only(
         check(
             R -> summed(chain_size_distribution(BranchingProcess(Poisson(R[1])))),
@@ -222,7 +216,6 @@ end
     check(intervention_cases[1], [0.5], (enzyme_activity,))
     check(intervention_cases[3], [0.5], (enzyme_activity,))
 
-    # A spec with no intervention scores analytically too.
     spec_cases = [
         R -> loglikelihood(
             ChainSizes(sizes_data),

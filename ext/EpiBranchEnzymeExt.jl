@@ -1,13 +1,5 @@
 module EpiBranchEnzymeExt
 
-# The checks run when a model is built return nothing and carry no derivative.
-# Enzyme would otherwise compile their warning and error paths, which it cannot
-# type.
-#
-# A likelihood estimated by simulation has no reverse-mode gradient, and
-# Enzyme cannot compile the simulator. Refusing it here gives an error where a
-# gradient of zero or a failed compilation would be a worse answer.
-
 using EpiBranch: EpiBranch
 using Enzyme: Annotation, Const, EnzymeRules
 

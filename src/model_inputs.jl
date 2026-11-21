@@ -42,8 +42,7 @@ recorder(::TransmissionModel) = NoContactRecorder()
 # through. Composed onto a process with a `ModelSpec`; empty for a bare process.
 """The within-host natural history `model` has: a vector of
 [`Transition`](@ref)s and other clinical steps, or `()` if it has none
-(the default, for a bare process with no [`ModelSpec`](@ref) around it). The
-empty tuple lets the compiler see that there is no step to fold in."""
+(the default, for a bare process with no [`ModelSpec`](@ref) around it)."""
 progression(::TransmissionModel) = ()
 
 # Normalise an interventions keyword (a single intervention or a vector)
