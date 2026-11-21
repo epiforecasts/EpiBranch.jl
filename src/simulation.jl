@@ -63,7 +63,7 @@ A model with a discrete generation time on whole days and nothing about
 individuals feeding back on transmission (see
 [`EpiBranch.count_rule`](@ref)) runs on a count-level path when
 `max_generations` is not left at its default, there are no `stopping_rules`,
-`condition` or `initial_cases`, `index_types` is unset or a vector, and `max_time` is finite or
+`condition` or `initial_cases`, and `max_time` is finite or
 `max_cases` is set. A run with `max_cases` stops at the end of the first day
 on which the total reaches it, and may hold more cases than that. A
 `max_generations` is applied exactly, at a cost that grows with its value.
@@ -242,7 +242,9 @@ end
     simulate(model, n::Int; parallel=false, kwargs...)
 
 Simulate `n` independent outbreaks from the same model and return them as a
-vector of [`SimulationState`](@ref)s. It takes the same stopping keywords
+vector of [`SimulationState`](@ref)s, or of [`CountSimulationState`](@ref)s
+when the model qualifies for the count-level path, as for the single-outbreak
+method. It takes the same stopping keywords
 (`max_cases`, `max_generations`, `max_time`, `stopping_rules`), `n_initial`,
 `initial_cases`, `index_types` and `rng` as the single-outbreak method;
 `condition` is not available here. The usual next step is
@@ -292,7 +294,22 @@ function _simulate_each(
         model, n_initial, initial_cases, index_types, max_cases, max_generations,
         max_time, stopping_rules
     )
+    rule = _count_route(
+        model, initial_cases, index_types, max_cases, max_generations, max_time,
+        stopping_rules, nothing, rng
+    )
+    rule === nothing || return _simulate_n_counts(
+        each, T, model, rule, n, sim_opts.n_initial, max_time, max_cases, rng, parallel
+    )
     return _simulate_n(each, T, model, n, sim_opts; _layers(model)..., rng, parallel)
+end
+
+# The count-level path of `_simulate_each`, for a model or a spec.
+function _simulate_n_counts(each, ::Type{T}, model, rule, n, n_initial, max_time, max_cases, rng, parallel) where {T}
+    run(rng) = each(_simulate_counts(model, rule, n_initial, max_time, max_cases, rng))
+    R = T === SimulationState ? CountSimulationState : T
+    parallel && Threads.nthreads() > 1 && return _simulate_n_threaded(run, R, n, rng)
+    return [run(rng) for _ in 1:n]
 end
 
 _simulate_n(model::TransmissionModel, n::Int, sim_opts::SimOpts; kwargs...) =

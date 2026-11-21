@@ -84,7 +84,7 @@ public initialise_state, interventions, attributes, observation, recorder,
 # within-host progression and the transmission model it wraps.
 public progression, process
 # The rule that gives a model the count-level path of `simulate`.
-public count_rule, CountRule, OffspringCountRule
+public count_rule, CountRule, CountRules, OffspringCountRule
 public case_definition
 # The two hooks of a case definition written outside the package.
 public classify_case, relevant_events
