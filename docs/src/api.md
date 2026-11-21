@@ -321,6 +321,7 @@ AbstractSimulationState
 SimulationState
 CountSimulationState
 EpiBranch.count_rule
+EpiBranch.AbstractCountRule
 EpiBranch.CountRule
 EpiBranch.CountRules
 EpiBranch.OffspringCountRule
