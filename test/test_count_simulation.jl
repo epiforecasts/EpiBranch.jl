@@ -496,8 +496,8 @@ using EpiBranch, Distributions, Random, StableRNGs, Statistics, DataFrames
             init
         ) < 4
 
-        # Each offspring belongs to one member, so a person has no more
-        # children than their draw, and the susceptibles match the cases.
+        # Each offspring belongs to one member. A person has no more children
+        # than their draw, and the susceptibles match the cases.
         model = BranchingProcess(
             1.5 .* M, R -> Binomial(3, R / 3), gt; population = Population([70, 40])
         )
