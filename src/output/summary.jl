@@ -1,5 +1,5 @@
 """
-    containment_probability(states::Vector{<:SimulationState}; max_cases=NoCases())
+    containment_probability(states::Vector{<:AbstractSimulationState}; max_cases=NoCases())
 
 Containment probability: the proportion of simulated outbreaks that died out,
 from a vector of simulations such as `simulate(model, n)`. Returns a named
@@ -48,7 +48,7 @@ containment_probability(states; max_cases = 5000).proportion
 ```
 """
 function containment_probability(
-        states::Vector{<:SimulationState};
+        states::Vector{<:AbstractSimulationState};
         max_cases::Union{Int, NoCases} = NoCases()
     )
     n_contained = count(s -> _is_contained(s, max_cases), states)
@@ -90,7 +90,8 @@ end
     containment_difference(a, b; max_cases=NoCases(), paired=false)
 
 The difference in containment probability between two sets of simulations,
-`a` minus `b`, each a vector of [`SimulationState`](@ref)s. Returns a named
+`a` minus `b`, each a vector of [`SimulationState`](@ref)s or
+[`CountSimulationState`](@ref)s. Returns a named
 tuple `(; difference, mcse, a, b, paired)`, where `a` and `b` are the
 proportions contained and `mcse` is the Monte Carlo standard error of the
 difference. It reflects simulation error only.
@@ -117,7 +118,7 @@ containment_difference(treated, base; max_cases = 500, paired = true)
 ```
 """
 function containment_difference(
-        a::Vector{<:SimulationState}, b::Vector{<:SimulationState};
+        a::Vector{<:AbstractSimulationState}, b::Vector{<:AbstractSimulationState};
         max_cases::Union{Int, NoCases} = NoCases(), paired::Bool = false
     )
     ca = [_is_contained(s, max_cases) for s in a]

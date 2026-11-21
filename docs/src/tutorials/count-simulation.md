@@ -8,6 +8,8 @@ The model must have a generation time that is a discrete distribution on whole d
 
 The run must be asked for in a way counts can answer: a finite `max_time` or a `max_cases`, with `max_generations` set to `nothing` or to a value other than its default, no `stopping_rules`, `condition` or `initial_cases`, and no [`CommonRandomNumbers`](@ref). A run with `max_cases` ends at the end of the first day on which the total reaches it, and can hold more cases than that. A `max_generations` is applied exactly by tracking each day's cohort by generation, at a cost that grows with its value. A run with the default `max_generations`, or any other run not described here, is an individual simulation. [`containment_probability`](@ref)`(model, n; max_cases)` runs on counts for a model that qualifies, with the default `max_generations` applied.
 
+`simulate(model, n)` takes the same keywords and returns a vector of `n` count-level runs. `containment_probability(model, n)` and the vector methods of `containment_probability` read the `extinct` flag of each run. A run is contained when transmission has died out by `max_time`.
+
 ## A finite population and vaccination
 
 A finite population runs on counts as described above, and `state.susceptibles` holds the number left in each type. The contacts of the day fall at random on the people of each type, as under [`PerContactDepletion`](@ref), and the infections are shared among the cohorts in proportion to the contacts each made. The cost does not depend on the number of cases.
