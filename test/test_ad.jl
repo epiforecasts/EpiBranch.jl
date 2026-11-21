@@ -13,15 +13,17 @@ using StableRNGs
 # reference (`res1`) computed up-front with FiniteDifferences.jl.
 #
 # Scope: ForwardDiff through DIT, plus a Mooncake reverse-mode pass in a
-# separate testset below. Mooncake is the reverse-mode backend the package
+# separate testset below. Enzyme reverse mode is covered for
+# `incidence_moments` only. Mooncake is the reverse-mode backend the package
 # targets, so the analytical likelihoods are checked both ways. It is not run
 # through DIT because DIT's correctness harness builds its reverse rule
 # through the `ChainSizes`/etc. data constructor (including its validation
 # branch) and errors there; a direct gradient comparison against ForwardDiff
 # avoids that while still exercising the reverse path over the likelihood.
 # ReverseDiff is left out — no rule for the `logabsgamma` in the NegBin
-# chain-size path. Enzyme and the per-backend-tag scenario pattern from
-# CensoredDistributions.jl are the remaining end state; see #105.
+# chain-size path. Enzyme for the other likelihoods and the per-backend-tag
+# scenario pattern from CensoredDistributions.jl are the remaining end state;
+# see #105.
 
 @testset "AD" begin
     sizes_data = [1, 2, 1, 3, 1, 5, 2]
