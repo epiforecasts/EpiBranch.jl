@@ -86,11 +86,8 @@ jobs:
           fi
           echo "subdir=$SUBDIR" >> "$GITHUB_OUTPUT"
 
-      # Registrator reads the `Release notes:` block of the comment. General
-      # refuses a breaking version (a minor bump at 0.x) whose notes are
-      # missing or mention neither "breaking" nor "changelog", so the lines
-      # after the command become the notes, and a comment with none gets a
-      # fixed paragraph pointing at the changelog.
+      # The lines after the command become the release notes; with none, a
+      # fixed paragraph pointing at the changelog is used.
       - name: Trigger JuliaRegistrator
         if: steps.check-permissions.outputs.has_permission == 'true'
         env:
