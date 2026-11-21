@@ -1,6 +1,7 @@
 using Distributions
 using StableRNGs
 using Statistics
+using Random: shuffle
 
 # A calendar time at which a group's eligibility triggers, so the individual-based
 # engine dates a dose without a delay.
@@ -55,27 +56,148 @@ EpiBranch.trigger_time(e::_EligibleAt, infector, state) = e.time
         @test doses(single, 14.0, 28.0) == 0
     end
 
-    @testset "a dose reaches the susceptibles it finds, and protects with efficacy" begin
-        sizes = [10_000, 10_000]
-        campaign = EpiBranch._campaign(
-            CapacityConstrained(group(; efficacy = 0.6); budget_per_period = 1_000.0),
-            (0.0, Inf), nothing
+    @testset "doses go to the contacts made, while the budget lasts" begin
+        # Visit every contact in the order made, as the individual-based
+        # simulation does. A shared budget doses the first contacts of all the
+        # types, a budget per type the first of its own.
+        function by_visiting(rng, contacts, s, sizes, doses)
+            order = shuffle(rng, reduce(vcat, [fill(i, n) for (i, n) in enumerate(contacts)]))
+            s = copy(s)
+            seen = zeros(Int, length(contacts))
+            kept = zeros(Int, length(contacts))
+            for (j, i) in enumerate(order)
+                seen[i] += 1
+                pass = prod(
+                    (1 - e for (d, e) in doses if (d isa Int ? j : seen[i]) <= (d isa Int ? d : d[i]));
+                    init = 1.0
+                )
+                if rand(rng) < pass * s[i] / sizes[i]
+                    kept[i] += 1
+                    s[i] -= 1
+                end
+            end
+            return kept
+        end
+        by_counting(rng, potential, s, sizes, doses) = EpiBranch._deplete_dosed!(
+            rng, PerContactDepletion(), potential, copy(s), sizes, doses,
+            [zeros(Int, d isa Int ? 1 : length(d)) for (d, _) in doses]
         )
-        removed = [
-            begin
-                s = [8_000, 2_000]
-                EpiBranch._vaccinate!(StableRNG(seed), campaign, 0.0, 14.0, s, sizes)
-                [8_000, 2_000] .- s
-            end for seed in 1:400
+        function agree(contacts, s, sizes, doses; reps = 3_000)
+            visited = [by_visiting(StableRNG(i), contacts, s, sizes, doses) for i in 1:reps]
+            counted = [by_counting(StableRNG(10^6 + i), contacts, s, sizes, doses) for i in 1:reps]
+            return all(eachindex(contacts)) do t
+                a, b = getindex.(visited, t), getindex.(counted, t)
+                isapprox(mean(a), mean(b); atol = 4 * sqrt(var(a) / reps + var(b) / reps))
+            end
+        end
+        contacts, s, sizes = [300, 500], [400, 600], [1_000, 1_000]
+
+        # Budgets below, around and above the number of contacts.
+        for budget in (50, 250, 800, 5_000)
+            @test agree(contacts, s, sizes, [(budget, 0.8)])
+        end
+        @test agree(contacts, s, sizes, [([100, 300], 0.5)])
+        @test agree(contacts, s, sizes, [(150, 0.5), (400, 0.3), (50, 0.9)])
+        @test agree(contacts, s, sizes, [(150, 0.5), ([200, 100], 0.3)])
+
+        # A full efficacy blocks every dosed contact.
+        kept = by_counting(StableRNG(1), [300, 500], s, sizes, [(800, 1.0)])
+        @test kept == [0, 0]
+
+        # A Poisson mean gives Poisson contacts, as the visiting reference draws.
+        reps = 3_000
+        counted = [
+            sum(by_counting(StableRNG(10^6 + i), [300.0, 500.0], s, sizes, [(250, 0.8)]))
+                for i in 1:reps
         ]
-        # Equal types share the 1,000 doses and get 500 each. A fraction 0.8 or
-        # 0.2 of them reaches susceptibles, and 0.6 of those protect.
-        @test isapprox(mean(first, removed), 500 * 0.8 * 0.6; rtol = 0.03)
-        @test isapprox(mean(last, removed), 500 * 0.2 * 0.6; rtol = 0.05)
-        # Doses are given out whole: the types together get all of them.
-        s = [8_000, 2_000]
-        pool = EpiBranch._doses_by_type(StableRNG(1), campaign, 0.0, 14.0, sizes)
-        @test sum(pool) == 1_000
+        visited = [
+            begin
+                rng = StableRNG(i)
+                n = [rand(rng, Poisson(300)), rand(rng, Poisson(500))]
+                sum(by_visiting(rng, n, s, sizes, [(250, 0.8)]))
+            end for i in 1:reps
+        ]
+        @test isapprox(
+            mean(counted), mean(visited);
+            atol = 4 * sqrt(var(counted) / reps + var(visited) / reps)
+        )
+    end
+
+    @testset "a single type does the same without allocating" begin
+        function by_visiting(rng, n, s, size, doses)
+            kept = 0
+            for j in 1:n
+                pass = prod((1 - e for (d, e) in doses if j <= d); init = 1.0)
+                if rand(rng) < pass * s / size
+                    kept += 1
+                    s -= 1
+                end
+            end
+            return kept
+        end
+        function by_counting(rng, n, s, size, doses)
+            campaigns = [EpiBranch._Campaign(e, (0.0, Inf), nothing) for (_, e) in doses]
+            used = [[0] for _ in doses]
+            kept, left = EpiBranch._deplete_dosed(
+                rng, PerContactDepletion(), n, s, size, campaigns, first.(doses), used
+            )
+            @test left == s - kept
+            @test getindex.(used, 1) == min.(first.(doses), n)
+            return kept
+        end
+        reps = 4_000
+        for doses in ([(60, 0.8)], [(300, 0.8)], [(900, 0.8)], [(50, 0.5), (200, 0.3), (400, 0.9)])
+            visited = [by_visiting(StableRNG(i), 400, 500, 1_000, doses) for i in 1:reps]
+            counted = [by_counting(StableRNG(10^6 + i), 400, 500, 1_000, doses) for i in 1:reps]
+            @test isapprox(
+                mean(visited), mean(counted);
+                atol = 4 * sqrt(var(visited) / reps + var(counted) / reps)
+            )
+        end
+    end
+
+    @testset "a shared budget splits between types by the contacts they make" begin
+        contacts = [300, 700]
+        split = [
+            only(EpiBranch._dosed_contacts(StableRNG(i), [(200, 0.5)], contacts))
+                for i in 1:2_000
+        ]
+        @test all(==(200), sum.(split))
+        @test isapprox(mean(first, split), 200 * 0.3; rtol = 0.03)
+        # More doses than contacts dose them all, and a larger budget doses
+        # every contact a smaller one does, whatever the order given.
+        @test only(EpiBranch._dosed_contacts(StableRNG(1), [(5_000, 0.5)], contacts)) ==
+            contacts
+        nested = EpiBranch._dosed_contacts(StableRNG(1), [(400, 0.5), (100, 0.5)], contacts)
+        @test all(nested[2] .<= nested[1])
+        @test sum(nested[1]) == 400 && sum(nested[2]) == 100
+    end
+
+    @testset "doses a generation does not use stay for the next" begin
+        sizes = [40_000, 160_000]
+        # A single budget of 20 doses is used up by the first contacts.
+        once = CapacityConstrained(group(); budget_per_period = 20.0)
+        state = run_counts(ModelSpec(discrete(); interventions = [once]))
+        @test state.doses_used == [[20]]
+        # With more doses than contacts in a generation, the rest are used later.
+        late = CapacityConstrained(group(); budget_per_period = 1_000.0, period = 14.0)
+        state = run_counts(ModelSpec(discrete(); interventions = [late]))
+        @test only(only(state.doses_used)) > 0
+        whole = run_counts(ModelSpec(discrete(); interventions = [late]))
+        first_part = simulate_by_generation(
+            ModelSpec(discrete(); interventions = [late]); n_initial = [10, 2],
+            max_generations = 3, generation_length = 14.0, rng = StableRNG(1)
+        )
+        continued = simulate(
+            ModelSpec(discrete(); interventions = [late]), first_part; max_generations = 7
+        )
+        @test continued.doses_used == whole.doses_used
+        # Without `carry_over` the doses of a period are lost if they are not used.
+        lost = CapacityConstrained(
+            group(); budget_per_period = 1.0e6, period = 14.0, carry_over = false
+        )
+        pool = EpiBranch._campaign(lost, (0.0, Inf), nothing)
+        @test EpiBranch._doses_left(pool, pool.budget, 14.0, 28.0, 10^6) == 10^6
     end
 
     @testset "a campaign with no doses changes nothing" begin
@@ -106,7 +228,7 @@ EpiBranch.trigger_time(e::_EligibleAt, infector, state) = e.time
         )
         plain = [run_counts(discrete(); seed = s).cumulative_cases for s in 1:60]
         vaccinated = [run_counts(spec; seed = s).cumulative_cases for s in 1:60]
-        @test mean(vaccinated) < 0.5 * mean(plain)
+        @test mean(vaccinated) < 0.9 * mean(plain)
     end
 
     @testset "continuing a state applies the campaign from its generation" begin

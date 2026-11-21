@@ -1,10 +1,8 @@
 # ── Vaccination campaigns in generation counts ───────────────────────
 #
-# A count has no individuals to offer a dose to. A campaign acts on the
-# susceptibles of each type between generations instead. Its doses for a generation's
-# interval come from the budget of a `CapacityConstrained` (read, for a
-# schedule, at the start of each period) and the window of a `Scheduled`
-# around it, in either order. The types share one budget, as in every model.
+# A campaign gives its doses to the contacts of each generation, in the order
+# they are made. Its doses for a generation's interval come from the budget of a
+# `CapacityConstrained` and the window of a `Scheduled` around it.
 
 # A vaccination campaign `simulate_by_generation` can apply: the efficacy of
 # its dose, the days it may give doses between, and the budget limiting how
@@ -139,47 +137,150 @@ function _doses_by(cc::CapacityConstrained, t)
     )
 end
 
-# The doses of `[t0, t1)` given to each type. A shared budget is a pool of doses
-# for everyone: each dose goes to a type in proportion to its population, as it
-# would to a person picked at random. A budget per group gives each type its own.
-function _doses_by_type(rng::AbstractRNG, c::_Campaign, t0, t1, sizes)
-    return _doses_by_type(rng, c, c.budget, t0, t1, sizes)
-end
-function _doses_by_type(rng::AbstractRNG, c::_Campaign, budgets::AbstractVector, t0, t1, sizes)
-    return [_interval_doses(c, t0, t1, b) for b in budgets]
-end
-function _doses_by_type(rng::AbstractRNG, c::_Campaign, ::CapacityConstrained, t0, t1, sizes)
-    doses = _interval_doses(c, t0, t1)
-    doses == 0 && return zeros(Int, length(sizes))
-    length(sizes) == 1 && return [doses]
-    return rand(rng, Multinomial(doses, Float64.(sizes) ./ sum(sizes)))
-end
-
-# The doses of a campaign for a single type, with a shared budget or a budget
-# of one entry per group.
-_single_doses(c::_Campaign{<:AbstractVector}, t0, t1) = _interval_doses(c, t0, t1, only(c.budget))
-_single_doses(c::_Campaign, t0, t1) = _interval_doses(c, t0, t1)
-
-# `_vaccinate!` for a single type: the same draws, with the susceptibles as an
-# integer, returning how many are left.
-function _vaccinate(rng::AbstractRNG, c::_Campaign, t0, t1, susceptibles::Int, size::Int)
-    doses = _single_doses(c, t0, t1)
-    (doses == 0 || susceptibles <= 0 || size <= 0) && return susceptibles
-    reached = min(rand(rng, Binomial(doses, susceptibles / size)), susceptibles)
-    return susceptibles - rand(rng, Binomial(reached, c.efficacy))
-end
-
-# Give a campaign's doses for `[t0, t1)` to the susceptibles. A dose reaches a
-# susceptible of a type with probability equal to the share of susceptibles in
-# the population of the type at the start of the interval, and protects with
-# probability `efficacy`. With no doses nothing is drawn.
-function _vaccinate!(rng::AbstractRNG, c::_Campaign, t0, t1, susceptibles, sizes)
-    doses = _doses_by_type(rng, c, t0, t1, sizes)
-    for i in eachindex(susceptibles)
-        doses[i] == 0 && continue
-        (susceptibles[i] <= 0 || sizes[i] <= 0) && continue
-        reached = min(rand(rng, Binomial(doses[i], susceptibles[i] / sizes[i])), susceptibles[i])
-        susceptibles[i] -= rand(rng, Binomial(reached, c.efficacy))
+# The doses each campaign has for generation `gen`, with its efficacy: an Int
+# for a shared budget, a vector for a budget per type. Campaigns with no doses
+# are left out. `taken` holds the `used` entries those doses draw on.
+function _generation_doses(campaigns, used, generation_length, gen)
+    doses = Tuple{Union{Int, Vector{Int}}, Float64}[]
+    taken = Vector{Int}[]
+    isempty(campaigns) && return doses, taken
+    t0, t1 = _generation_interval(generation_length, gen)
+    for (k, c) in enumerate(campaigns)
+        d = _doses_of(c, c.budget, t0, t1, used[k])
+        (d isa Int ? d > 0 : any(>(0), d)) || continue
+        push!(doses, (d, c.efficacy))
+        push!(taken, used[k])
     end
-    return susceptibles
+    return doses, taken
+end
+_doses_of(c::_Campaign, cc::CapacityConstrained, t0, t1, used) =
+    _doses_left(c, cc, t0, t1, only(used))
+_doses_of(c::_Campaign, budgets::AbstractVector, t0, t1, used) =
+    [_doses_left(c, b, t0, t1, u) for (b, u) in zip(budgets, used)]
+
+# With `carry_over` (or a single budget) the doses not yet given, up to the end
+# of the interval; without it, only those of the interval.
+function _doses_left(c::_Campaign, cc::CapacityConstrained, t0, t1, used)
+    (cc.carry_over || isinf(cc.period)) || return _interval_doses(c, t0, t1, cc)
+    s, e = c.window
+    b = min(t1, e)
+    return b > s ? max(0, floor(Int, _doses_by(cc, b)) - used) : 0
+end
+
+# `_generation_doses` for a single type, written into `doses`; returns whether
+# any campaign has a dose.
+function _scalar_doses!(doses::Vector{Int}, campaigns, used, generation_length, gen)
+    isempty(campaigns) && return false
+    t0, t1 = _generation_interval(generation_length, gen)
+    any_doses = false
+    for (k, c) in enumerate(campaigns)
+        cc = c.budget isa AbstractVector ? only(c.budget) : c.budget
+        doses[k] = _doses_left(c, cc, t0, t1, only(used[k]))
+        any_doses |= doses[k] > 0
+    end
+    return any_doses
+end
+
+# `_deplete_dosed!` for a single type, returning the contacts kept and the
+# susceptibles left.
+function _deplete_dosed(
+        rng, ::PerContactDepletion, potential::Real, susceptibles::Int, size::Int,
+        campaigns, doses::Vector{Int}, used
+    )
+    contacts = potential isa Int ? potential : rand(rng, Poisson(potential))
+    kept = 0
+    done = 0
+    while done < contacts
+        level = contacts
+        for d in doses
+            done < d < level && (level = d)
+        end
+        pass = 1.0
+        for (k, c) in enumerate(campaigns)
+            doses[k] >= level && (pass *= 1 - c.efficacy)
+        end
+        remaining = level - done
+        while remaining > 0 && susceptibles > 0 && pass > 0
+            remaining -= rand(rng, Geometric(pass * susceptibles / size)) + 1
+            remaining < 0 && break
+            kept += 1
+            susceptibles -= 1
+        end
+        done = level
+    end
+    for k in eachindex(doses)
+        used[k][1] += min(doses[k], contacts)
+    end
+    return kept, susceptibles
+end
+
+# How many of each type's `contacts` every campaign doses. A shared budget
+# doses the first contacts of all the types, split between them
+# hypergeometrically; a budget per type doses the first of its own. Campaigns
+# are served in the same order of contacts.
+function _dosed_contacts(rng::AbstractRNG, doses, contacts::Vector{Int})
+    dosed = Vector{Vector{Int}}(undef, length(doses))
+    given = zeros(Int, length(contacts))
+    for k in sortperm([d isa Int ? d : 0 for (d, _) in doses])
+        d = doses[k][1]
+        if d isa Int
+            _extend_dosed!(rng, given, contacts, d)
+            dosed[k] = copy(given)
+        else
+            dosed[k] = min.(d, contacts)
+        end
+    end
+    return dosed
+end
+
+# Raise `given` to `total` dosed contacts (or all of them if fewer), drawing the
+# extra ones without replacement from those not yet dosed.
+function _extend_dosed!(rng::AbstractRNG, given, contacts, total)
+    extra = min(total, sum(contacts)) - sum(given)
+    extra <= 0 && return given
+    rest = contacts .- given
+    pool = sum(rest)
+    for i in eachindex(rest)
+        pool -= rest[i]
+        x = if i == lastindex(rest) || pool == 0
+            extra
+        elseif rest[i] == 0
+            0
+        else
+            rand(rng, Hypergeometric(rest[i], pool, extra))
+        end
+        given[i] += x
+        extra -= x
+    end
+    return given
+end
+
+# As `_deplete!` when some contacts are dosed: a dosed contact is also blocked
+# with the efficacy of each dose it has. The doses given are added to `taken`.
+function _deplete_dosed!(
+        rng, ::PerContactDepletion, potential::Vector, susceptibles, sizes, doses, taken
+    )
+    contacts = potential isa Vector{Int} ? potential : [rand(rng, Poisson(p)) for p in potential]
+    dosed = _dosed_contacts(rng, doses, contacts)
+    for k in eachindex(dosed)
+        taken[k] .+= length(taken[k]) == 1 ? sum(dosed[k]) : dosed[k]
+    end
+    kept = zeros(Int, length(contacts))
+    for i in eachindex(contacts)
+        cuts = sort!(unique([d[i] for d in dosed if d[i] > 0]))
+        previous = 0
+        for cut in [cuts; contacts[i]]
+            cut > previous || continue
+            pass = prod((1 - doses[k][2] for k in eachindex(dosed) if dosed[k][i] >= cut); init = 1.0)
+            remaining = cut - previous
+            previous = cut
+            while remaining > 0 && susceptibles[i] > 0 && pass > 0
+                remaining -= rand(rng, Geometric(pass * susceptibles[i] / sizes[i])) + 1
+                remaining < 0 && break
+                kept[i] += 1
+                susceptibles[i] -= 1
+            end
+        end
+    end
+    return kept
 end

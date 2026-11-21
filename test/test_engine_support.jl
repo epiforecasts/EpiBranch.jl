@@ -246,9 +246,8 @@ end
         e = _SUPPORT_ENGINES.generation_counts
         campaign = EpiBranch._campaign(shared(e), (0.0, Inf), nothing)
         @test EpiBranch._interval_doses(campaign, 0.0, 14.0) == 100
-        s = [40_000, 160_000]
-        EpiBranch._vaccinate!(StableRNG(1), campaign, 0.0, 14.0, s, [40_000, 160_000])
-        @test sum([40_000, 160_000] .- s) <= 100
+        doses = EpiBranch._generation_doses([campaign], [[0]], 14.0, 0)[1]
+        @test only(doses)[1] == 100
     end
 
 end
