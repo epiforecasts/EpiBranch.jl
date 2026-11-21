@@ -332,35 +332,24 @@ EpiBranch.trigger_time(e::_EligibleAt, infector, state) = e.time
         @test EpiBranch.resource_key(gv, a, nothing) === nothing
     end
 
-    @testset "continuing with a spec builds its campaigns once" begin
+    @testset "a prepared spec continues a state as the spec does" begin
         budget = CapacityConstrained(group(); budget_per_period = 500.0, period = 14.0)
         spec = ModelSpec(discrete(); interventions = [budget])
-        built = EpiBranch._cached_generation_campaigns(spec, 14.0, true)
-        @test EpiBranch._cached_generation_campaigns(spec, 14.0, true) === built
-        # A copy of the spec shares its interventions, so it shares the campaigns.
-        copied = ModelSpec(discrete(); interventions = EpiBranch.interventions(spec))
-        @test EpiBranch._cached_generation_campaigns(copied, 14.0, true) isa Vector
-
-        # A different generation length or set of interventions is not served stale.
-        @test EpiBranch._cached_generation_campaigns(spec, 7.0, true) !== built
-        later = CapacityConstrained(group(); budget_per_period = 900.0, period = 14.0)
-        push!(EpiBranch.interventions(spec), later)
-        @test length(EpiBranch._cached_generation_campaigns(spec, 7.0, true)) == 2
-        @test_throws ArgumentError EpiBranch._cached_generation_campaigns(spec, nothing, true)
-        @test_throws ArgumentError EpiBranch._cached_generation_campaigns(spec, 14.0, false)
-
-        # A cache hit still rejects a spec that has more than interventions.
-        shared = ModelSpec(
-            discrete(); interventions = EpiBranch.interventions(spec),
-            attributes = clinical_presentation(incubation_period = LogNormal(1.6, 0.5))
-        )
-        @test_throws ArgumentError EpiBranch._cached_generation_campaigns(shared, 7.0, true)
-
         state = run_counts(spec)
-        again = simulate(spec, state; max_generations = state.generation + 2, rng = StableRNG(2))
-        reference = simulate(
-            spec, state; max_generations = state.generation + 2, rng = StableRNG(2)
+        prepared = prepare_generations(spec, state)
+        @test prepared isa GenerationCampaigns
+        n = state.generation + 2
+        a = simulate(prepared, state; max_generations = n, rng = StableRNG(2))
+        b = simulate(spec, state; max_generations = n, rng = StableRNG(2))
+        @test a.counts == b.counts
+        @test a.susceptibles == b.susceptibles
+
+        # The checks of the spec still apply.
+        @test_throws ArgumentError prepare_generations(
+            ModelSpec(
+                discrete(); interventions = [budget],
+                attributes = clinical_presentation(incubation_period = LogNormal(1.6, 0.5))
+            ), state
         )
-        @test again.counts == reference.counts
     end
 end
