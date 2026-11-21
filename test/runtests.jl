@@ -17,11 +17,10 @@ end
 include("testutils/sim_analytical_consistency.jl")
 include("testutils/progression.jl")
 
-# CI runs one job per group to keep each job well within its timeout.
 # `EPIBRANCH_TEST_GROUP` selects a group; `Pkg.test()` without it runs
 # every file. A new file goes in the group matching its subject: `engine`
 # for the simulation engine and interventions, `population` for populations,
-# mixing and generation counts. Keep the running times of the groups close.
+# mixing and generation counts.
 const TEST_GROUPS = (
     engine = [
         "test_quality.jl",
