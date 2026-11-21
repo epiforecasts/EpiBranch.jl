@@ -692,7 +692,7 @@ using EpiBranch, Distributions, Random, StableRNGs, Statistics, DataFrames
         reference = [s.cumulative_cases for s in run(model; n = 30)]
         @test [s.cumulative_cases for s in run(windowed(start_time = 100.0); n = 30)] == reference
         @test [s.cumulative_cases for s in run(windowed(start_time = 0.0, end_time = 0.0); n = 30)] == reference
-        # Doses from day 3 stop the spread then, so the epidemic is smaller.
+        # Doses from day 3 stop the spread from then on, so the epidemic is smaller.
         late = run(windowed(start_time = 3.0); n = 30)
         @test mean(s.cumulative_cases for s in late) < mean(reference)
         @test all(i.infection_time < 8 for s in late for i in individuals(s))
@@ -716,8 +716,8 @@ using EpiBranch, Distributions, Random, StableRNGs, Statistics, DataFrames
         @test all(s.susceptibles[1] == 0 for s in pg)
         @test all(count(i -> individual_type(i) == 1, individuals(s)) == 1 for s in pg)
         @test mean(s.susceptibles[2] for s in pg) < 400
-        # A shared budget over several types is split in proportion to their
-        # populations: half the people in all, so each type loses about half.
+        # A shared budget over several types is split in proportion to
+        # population size. It covers half the people, so each type loses about half.
         shared = ModelSpec(
             two;
             interventions = [
