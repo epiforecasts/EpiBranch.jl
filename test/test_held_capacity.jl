@@ -38,7 +38,6 @@ end
 struct _Ward <: EpiBranch.AbstractIntervention end
 EpiBranch.capacity_key(::_Ward) = :ward_bed
 EpiBranch.discovers_actions(::_Ward) = true
-EpiBranch.resource_key(::_Ward, ind, state) = ind.state[:ward]
 EpiBranch.intervention_actions(::_Ward, state, candidates) = [
     InterventionAction(ind, 1.0, (p, t, s) -> (p.state[:ward_bed] = true))
         for ind in candidates
@@ -186,13 +185,13 @@ end
         @test held_usage(hc, state, 1.0).held == 0
     end
 
-    @testset "A resource_key gives each group its own places" begin
-        hc = HeldCapacity(_Ward(); capacity = 1)
-        state = empty_state()
+    @testset "A PerGroup capacity gives each group its own places" begin
+        hc = HeldCapacity(_Ward(); capacity = PerGroup("a" => 1, "b" => 1))
+        state = _grouped_state(["a", "b"])
         people = [
-            Individual(id = 1, state = Dict{Symbol, Any}(:ward => :a)),
-            Individual(id = 2, state = Dict{Symbol, Any}(:ward => :a)),
-            Individual(id = 3, state = Dict{Symbol, Any}(:ward => :b)),
+            Individual(id = 1, state = Dict{Symbol, Any}(:type => 1)),
+            Individual(id = 2, state = Dict{Symbol, Any}(:type => 1)),
+            Individual(id = 3, state = Dict{Symbol, Any}(:type => 2)),
         ]
         append!(individuals(state), people)
         state.max_infection_time = 0.0

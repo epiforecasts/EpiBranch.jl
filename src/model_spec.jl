@@ -535,10 +535,11 @@ ignored.
 case_definition(s::ModelSpec) = s.case_definition
 case_definition(::TransmissionModel) = nothing
 
-"""The transmission model `spec` wraps. [`simulate`](@ref) and
-`loglikelihood` run the same on `process(spec)` alone, without the layers
-composed onto `spec`."""
+"""The transmission model that `spec` wraps, or the model itself if it is bare.
+[`simulate`](@ref) and `loglikelihood` also run on `process(spec)` alone,
+without the layers composed onto `spec`."""
 process(s::ModelSpec) = s.process
+process(m::TransmissionModel) = m
 population_size(s::ModelSpec) = population_size(s.process)
 population(s::ModelSpec) = population(s.process)
 

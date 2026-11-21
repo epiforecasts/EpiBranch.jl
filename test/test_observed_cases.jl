@@ -1,10 +1,9 @@
-using EpiBranch: initialise_state
 using Distributions
 using DataFrames
 using Statistics
 using StableRNGs
 
-@testset "initialise_state from observed cases" begin
+@testset "state_from_cases from observed cases" begin
     model = BranchingProcess(Poisson(1.5), Gamma(2.5, 2.0))
     cases = DataFrame(
         id = ["a", "b", "c", "d"], parent_id = [missing, "a", "a", "b"],
@@ -12,7 +11,7 @@ using StableRNGs
     )
 
     @testset "the table becomes the state at `now`" begin
-        state = initialise_state(model, cases; rng = StableRNG(1))
+        state = state_from_cases(model, cases; rng = StableRNG(1))
         @test state isa SimulationState
         @test state.cumulative_cases == 4
         @test [ind.parent_id for ind in state.individuals[1:4]] == [0, 1, 1, 2]
@@ -24,7 +23,7 @@ using StableRNGs
     end
 
     @testset "it is continued by simulate" begin
-        state = initialise_state(model, cases; rng = StableRNG(2))
+        state = state_from_cases(model, cases; rng = StableRNG(2))
         simulate(model, state; max_time = 60.0)
         @test state.cumulative_cases >= 4
         @test [ind.infection_time for ind in state.individuals[1:4]] == cases.infection_time
@@ -39,7 +38,7 @@ using StableRNGs
         # no more.
         one_case = DataFrame(infection_time = [0.0])
         for seed in 1:20
-            state = initialise_state(model, one_case; now = 200.0, rng = StableRNG(seed))
+            state = state_from_cases(model, one_case; now = 200.0, rng = StableRNG(seed))
             simulate(model, state; max_time = 400.0)
             @test state.cumulative_cases == 1
         end
@@ -54,7 +53,7 @@ using StableRNGs
         rng = StableRNG(3)
         n = 4000
         children = map(1:n) do _
-            state = initialise_state(m, one_case; now, rng)
+            state = state_from_cases(m, one_case; now, rng)
             simulate(m, state; max_time = 1000.0, rng)
             count(
                 i -> is_infected(state.individuals[i]) &&
@@ -79,7 +78,7 @@ using StableRNGs
             rng = StableRNG(10 + listed)
             n = 4000
             later = map(1:n) do _
-                state = initialise_state(m, listed_cases; now, rng)
+                state = state_from_cases(m, listed_cases; now, rng)
                 simulate(m, state; max_time = 1000.0, rng)
                 count(
                     i -> is_infected(state.individuals[i]) &&
@@ -96,7 +95,7 @@ using StableRNGs
             infection_time = [0.0; fill(0.5, 12)], parent_id = [missing; fill(1, 12)]
         )
         m = BranchingProcess(Poisson(0.05), Exponential(2.0))
-        @test_throws ArgumentError initialise_state(m, many; rng = StableRNG(1))
+        @test_throws ArgumentError state_from_cases(m, many; rng = StableRNG(1))
     end
 
     @testset "an isolated case infects no one after isolation" begin
@@ -106,7 +105,7 @@ using StableRNGs
         )
         m = BranchingProcess(Poisson(5.0), Gamma(2.5, 2.0))
         for seed in 1:10
-            state = initialise_state(m, iso; now = 2.0, rng = StableRNG(seed))
+            state = state_from_cases(m, iso; now = 2.0, rng = StableRNG(seed))
             simulate(m, state; max_time = 30.0)
             kids = [
                 i for i in 3:length(state.individuals)
@@ -126,31 +125,70 @@ using StableRNGs
             infection_time = [0.0, 2.0], parent_id = [missing, 1],
             onset_time = [4.0, missing],
         )
-        state = initialise_state(spec, with_onset; rng = StableRNG(4))
+        state = state_from_cases(spec, with_onset; rng = StableRNG(4))
         @test onset_time(state.individuals[1]) == 4.0
         simulate(spec, state; max_time = 30.0)
         @test state.cumulative_cases >= 2
     end
 
+    @testset "a listed onset overrides the asymptomatic draw" begin
+        spec = ModelSpec(
+            model;
+            attributes = clinical_presentation(
+                incubation_period = LogNormal(1.6, 0.5), prob_asymptomatic = 1.0
+            ),
+        )
+        cases = DataFrame(
+            infection_time = [0.0, 2.0], parent_id = [missing, 1],
+            onset_time = [4.0, missing],
+        )
+        state = initialise_state(spec, cases; rng = StableRNG(4))
+        @test !is_asymptomatic(state.individuals[1])
+        @test onset_time(state.individuals[1]) == 4.0
+        @test is_asymptomatic(state.individuals[2])
+        @test isnan(onset_time(state.individuals[2]))
+    end
+
+    @testset "a listed onset is symptomatic for traits drawn from it" begin
+        spec = ModelSpec(
+            model;
+            attributes = [
+                clinical_presentation(
+                    incubation_period = LogNormal(1.6, 0.5), prob_asymptomatic = 1.0
+                ),
+                transmission_traits(
+                    infectiousness = (rng, ind) -> ind.state[:asymptomatic] ? 0.5 : 1.0
+                ),
+            ],
+        )
+        cases = DataFrame(
+            infection_time = [0.0, 2.0], parent_id = [missing, 1],
+            onset_time = [4.0, missing],
+        )
+        state = initialise_state(spec, cases; rng = StableRNG(4))
+        @test state.individuals[1].infectiousness == 1.0
+        @test state.individuals[2].infectiousness == 0.5
+    end
+
     @testset "invalid tables are refused" begin
-        @test_throws ArgumentError initialise_state(model, DataFrame(x = [1.0]))
-        @test_throws ArgumentError initialise_state(
+        @test_throws ArgumentError state_from_cases(model, DataFrame(x = [1.0]))
+        @test_throws ArgumentError state_from_cases(
             model, DataFrame(infection_time = [0.0], parent_id = [7])
         )
-        @test_throws ArgumentError initialise_state(
+        @test_throws ArgumentError state_from_cases(
             model, DataFrame(infection_time = [0.0, 1.0], parent_id = [2, 1])
         )
-        @test_throws ArgumentError initialise_state(
+        @test_throws ArgumentError state_from_cases(
             model, DataFrame(infection_time = [0.0, 5.0]); now = 2.0
         )
-        @test_throws ArgumentError initialise_state(
+        @test_throws ArgumentError state_from_cases(
             model,
             DataFrame(
                 parent_id = [missing, 1], infection_time = [0.0, 5.0],
                 isolation_time = [2.0, missing]
             )
         )
-        @test_throws ArgumentError initialise_state(
+        @test_throws ArgumentError state_from_cases(
             model, DataFrame(infection_time = [0.0], other = [1])
         )
         two_windows = BranchingProcess(
@@ -159,7 +197,7 @@ using StableRNGs
                 Infectiousness(Poisson(1.0); kernel = Gamma(2, 1), name = :b),
             )
         )
-        @test_throws ArgumentError initialise_state(
+        @test_throws ArgumentError state_from_cases(
             two_windows, DataFrame(infection_time = [0.0])
         )
     end

@@ -28,6 +28,16 @@ function empty_state(
     return EpiBranch.new_state(model, progression, attributes, rng)
 end
 
+# A state whose population has two named groups, for tests of a budget per
+# group. Individuals fall in the group named by their `:type`.
+function _grouped_state(groups = ["A", "B"])
+    model = BranchingProcess(
+        [1.2 0.3; 0.3 1.2], R -> Poisson(R), Dirac(14.0);
+        population = Population([100, 100]; groups)
+    )
+    return empty_state(model)
+end
+
 # The SIR removal: infected cases recover after `delay` and leave the process.
 function sir(delay)
     return [Transition(:recovered; from = :infection, delay = delay, terminal = true)]

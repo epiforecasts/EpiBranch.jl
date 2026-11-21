@@ -185,7 +185,7 @@ end
         if VERSION >= v"1.11"
             for n in (
                     :keep_active, :traces, :draw_trace_delay, :apply_trace!,
-                    :capacity_key, :capacity_time_key, :resource_key, :held_until,
+                    :capacity_key, :capacity_time_key, :held_until,
                     :refused_action, :InterventionWrapper, :draw_offspring,
                     :offspring_law_unchanged, :has_single_type_law, :lazily_populate!,
                     :effect_mode, :dose_label, :HostImmunity, :AbortedInfection,

@@ -1,0 +1,1 @@
+A case in the `initialise_state` table with an `onset_time` is now symptomatic. Previously the asymptomatic draw could override the listed onset and give the case a `NaN` onset. Cases without a listed onset are still drawn from the model and can be asymptomatic.
