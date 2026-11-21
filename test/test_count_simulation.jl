@@ -150,8 +150,8 @@ using EpiBranch, Distributions, Random, StableRNGs, Statistics, DataFrames
         for ind in people
             ind.parent_id > 0 && (children[ind.parent_id] += 1)
         end
-        # A cohort whose infections all fall by the last day has had all the
-        # offspring of every member, so no member can have more.
+        # Once every infection of a cohort has fallen by the last day, each
+        # member has had all of its offspring.
         offset = 0
         for d in 0:state.day
             n = state.counts[d + 1]
