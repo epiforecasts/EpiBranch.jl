@@ -534,6 +534,19 @@ using EpiBranch, Distributions, Random, StableRNGs, Statistics, DataFrames
         @test EpiBranch.count_rule(
             ModelSpec(BranchingProcess(Poisson(2.5), gt); interventions = spec(10.0).interventions)
         ) === nothing
+        # A per-group budget that does not fit the population is an error, not
+        # a reason to run as individuals.
+        @test_throws ArgumentError EpiBranch.count_rule(
+            ModelSpec(
+                model;
+                interventions = [
+                    CapacityConstrained(
+                        GroupVaccination(efficacy = 1.0, group_key = :type);
+                        budget_per_period = PerGroup(1 => 10.0, 2 => 10.0), period = 1.0
+                    ),
+                ]
+            )
+        )
     end
 
     @testset "which runs take the count-level path" begin

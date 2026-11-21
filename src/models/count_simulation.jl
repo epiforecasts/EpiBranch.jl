@@ -125,16 +125,17 @@ function count_rule(spec::ModelSpec)
     rule === nothing && return nothing
     isempty(spec.interventions) && return rule
     _count_sizes(population(spec.process)) === nothing && return nothing
-    try
-        campaigns = [
-            _by_type(_campaign(iv, (0.0, Inf), nothing), population(spec.process))
-                for iv in spec.interventions
-        ]
-        return CampaignCountRule(rule, campaigns)
+    # Only the reading of the interventions decides eligibility. A budget that
+    # does not fit the population is a configuration error and surfaces, as it
+    # does in `simulate_by_generation`.
+    campaigns = try
+        [_campaign(iv, (0.0, Inf), nothing) for iv in spec.interventions]
     catch err
         err isa ArgumentError && return nothing
         rethrow()
     end
+    campaigns = [_by_type(c, population(spec.process)) for c in campaigns]
+    return CampaignCountRule(rule, campaigns)
 end
 
 function count_rule(model::BranchingProcess)
@@ -350,6 +351,7 @@ end
 function _draw_inflow(s, ::Union{CountRule, MultiTypeCountRule}, t, lag, c, mu)
     return mu > 0 ? rand(s.rng, Poisson(mu)) : 0
 end
+_draw_inflow(s, rule::CampaignCountRule, args...) = _draw_inflow(s, rule.rule, args...)
 function _draw_inflow(s, rule::OffspringCountRule, t, lag, c, mu)
     source = t - lag
     left = round(Int, s.cohort_infectiousness[source + 1][c])
