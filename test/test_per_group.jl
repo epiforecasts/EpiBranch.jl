@@ -28,7 +28,8 @@ function _pg_types(budget; names = _PG_NAMES, kwargs...)
     )
     return simulate(
         spec; index_types = [fill(1, 120); fill(2, 120)], max_generations = 3,
-        rng = StableRNG(1), max_cases = 10^5
+        rng = StableRNG(1), max_cases = 10^5,
+        stopping_rules = EpiBranch.AbstractStoppingRule[]
     )
 end
 
