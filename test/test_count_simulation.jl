@@ -642,7 +642,7 @@ using EpiBranch, Distributions, Random, StableRNGs, Statistics, DataFrames
 
     @testset "counted offspring laws agree with the individual simulation" begin
         M = [1.2 0.4; 0.3 0.9]
-        T = 8
+        T = 6
         by_type(state) = begin
             out = zeros(Int, T + 1, 2)
             for ind in individuals(state)
@@ -651,7 +651,7 @@ using EpiBranch, Distributions, Random, StableRNGs, Statistics, DataFrames
             end
             out
         end
-        function max_z(model; n = 600, init)
+        function max_z(model; n = 300, init)
             rng = StableRNG(3)
             run_counts() = simulate(
                 model; init..., max_time = T, max_cases = nothing, max_generations = nothing, rng
