@@ -342,7 +342,7 @@ using EpiBranch, Distributions, Random, StableRNGs, Statistics, DataFrames
         @test simulate(slow, 3; kw..., rng = StableRNG(3)) isa Vector{<:SimulationState}
 
         n = 3000
-        # A short horizon keeps the individual runs of the surviving lineages small.
+        # A short horizon keeps the individual runs small for surviving lineages.
         by_counts = containment_probability(
             model, n; kw..., max_time = 15, rng = StableRNG(4)
         )
