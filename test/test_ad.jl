@@ -234,6 +234,24 @@ end
         check(f, [0.5], (mooncake,))
     end
     check(spec_cases[3], [0.5], (enzyme,))
+
+    # A likelihood estimated by simulation is refused under Enzyme rather
+    # than compiling the simulator.
+    simulated = [
+        R -> loglikelihood(
+            ChainSizes(sizes_data),
+            ModelSpec(BranchingProcess(Poisson(R[1])); interventions = [iso], attributes = clinical);
+            n_sim = 20, rng = StableRNG(1)
+        ),
+        R -> loglikelihood(
+            ChainLengths(lengths_data),
+            ModelSpec(BranchingProcess(Poisson(R[1])); interventions = [iso], attributes = clinical);
+            n_sim = 20, rng = StableRNG(1)
+        ),
+    ]
+    for f in simulated
+        @test_throws Exception DifferentiationInterface.gradient(f, enzyme_activity, [0.5])
+    end
 end
 
 # A gradient of an outbreak summary through the forward simulator, w.r.t. a
