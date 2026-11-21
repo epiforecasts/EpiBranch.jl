@@ -163,8 +163,8 @@ function _redraw_until_no_onset_by!(ind, state, now)
         no_onset_yet(ind) = get(ind.state, :asymptomatic, false)::Bool ||
             ind.infection_time + _state_real(ind.state, :incubation_period, NaN) > now
         no_onset_yet(ind) && return nothing
-        # The previous draw's flag would otherwise keep a symptomatic case
-        # symptomatic, so an asymptomatic outcome could never come up.
+        # Clear the flag from the previous draw. Otherwise a symptomatic case
+        # stays symptomatic and a redraw can never be asymptomatic.
         delete!(ind.state, :asymptomatic)
         _apply_attributes!(state.attributes, state.rng, ind)
     end
