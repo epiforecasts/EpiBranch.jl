@@ -1,0 +1,1 @@
+The count-level path also runs bounded simulations: `simulate` with `max_generations = nothing` and a `max_cases` (with or without `max_time`) stops at the end of the first day on which the total reaches the cap. `containment_probability(model, n; max_cases, max_generations = nothing)` uses it for a model that qualifies.

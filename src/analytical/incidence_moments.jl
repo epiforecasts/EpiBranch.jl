@@ -9,14 +9,17 @@
 #
 # One individual infected at step k (1 ≤ k ≤ n, the last observed step)
 # contributes u_k for itself, plus the PGF of its offspring's own
-# contributions, each landing at step k + j with probability w[j] from the
-# discretised generation-time distribution:
+# contributions, each landing at step k + j (j ≥ 0) with probability w_j from
+# the discretised generation-time distribution:
 #
-#   Ψ_k(u) = u_k · f(Σ_j w[j] · Ψ_{k+j}(u)),   Ψ_m(u) ≡ 1 for m > n
+#   Ψ_k(u) = u_k · f(Σ_{j≥0} w_j · Ψ_{k+j}(u)),   Ψ_m(u) ≡ 1 for m > n
 #
 # (`Ψ_m ≡ 1` beyond the horizon marginalises out what is not observed.) The
+# j = 0 term covers offspring infected in the step of their infector. Ψ_k
+# therefore appears on both sides and is found by fixed-point iteration. The
 # `seeds` index cases at step 0 are not themselves observed, so their shared
-# PGF drops the `u_0` factor, Ψ_0(u) = f(Σ_j w[j] · Ψ_j(u)), and because they
+# PGF drops the `u_0` factor, Ψ_0(u) = f(Σ_{j≥0} w_j · Ψ_j(u)), and their
+# own offspring follow the same rule. Because they
 # act independently the whole series has cumulant generating function
 # K(u) = log G(u) = seeds · log Ψ_0(u).
 #
@@ -26,7 +29,7 @@
 #
 #   r_k(u) = 1 - ρ + ρ · Σ_l d[l] · U_{k+l},   U_m = u_m for 1 ≤ m ≤ n, else 1,
 #
-# so Ψ_k(u) = r_k(u) · f(Σ_j w[j] · Ψ_{k+j}(u)) and Ψ_0 takes the factor
+# so Ψ_k(u) = r_k(u) · f(Σ_j w_j · Ψ_{k+j}(u)) and Ψ_0 takes the factor
 # r_0 too: a seed's own report, delayed into an observed step, is counted
 # like anyone else's. With ρ = 1 and no delay, r_k = u_k and r_0 = 1, the
 # recursion above. Differentiating the composition at u = 1 gives the mean
@@ -43,6 +46,10 @@
 # differentiation), the same contract `_chain_length_ll_pgf` keeps for the
 # chain-length likelihood.
 
+# With `substeps` = s > 1 the same recursion runs on a grid of s sub-steps per
+# step: lags, the seeds and the report delay are in sub-steps, and all the
+# sub-steps of observed step k share the variable u_k.
+#
 # Cumulative distribution of the step lag between two events when the first
 # falls uniformly within its step and the second is that event plus a delay
 # with distribution `delay`: the lag is at most `l` steps with probability
@@ -52,16 +59,22 @@
 # `(l - 1, l]` would overstate the realised lag by half a step.
 # The closed forms of CensoredDistributions.jl and its `Dual`-aware numeric
 # fallback keep this differentiable in the parameters of the delay.
-function _step_lag_cdf(delay::Distribution)
-    dic = double_interval_censored(delay; interval = 1)
-    return l -> cdf(dic, l + 1)
+# Lags are counted in sub-steps of width `1 / substeps`. The primary window and
+# the interval have that width, and the cdf is evaluated at `(l + 1) / substeps`.
+function _step_lag_cdf(delay::Distribution, substeps::Integer = 1)
+    dic = double_interval_censored(
+        delay; primary_event = Uniform(0, 1 / substeps), interval = 1 / substeps
+    )
+    return l -> cdf(dic, (l + 1) / substeps)
 end
 
 # A fixed delay is a point mass whose cdf jumps at the step boundaries where
 # the censored cdf is evaluated. The lag cdf is therefore written out directly:
-# a delay of `c` steps from a uniform start lands in step `floor(c)` or the
-# one after it, with the fractional part of `c` the chance of the latter.
-_step_lag_cdf(delay::Dirac) = l -> clamp(l + 1 - delay.value, 0.0, 1.0)
+# a delay of `c` sub-steps from a uniform start ends in sub-step `floor(c)` or
+# the next, with probability equal to the fractional part of `c` for the next.
+function _step_lag_cdf(delay::Dirac, substeps::Integer = 1)
+    return l -> clamp(l + 1 - substeps * delay.value, 0.0, 1.0)
+end
 
 # Bin the step-lag cumulative distribution `H` onto the integer lags
 # `first_lag`, `first_lag + 1`, ...: the first entry is `H(first_lag) - base`,
@@ -92,19 +105,18 @@ function _bin_cdf(
     return p ./ s
 end
 
-# Discretised generation-time pmf over lag 1, 2, ...: `w[j]` is the
-# probability that an infectee's step is `j` steps after its infector's, with
-# the infector infected uniformly within its step (see `_step_lag_cdf`). A
-# lag of 0 (both infected in the same step) has no place in the recursion.
-# That mass is dropped and the rest renormalised, which changes little when
-# the generation time is long compared with a step.
+# Discretised generation-time pmf over lag 0, 1, 2, ...: `w[l + 1]` is the
+# probability that an infectee's step is `l` steps after its infector's, with
+# the infector infected uniformly within its step (see `_step_lag_cdf`). Lag 0
+# covers infectees in the same step as their infector. It matters when the
+# generation time is short compared with a step: dropping it would attribute
+# those infections to later steps and overstate R.
 function _discretize_generation_interval(
-        generation_time::Distribution; tol::Real = 1.0e-8, max_lag::Int = 10_000
+        generation_time::Distribution; tol::Real = 1.0e-8, max_lag::Int = 10_000,
+        substeps::Integer = 1
     )
-    H = _step_lag_cdf(generation_time)
-    return _bin_cdf(
-        H, 1, tol, max_lag, "generation-time distribution"; base = H(0)
-    )
+    H = _step_lag_cdf(generation_time, substeps)
+    return _bin_cdf(H, 0, tol, max_lag, "generation-time distribution")
 end
 
 # Discretised infection-to-report delay pmf over lag 0, 1, 2, ...: `d[1]` is
@@ -116,10 +128,11 @@ end
 _discretize_report_delay(::Nothing; kwargs...) = [1.0]
 _discretize_report_delay(delay::Real; kwargs...) = _discretize_report_delay(Dirac(delay); kwargs...)
 function _discretize_report_delay(
-        delay::Distribution; tol::Real = 1.0e-8, max_lag::Int = 10_000
+        delay::Distribution; tol::Real = 1.0e-8, max_lag::Int = 10_000,
+        substeps::Integer = 1
     )
     minimum(delay) >= 0 || throw(ArgumentError("reporting_delay must be non-negative"))
-    return _bin_cdf(_step_lag_cdf(delay), 0, tol, max_lag, "reporting delay")
+    return _bin_cdf(_step_lag_cdf(delay, substeps), 0, tol, max_lag, "reporting delay")
 end
 
 # The offspring law's own numeric element type, promoted with `eltype(u)` in
@@ -129,6 +142,11 @@ end
 # type consistently and `Float64` is assumed here.
 _offspring_partype(offspring::Distribution) = Distributions.partype(offspring)
 _offspring_partype(::GeneratingFunctionOffspring) = Float64
+
+# The size of the change between two iterates of the same-step fixed point,
+# partial derivatives included; the `ForwardDiff.Dual` method is in
+# `ext/EpiBranchForwardDiffExt.jl`.
+_fixed_point_gap(a::Real, b::Real) = abs(a - b)
 
 # The gradient and Hessian of `K` at `u`. The method lives in
 # `ext/EpiBranchForwardDiffExt.jl`, so `ForwardDiff` stays optional for users
@@ -145,7 +163,7 @@ end
 
 """
     incidence_moments(offspring, generation_time::Distribution, n::Integer; seeds = 1,
-        reporting_probability = 1, reporting_delay = nothing)
+        reporting_probability = 1, reporting_delay = nothing, substeps = 1)
 
 Mean vector and covariance matrix of the incidence counts a branching process
 produces at steps `1:n`, started by `seeds` index cases at step 0, with
@@ -166,6 +184,22 @@ case counted in the step it is infected. The result is exact for
 independent reporting, and `reporting_probability` can be differentiated
 like the offspring parameters.
 
+Offspring infected in the same step as their infector are kept, as are those
+of the seeds. A generation time so short against the step, or an offspring
+mean so large, that the expected number of infections within a step is
+unbounded throws an `ArgumentError` asking for a shorter step.
+
+By default a case is placed uniformly within its step, independently of when
+its infector was infected. This is a poor approximation when the generation time
+is short compared with a step: an infectee in the same step as its infector is
+later in that step, so its own infectees are more likely to fall in the next.
+With `substeps` above 1 the recursion runs on a grid of that many sub-steps per
+step. The generation time and reporting delay are discretised on that grid, and
+the seeds are spread uniformly over the sub-steps of step 0. The counts of the
+sub-steps of a step are added up, so the shape of the result is unchanged. The
+cost of each evaluation grows with `substeps`. Infector and infectee in the same
+sub-step are kept, so the approximation improves as `substeps` increases.
+
 Requires `using ForwardDiff` for the derivatives of the generating function.
 
 Returns a `(mean, cov)` named tuple: `mean[t]` is the expected count at step
@@ -185,29 +219,43 @@ function incidence_moments(
         offspring::Union{DiscreteUnivariateDistribution, GeneratingFunctionOffspring},
         generation_time::Distribution, n::Integer;
         seeds::Real = 1, reporting_probability::Real = 1, reporting_delay = nothing,
-        tol::Real = 1.0e-8, max_lag::Int = 10_000
+        substeps::Integer = 1, tol::Real = 1.0e-8, max_lag::Int = 10_000
     )
     n >= 1 || throw(ArgumentError("n must be ≥ 1"))
+    substeps >= 1 || throw(ArgumentError("substeps must be ≥ 1"))
     seeds > 0 || throw(ArgumentError("seeds must be positive"))
     0 < reporting_probability <= 1 ||
         throw(ArgumentError("reporting_probability must be in (0, 1]"))
-    w = _discretize_generation_interval(generation_time; tol, max_lag)
-    d = _discretize_report_delay(reporting_delay; tol, max_lag)
+    # `max_lag` counts steps, so the sub-step grid allows `substeps` times as many lags.
+    w = _discretize_generation_interval(
+        generation_time; tol, max_lag = max_lag * substeps, substeps
+    )
+    d = _discretize_report_delay(reporting_delay; tol, max_lag = max_lag * substeps, substeps)
     Toff = _offspring_partype(offspring)
     # The one-type case of the multi-type recursion.
     K(u) = _incidence_log_pgf(
         u, w, [s -> _pgf(offspring, s)], ones(1, 1), n, [seeds], reporting_probability,
-        d, Toff
+        d, Toff, substeps
     )
     return _incidence_moments_from(K, n)
+end
+
+# `tail[l] = Σ_{l' ≥ l} p[l']`, with `tail[end] = 0`.
+function _tail_sums(p::AbstractVector)
+    tail = zeros(float(eltype(p)), length(p) + 1)
+    for l in length(p):-1:1
+        tail[l] = tail[l + 1] + p[l]
+    end
+    return tail
 end
 
 # ── Multi-type processes ──────────────────────────────────────────────
 #
 # A type-j case draws its total offspring from G_j = dist_fn(R_j) and gives
 # each child type i with probability a[i, j] (see `multi_type.jl`), and each
-# child independently lands w[l] steps later. Each type and step has its own
-# auxiliary variable, so with B_i(k) = Σ_l w[l] · Ψ_{k+l, i},
+# child independently lands w[l + 1] steps later (`w[1]` is the same step).
+# Each type and step has its own auxiliary variable, so with
+# B_i(k) = Σ_{l≥0} w[l + 1] · Ψ_{k+l, i},
 #
 #   Ψ_{k, j}(u) = r_{k, j}(u) · G_j(Σ_i a[i, j] · B_i(k)),
 #
@@ -227,56 +275,110 @@ end
 function _incidence_log_pgf(
         u::AbstractVector{T}, w::AbstractVector{<:Real}, pgfs::AbstractVector,
         alloc::AbstractMatrix{<:Real}, n::Integer, seeds::AbstractVector{<:Real},
-        ρ::Real, d::AbstractVector{<:Real}, ::Type{Tpar}
+        ρ::Real, d::AbstractVector{<:Real}, ::Type{Tpar}, substeps::Integer = 1;
+        max_iter::Int = 100_000
     ) where {T <: Real, Tpar <: Real}
     m = length(pgfs)
+    s = substeps
+    N = n * s
     S = promote_type(T, eltype(w), eltype(d), eltype(alloc), Tpar, typeof(ρ))
-    U(k, i) = 1 <= k <= n ? S(u[k + (i - 1) * n]) : one(S)
-    function report(k, i)
+    # Sub-step q belongs to observed step cld(q, s); every sub-step of a step
+    # shares that step's variable, and sub-steps outside 1:n are not observed.
+    function U(q, i)
+        k = cld(q, s)
+        return 1 <= k <= n ? S(u[k + (i - 1) * n]) : one(S)
+    end
+    # Lags beyond sub-step `N` contribute 1. The sums run over the lags inside
+    # the horizon only. The mass beyond it comes from a precomputed tail sum,
+    # `wtail[l] = Σ_{l' ≥ l} w[l']`.
+    wtail = _tail_sums(w)
+    dtail = _tail_sums(d)
+    function report(q, i)
         r = zero(S)
-        for l in 0:(length(d) - 1)
-            r += d[l + 1] * U(k + l, i)
+        L = min(length(d), N - q + 1)
+        for l in 0:(L - 1)
+            r += d[l + 1] * U(q + l, i)
         end
+        r += dtail[L + 1]
         return 1 - ρ + ρ * r
     end
-    Ψ = Matrix{S}(undef, n, m)
-    B = Vector{S}(undef, m)
-    function next_generation!(k)
-        for i in 1:m
-            b = zero(S)
-            for l in 1:length(w)
-                b += w[l] * (k + l > n ? one(S) : Ψ[k + l, i])
-            end
-            B[i] = b
+    # Ψ is kept for sub-steps 1 - s, ..., N: those of step 0 are the seeds'
+    # own, and an unobserved infection there still has observed descendants.
+    # Its slot is `q + s`.
+    Ψ = Matrix{S}(undef, N + s, m)
+    # Contribution of the later sub-steps to the offspring of a sub-step-`q` case.
+    # Lags beyond the horizon contribute 1 each, through the precomputed tail sum.
+    function later(q, i)
+        b = zero(S)
+        L = min(length(w) - 1, N - q)
+        for l in 1:L
+            b += w[l + 1] * Ψ[q + l + s, i]
         end
-        return B
+        return b + wtail[L + 2]
     end
-    child(j) = sum(alloc[i, j] * B[i] for i in 1:m)
-    for k in n:-1:1
-        next_generation!(k)
-        for j in 1:m
-            Ψ[k, j] = report(k, j) * pgfs[j](child(j))
+    # Ψ_q depends on itself through the offspring infected in the same sub-step
+    # (weight w[1]). It solves Ψ_{q,j} = r_{q,j} · G_j(Σ_i a[i,j] (w[1] Ψ_{q,i} + b_i))
+    # by iteration from the value without same-sub-step offspring. The iteration
+    # converges, derivatives included, if the expected same-sub-step offspring
+    # of a case number fewer than one.
+    function solve_substep(q)
+        b = [later(q, i) for i in 1:m]
+        r = [report(q, j) for j in 1:m]
+        x = [r[j] * pgfs[j](sum(alloc[i, j] * b[i] for i in 1:m)) for j in 1:m]
+        w[1] > 0 || return x
+        converged = false
+        for _ in 1:max_iter
+            y = [
+                r[j] * pgfs[j](sum(alloc[i, j] * (w[1] * x[i] + b[i]) for i in 1:m))
+                    for j in 1:m
+            ]
+            gap = maximum(_fixed_point_gap(y[j], x[j]) for j in 1:m)
+            x = y
+            gap <= 1.0e-13 && (converged = true)
+            converged && break
+            # Stop if the derivatives diverge.
+            gap < 1.0e12 || break
         end
+        # The moments are read at u = 1, where the PGF of a finite count is 1.
+        # A value below 1 means the iteration reached the extinction root of a
+        # same-step cascade that is itself supercritical.
+        if !converged || any(xj -> abs(_plain(xj) - 1) > 1.0e-6, x)
+            throw(
+                ArgumentError(
+                    "the same-step offspring of a case do not converge: the " *
+                        "generation time puts too much mass within a step for the " *
+                        "offspring law, so the expected number of infections " *
+                        "within a step is unbounded; use a shorter step."
+                )
+            )
+        end
+        return x
     end
-    next_generation!(0)
+    for q in N:-1:(1 - s)
+        Ψ[q + s, :] = solve_substep(q)
+    end
     K = zero(S)
     for j in 1:m
         iszero(seeds[j]) && continue
-        K += seeds[j] * log(report(0, j) * pgfs[j](child(j)))
+        # Seeds are spread uniformly over the sub-steps of step 0.
+        for q in (1 - s):0
+            K += (seeds[j] / s) * log(Ψ[q + s, j])
+        end
     end
     return K
 end
 
 function _incidence_log_pgf(
         u::AbstractVector, w::AbstractVector{<:Real}, o::MultiTypeOffspring,
-        n::Integer, seeds::AbstractVector{<:Real}, ρ::Real, d::AbstractVector{<:Real}
+        n::Integer, seeds::AbstractVector{<:Real}, ρ::Real, d::AbstractVector{<:Real},
+        substeps::Integer = 1
     )
     laws = _total_count_laws(o)
     Tpar = promote_type(
         eltype(o.R_by_type), map(Distributions.partype, laws)...
     )
     pgfs = [s -> _pgf(law, s) for law in laws]
-    return _incidence_log_pgf(u, w, pgfs, o.alloc_probs, n, seeds, ρ, d, Tpar)
+    return _incidence_log_pgf(u, w, pgfs, o.alloc_probs, n, seeds, ρ, d, Tpar, substeps)
 end
 
 # Mean and covariance from the cumulant generating function `K` of `N` step
@@ -289,13 +391,14 @@ end
 
 """
     incidence_moments(offspring::MultiTypeOffspring, generation_time::Distribution,
-        n::Integer; seeds, reporting_probability = 1, reporting_delay = nothing)
+        n::Integer; seeds, reporting_probability = 1, reporting_delay = nothing,
+        substeps = 1)
 
 Mean and covariance of the incidence counts of each type of a multi-type
 branching process at steps `1:n`, started by `seeds[j]` index cases of type
 `j` at step 0. `generation_time` is shared by every type, and
 `reporting_probability` and `reporting_delay` act as in the single-type
-method.
+method, as does `substeps`.
 
 Returns a `(mean, cov)` named tuple: `mean[t, j]` is the expected count of
 type `j` at step `t`, and `cov` is the covariance matrix of `vec(mean)`'s
@@ -313,10 +416,12 @@ m.mean[end, :]  # expected count of each type on the last step
 function incidence_moments(
         offspring::MultiTypeOffspring, generation_time::Distribution, n::Integer;
         seeds::AbstractVector{<:Real}, reporting_probability::Real = 1,
-        reporting_delay = nothing, tol::Real = 1.0e-8, max_lag::Int = 10_000
+        reporting_delay = nothing, substeps::Integer = 1, tol::Real = 1.0e-8,
+        max_lag::Int = 10_000
     )
     m = _n_types(offspring)
     n >= 1 || throw(ArgumentError("n must be ≥ 1"))
+    substeps >= 1 || throw(ArgumentError("substeps must be ≥ 1"))
     length(seeds) == m || throw(
         ArgumentError("seeds needs one entry per type ($m), got $(length(seeds))")
     )
@@ -324,9 +429,14 @@ function incidence_moments(
         throw(ArgumentError("seeds must be ≥ 0 and not all zero"))
     0 < reporting_probability <= 1 ||
         throw(ArgumentError("reporting_probability must be in (0, 1]"))
-    w = _discretize_generation_interval(generation_time; tol, max_lag)
-    d = _discretize_report_delay(reporting_delay; tol, max_lag)
-    K(u) = _incidence_log_pgf(u, w, offspring, n, seeds, reporting_probability, d)
+    # `max_lag` counts steps, so the sub-step grid allows `substeps` times as many lags.
+    w = _discretize_generation_interval(
+        generation_time; tol, max_lag = max_lag * substeps, substeps
+    )
+    d = _discretize_report_delay(reporting_delay; tol, max_lag = max_lag * substeps, substeps)
+    K(u) = _incidence_log_pgf(
+        u, w, offspring, n, seeds, reporting_probability, d, substeps
+    )
     μ, cov = _incidence_moments_from(K, n * m)
     return (mean = reshape(μ, n, m), cov = cov)
 end
