@@ -1,0 +1,1 @@
+Mooncake now stops with a clear error on a `loglikelihood` that has to be estimated by simulation, such as a `ModelSpec` with an intervention, instead of failing inside the simulator. Fit it with a sampler that needs only likelihood values, such as `MH()`. The error comes from the new `EpiBranchMooncakeExt` extension, which loads with Mooncake.
