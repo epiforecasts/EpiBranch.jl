@@ -1,9 +1,7 @@
 module EpiBranchMooncakeExt
 
-# Mooncake cannot differentiate through `try` blocks or `Symbol` to `String`
-# conversions. These functions return only a name or a check result that does
-# not depend on the parameters, so reverse mode skips them. That lets a model
-# be built inside the function being differentiated.
+# Zero adjoints for functions Mooncake cannot differentiate and whose results
+# do not depend on the parameters.
 
 using EpiBranch: EpiBranch
 using Mooncake: Mooncake

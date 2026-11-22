@@ -403,10 +403,7 @@ function _fold_reporting(progression, base, obs, attrs)
     return ThinnedChainSize(base, ρ)
 end
 
-# Whether the closed form can read the progression's `Reporting` step; a
-# progression it cannot read (a terminal step, or a step that overwrites the
-# `from` time) is simulated instead. Kept apart from the reporting probability
-# itself so that probability stays free of `try` and differentiable.
+# Whether the closed form can read the progression's `Reporting` step.
 function _reporting_closed_form_readable(prog, attrs)
     try
         _effective_reporting_probability(prog, attrs)

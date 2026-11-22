@@ -425,8 +425,7 @@ function _validate_testing_sensitivity(interventions, progression)
     return nothing
 end
 
-# The checks and warnings `ModelSpec` runs on its parts; they return nothing,
-# so an AD backend can skip them.
+# The checks and warnings `ModelSpec` runs on its parts.
 function _validate_model_spec(process, prog, ivs)
     validate_process_windows(process, prog)
     _warn_incomplete_terminal_coverage(prog)
