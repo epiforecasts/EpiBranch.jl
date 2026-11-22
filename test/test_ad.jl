@@ -152,7 +152,7 @@ end
 end
 
 # Enzyme cannot compile the `ModelSpec` construction (the window validation
-# over a progression vector) on Julia 1.10, so this runs from 1.11.
+# over a progression vector) on Julia 1.10. The test runs from 1.11.
 if VERSION >= v"1.11"
     @testset "AD (Enzyme reverse mode) through a Reporting spec" begin
         sizes_data = [1, 2, 1, 3, 1, 5, 2]
