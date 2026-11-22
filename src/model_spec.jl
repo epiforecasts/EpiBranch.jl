@@ -425,7 +425,7 @@ function _validate_testing_sensitivity(interventions, progression)
     return nothing
 end
 
-# Checks with no derivative, marked inactive or zero-adjoint by the AD extensions.
+# Checks without a derivative. The AD extensions mark them inactive or give them a zero adjoint.
 const _MODEL_CHECKS = (
     validate_process_windows, _warn_incomplete_terminal_coverage,
     _validate_dose_schedule, _validate_test_triggers, _validate_testing_sensitivity,
