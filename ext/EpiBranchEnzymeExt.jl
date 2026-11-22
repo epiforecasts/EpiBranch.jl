@@ -17,6 +17,10 @@ function _not_differentiable()
     )
 end
 
+# The window check only warns and returns nothing, so there is nothing to
+# differentiate. Some Julia versions fail to compile its loops under Enzyme.
+EnzymeRules.inactive(::typeof(EpiBranch.validate_process_windows), args...) = nothing
+
 function EnzymeRules.augmented_primal(
         config, func::Enzyme.Const{typeof(EpiBranch._simulated_chain_size_loglik)},
         ::Type{RT}, args...
