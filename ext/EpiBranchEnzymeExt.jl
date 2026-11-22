@@ -32,8 +32,8 @@ for f in (
     @eval EnzymeRules.inactive(::typeof(EpiBranch.$f), args...) = nothing
 end
 
-# A symbol is never differentiable. On the Julia lts, Enzyme reports a
-# runtime-activity error when this lookup's result is stored in a model.
+# A symbol is never differentiable. On the Julia lts, Enzyme raises a
+# runtime-activity error when the result of this lookup is stored in a model.
 EnzymeRules.inactive(::typeof(EpiBranch._resolved_key), args...) = nothing
 
 function EnzymeRules.augmented_primal(
