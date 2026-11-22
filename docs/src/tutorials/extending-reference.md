@@ -899,8 +899,8 @@ no individual to offer an intervention to. It applies an intervention only if
 `EpiBranch.count_dosing(iv)` returns an `EpiBranch.GroupDosing`: the `group_key`
 of the groups it doses, and the `efficacy`, `mode`, `coverage`, `dose_delay`,
 `delay_to_immunity` and `waning` of its dose. The default, `nothing`, makes
-every such model refuse it in the shared wording of [What each model
-applies](@ref).
+every such model raise an error that points to `simulate` on a model of
+individuals; see [Interventions with budgets and schedules](@ref).
 
 Recorded protection follows its effect date even when the delivery schedule is
 no longer active. Vaccination declares this with

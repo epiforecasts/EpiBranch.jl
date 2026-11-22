@@ -151,6 +151,32 @@ end
     end
 end
 
+# The model is built inside the differentiated function, as in a Turing model.
+# The `ModelSpec` constructor and the closed-form chain-size path both run
+# under Mooncake, with and without a `Reporting` step.
+@testset "AD (Mooncake) through a ModelSpec built in the function" begin
+    sizes_data = [1, 2, 1, 3, 1, 5, 2]
+    mooncake = AutoMooncake(; config = nothing)
+    spec(R) = ModelSpec(BranchingProcess(Poisson(R), Exponential(1.0)))
+    reported(R, ρ) = ModelSpec(
+        BranchingProcess(Poisson(R), Exponential(1.0));
+        progression = [Reporting(; delay = Exponential(1.0), probability = ρ, from = :infection)]
+    )
+
+    cases = [
+        (R -> loglikelihood(ChainSizes(sizes_data), spec(R[1])), [0.5]),
+        (θ -> loglikelihood(ChainSizes(sizes_data), reported(θ[1], θ[2])), [0.5, 0.7]),
+    ]
+    for (f, x) in cases
+        g_reverse = DifferentiationInterface.gradient(f, mooncake, x)
+        g_forward = DifferentiationInterface.gradient(f, AutoForwardDiff(), x)
+        @test all(isfinite, g_reverse)
+        @test g_reverse ≈ g_forward rtol = 1.0e-6
+    end
+    @test loglikelihood(ChainSizes(sizes_data), spec(0.5)) ≈
+        loglikelihood(ChainSizes(sizes_data), Poisson(0.5))
+end
+
 # A gradient of an outbreak summary through the forward simulator, w.r.t. a
 # generation-time parameter — the capability the eltype-generic state opens up.
 # The tree is held fixed (same seed, offspring independent of the timing
