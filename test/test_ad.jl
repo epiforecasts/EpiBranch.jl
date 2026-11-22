@@ -565,4 +565,14 @@ end
         @test DifferentiationInterface.gradient(f, enzyme, [0.5]) ≈
             DifferentiationInterface.gradient(f, AutoForwardDiff(), [0.5]) rtol = 1.0e-6
     end
+
+    # A spec with no closed form is estimated by simulation, which Enzyme
+    # cannot differentiate. It must fail rather than return a zero gradient.
+    iso = Isolation(delay = Exponential(1.0), duration = Inf)
+    simulated(R) = loglikelihood(
+        ChainSizes(sizes_data),
+        ModelSpec(BranchingProcess(Poisson(R[1])); interventions = [iso]);
+        n_sim = 20, rng = StableRNG(1)
+    )
+    @test_throws ArgumentError DifferentiationInterface.gradient(simulated, enzyme, [0.5])
 end

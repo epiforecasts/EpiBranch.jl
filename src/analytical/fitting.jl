@@ -407,20 +407,16 @@ function _chain_size_model_loglik(
             return _chain_size_loglik(observe(folded, obs), data; prob_concluded)
         end
     end
-    return _simulated_chain_size_loglik(
-        data, process, ivs, attrs, prog, obs, rec;
-        max_cases, max_generations, max_time, stopping_rules, n_sim, rng, prob_concluded
-    )
+    opts = (; max_cases, max_generations, max_time, stopping_rules, n_sim, rng, prob_concluded)
+    return _simulated_chain_size_loglik(data, process, ivs, attrs, prog, obs, rec, opts)
 end
 
 # Fallback when there is no closed form. Clusters are simulated in batches
 # grouped by seed count, one batch of `n_sim` runs per distinct value in
 # `data.seeds`. A k-seed cluster is then compared with simulated clusters that
 # also start from k index cases.
-function _simulated_chain_size_loglik(
-        data, process, ivs, attrs, prog, obs, rec;
-        max_cases, max_generations, max_time, stopping_rules, n_sim, rng, prob_concluded
-    )
+function _simulated_chain_size_loglik(data, process, ivs, attrs, prog, obs, rec, opts)
+    (; max_cases, max_generations, max_time, stopping_rules, n_sim, rng, prob_concluded) = opts
     total = 0.0
     for k in sort(unique(data.seeds))
         group = findall(==(k), data.seeds)
