@@ -567,7 +567,8 @@ end
     end
 
     # A spec with no closed form is estimated by simulation, which Enzyme
-    # cannot differentiate. It must fail rather than return a zero gradient.
+    # cannot differentiate. The gradient call must throw an error instead of
+    # returning zero.
     iso = Isolation(delay = Exponential(1.0), duration = Inf)
     simulated(R) = loglikelihood(
         ChainSizes(sizes_data),

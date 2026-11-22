@@ -1,8 +1,8 @@
 module EpiBranchEnzymeExt
 
 # Enzyme compiles the simulation fallback even when it is never called, and
-# cannot differentiate it. These rules stop it being compiled, and make a call
-# that does reach it fail rather than return a zero gradient.
+# cannot differentiate it. These rules stop it being compiled. A call that does
+# reach it throws an error instead of returning a zero gradient.
 
 using EpiBranch: EpiBranch
 using Enzyme: Enzyme
