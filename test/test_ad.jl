@@ -3,6 +3,7 @@ using DifferentiationInterface
 import DifferentiationInterfaceTest as DIT
 using FiniteDifferences
 using ForwardDiff
+import Enzyme
 import Mooncake
 using StableRNGs
 
@@ -148,6 +149,35 @@ end
         g_forward = DifferentiationInterface.gradient(f, AutoForwardDiff(), x)
         @test g_reverse ≈ g_forward rtol = 1.0e-6
     end
+end
+
+@testset "AD (Enzyme reverse mode) through a Reporting spec" begin
+    sizes_data = [1, 2, 1, 3, 1, 5, 2]
+    f(R) = loglikelihood(
+        ChainSizes(sizes_data),
+        ModelSpec(
+            BranchingProcess(Poisson(R[1]));
+            progression = [Reporting(delay = Dirac(0.0), probability = 0.7, from = :infection)]
+        )
+    )
+    x = [0.5]
+    g_reverse = DifferentiationInterface.gradient(f, AutoEnzyme(; mode = Enzyme.Reverse), x)
+    g_forward = DifferentiationInterface.gradient(f, AutoForwardDiff(), x)
+    @test g_reverse ≈ g_forward rtol = 1.0e-6
+
+    # A per-case reporting probability has no closed form, so the likelihood
+    # is simulated, which Enzyme refuses with a clear error.
+    f_sim(R) = loglikelihood(
+        ChainSizes(sizes_data),
+        ModelSpec(
+            BranchingProcess(Poisson(R[1]));
+            progression = [Reporting(delay = Dirac(0.0), probability = ind -> 0.7, from = :infection)]
+        );
+        n_sim = 10
+    )
+    @test_throws ArgumentError DifferentiationInterface.gradient(
+        f_sim, AutoEnzyme(; mode = Enzyme.Reverse), x
+    )
 end
 
 # A gradient of an outbreak summary through the forward simulator, w.r.t. a
