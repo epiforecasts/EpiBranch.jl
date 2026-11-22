@@ -21,11 +21,12 @@ jobs:
         version:
           - '1'
           - 'lts'
-        # The root suite runs as three jobs of similar length, so that none
+        # The root suite runs as four jobs of similar length, so that none
         # reaches the job timeout. `test/runtests.jl` lists which files make up
         # each group; `Pkg.test()` without the variable runs them all.
         group:
           - engine
+          - population
           - interventions
           - inference
     steps:
