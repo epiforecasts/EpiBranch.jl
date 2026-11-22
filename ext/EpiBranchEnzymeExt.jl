@@ -18,7 +18,7 @@ function _not_differentiable()
 end
 
 # The window check only warns and returns nothing, so there is nothing to
-# differentiate. Some Julia versions fail to compile its loops under Enzyme.
+# differentiate. Enzyme fails to compile its loops on some Julia versions.
 EnzymeRules.inactive(::typeof(EpiBranch.validate_process_windows), args...) = nothing
 
 function EnzymeRules.augmented_primal(
