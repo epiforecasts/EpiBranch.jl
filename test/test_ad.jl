@@ -249,6 +249,30 @@ end
     )
 end
 
+# A likelihood estimated by simulation has no useful gradient. Mooncake refuses
+# it with a clear error instead of failing inside the simulator.
+@testset "AD (Mooncake) refuses a simulation-estimated likelihood" begin
+    iso = Isolation(delay = 1.0, duration = 10.0)
+    clinical = clinical_presentation(incubation_period = LogNormal(1.0, 0.3))
+    data = ChainSizes([1, 2, 1, 3, 1, 5, 2, 50])
+    function simulated_loglik(x)
+        model = ModelSpec(
+            BranchingProcess(Poisson(x[1]), Exponential(5.0));
+            interventions = [iso], attributes = clinical
+        )
+        return loglikelihood(data, model; max_cases = 50, n_sim = 20, rng = StableRNG(1))
+    end
+    @test isfinite(simulated_loglik([0.8]))
+    err = try
+        DifferentiationInterface.gradient(simulated_loglik, AutoMooncake(; config = nothing), [0.8])
+        nothing
+    catch e
+        e
+    end
+    @test err isa ArgumentError
+    @test occursin("cannot differentiate a simulation", err.msg)
+end
+
 # The model is built inside the differentiated function, as in a Turing model.
 # The `ModelSpec` constructor and the closed-form chain-size path both run
 # under Mooncake, with and without a `Reporting` step.
