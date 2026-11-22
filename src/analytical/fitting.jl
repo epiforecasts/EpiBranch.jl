@@ -407,9 +407,7 @@ function _chain_size_model_loglik(
     )
 end
 
-# The simulation fallback is its own function so that reverse-mode Enzyme,
-# which compiles both branches of the caller, can be given a rule for it (see
-# the Enzyme extension).
+# Separate function so the Enzyme extension can give it a rule.
 @noinline function _simulated_chain_size_loglik(
         data, process, ivs, attrs, prog, obs, rec,
         max_cases, max_generations, max_time, stopping_rules, n_sim, rng, prob_concluded

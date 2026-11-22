@@ -1,9 +1,5 @@
 module EpiBranchEnzymeCoreExt
 
-# Reverse-mode Enzyme compiles both branches of a likelihood that chooses
-# between a closed form and simulation. Simulation is not differentiable, so
-# it gets a rule that fails with a clear message if it is ever reached.
-
 using EpiBranch: EpiBranch
 using EnzymeCore: EnzymeCore
 

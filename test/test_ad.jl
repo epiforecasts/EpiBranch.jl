@@ -165,8 +165,6 @@ end
     g_forward = DifferentiationInterface.gradient(f, AutoForwardDiff(), x)
     @test g_reverse ≈ g_forward rtol = 1.0e-6
 
-    # A per-case reporting probability has no closed form, so the likelihood
-    # is simulated, which Enzyme refuses with a clear error.
     f_sim(R) = loglikelihood(
         ChainSizes(sizes_data),
         ModelSpec(
