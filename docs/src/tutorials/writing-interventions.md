@@ -841,8 +841,8 @@ budget with the same `period`, `carry_over` and `priority`, tracked
 independently of every other. `capacity_usage(cc, state, group)` reads the
 usage of one group. A model
 that keeps counts or compartments rather than individuals applies an
-intervention only if it defines `EpiBranch.count_dosing`; see [What each model
-applies](@ref).
+intervention only if it defines `EpiBranch.count_dosing`; see [Interventions
+with budgets and schedules](@ref).
 
 ### Refused actions
 

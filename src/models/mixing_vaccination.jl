@@ -196,7 +196,8 @@ const _CAMPAIGN_SUPPORT = "a GroupVaccination, alone or under Scheduled (a " *
 function _refuse_campaign(engine, what, reason = "")
     throw(
         ArgumentError(
-            "$engine cannot apply $what$reason: it reads only $_CAMPAIGN_SUPPORT"
+            "$engine cannot apply $what$reason: it reads only $_CAMPAIGN_SUPPORT. " *
+                "To run this intervention, use `simulate` on a model of individuals"
         )
     )
 end
