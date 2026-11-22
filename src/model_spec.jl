@@ -425,6 +425,20 @@ function _validate_testing_sensitivity(interventions, progression)
     return nothing
 end
 
+# The checks and warnings `ModelSpec` runs on its parts; they return nothing,
+# so an AD backend can skip them.
+function _validate_model_spec(process, prog, ivs)
+    validate_process_windows(process, prog)
+    _warn_incomplete_terminal_coverage(prog)
+    _validate_dose_schedule(ivs)
+    foreach(_store_traits!, ivs)
+    _validate_test_triggers(ivs, prog)
+    _validate_testing_sensitivity(ivs, prog)
+    _warn_unmet_trigger_requirements(ivs, prog)
+    _warn_inert_interventions(ivs)
+    return nothing
+end
+
 """
     ModelSpec(process; progression, interventions, attributes, observation, recorder,
               case_definition)
@@ -480,15 +494,8 @@ function ModelSpec(
         case_definition = nothing
     )
     prog = _progvec(progression)
-    validate_process_windows(process, prog)
-    _warn_incomplete_terminal_coverage(prog)
     ivs = _intervention_vector(interventions)
-    _validate_dose_schedule(ivs)
-    foreach(_store_traits!, ivs)
-    _validate_test_triggers(ivs, prog)
-    _validate_testing_sensitivity(ivs, prog)
-    _warn_unmet_trigger_requirements(ivs, prog)
-    _warn_inert_interventions(ivs)
+    _validate_model_spec(process, prog, ivs)
     return ModelSpec(process, prog, ivs, attributes, observation, recorder, case_definition)
 end
 
