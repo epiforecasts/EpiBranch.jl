@@ -711,7 +711,7 @@ using EpiBranch, Distributions, Random, StableRNGs, Statistics, DataFrames
         )
         pg = [
             simulate(grouped; index_types = [1, 2], max_time = 15, max_cases = nothing, max_generations = nothing, rng = StableRNG(i))
-            for i in 1:30
+                for i in 1:30
         ]
         @test all(s.susceptibles[1] == 0 for s in pg)
         @test all(count(i -> individual_type(i) == 1, individuals(s)) == 1 for s in pg)
@@ -729,7 +729,7 @@ using EpiBranch, Distributions, Random, StableRNGs, Statistics, DataFrames
         )
         sh = [
             simulate(shared; index_types = [1, 2], max_time = 1, max_cases = nothing, max_generations = nothing, rng = StableRNG(i))
-            for i in 1:60
+                for i in 1:60
         ]
         for j in 1:2
             @test mean(s.susceptibles[j] for s in sh) ≈ 499 * 0.5 atol = 15
