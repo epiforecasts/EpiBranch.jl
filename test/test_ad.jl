@@ -150,8 +150,8 @@ end
     end
 end
 
-# The model is built inside the differentiated function, as in a Turing model,
-# so the `ModelSpec` constructor and the closed-form chain-size path both run
+# The model is built inside the differentiated function, as in a Turing model.
+# The `ModelSpec` constructor and the closed-form chain-size path both run
 # under Mooncake, with and without a `Reporting` step.
 @testset "AD (Mooncake) through a ModelSpec built in the function" begin
     sizes_data = [1, 2, 1, 3, 1, 5, 2]
