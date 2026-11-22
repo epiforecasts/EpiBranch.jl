@@ -3,8 +3,8 @@ module EpiBranchMooncakeExt
 using EpiBranch: EpiBranch
 using Mooncake: Mooncake, CoDual
 
-# Zero adjoints for functions Mooncake cannot differentiate and whose results
-# do not depend on the parameters.
+# Zero adjoints for functions that Mooncake cannot differentiate and that
+# return results independent of the parameters.
 Mooncake.@zero_adjoint Mooncake.DefaultCtx Tuple{typeof(EpiBranch._resolved_key), Symbol}
 Mooncake.@zero_adjoint Mooncake.DefaultCtx Tuple{typeof(EpiBranch._validate_model_spec), Any, Any, Any}
 Mooncake.@zero_adjoint Mooncake.DefaultCtx Tuple{typeof(EpiBranch._reporting_closed_form_readable), Any, Any}
