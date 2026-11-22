@@ -1,4 +1,5 @@
 using ADTypes
+import Enzyme
 using DifferentiationInterface
 import DifferentiationInterfaceTest as DIT
 using FiniteDifferences
@@ -13,15 +14,17 @@ using StableRNGs
 # reference (`res1`) computed up-front with FiniteDifferences.jl.
 #
 # Scope: ForwardDiff through DIT, plus a Mooncake reverse-mode pass in a
-# separate testset below. Mooncake is the reverse-mode backend the package
+# separate testset below. Enzyme reverse mode is covered for
+# `incidence_moments` only. Mooncake is the reverse-mode backend the package
 # targets, so the analytical likelihoods are checked both ways. It is not run
 # through DIT because DIT's correctness harness builds its reverse rule
 # through the `ChainSizes`/etc. data constructor (including its validation
 # branch) and errors there; a direct gradient comparison against ForwardDiff
 # avoids that while still exercising the reverse path over the likelihood.
 # ReverseDiff is left out — no rule for the `logabsgamma` in the NegBin
-# chain-size path. Enzyme and the per-backend-tag scenario pattern from
-# CensoredDistributions.jl are the remaining end state; see #105.
+# chain-size path. Enzyme for the other likelihoods and the per-backend-tag
+# scenario pattern from CensoredDistributions.jl are the remaining end state;
+# see #105.
 
 @testset "AD" begin
     sizes_data = [1, 2, 1, 3, 1, 5, 2]
@@ -179,6 +182,27 @@ if VERSION >= v"1.11"
         @test_throws ArgumentError DifferentiationInterface.gradient(
             f_sim, AutoEnzyme(; mode = Enzyme.Reverse), x
         )
+    end
+end
+
+@testset "AD (reverse mode) through incidence_moments" begin
+    y = [6, 7, 8, 9, 10, 11]
+    function moment_loglik(x)
+        m = incidence_moments(
+            NegBin(x[1], x[2]), Gamma(x[3], x[4]), length(y); seeds = 5,
+            reporting_probability = x[5], reporting_delay = Gamma(x[6], 1.0)
+        )
+        return logpdf(MvNormal(m.mean, Matrix(m.cov)), y)
+    end
+    x0 = [1.2, 0.5, 2.0, 2.0, 0.7, 2.0]
+    g_forward = DifferentiationInterface.gradient(moment_loglik, AutoForwardDiff(), x0)
+    backends = Any[AutoMooncake(; config = nothing)]
+    # The Enzyme reverse pass through this nested solve segfaults on Julia 1.10
+    # (lts). Run it on 1.11 and later only.
+    VERSION >= v"1.11" && push!(backends, AutoEnzyme(; mode = Enzyme.Reverse))
+    for backend in backends
+        g = DifferentiationInterface.gradient(moment_loglik, backend, x0)
+        @test g ≈ g_forward rtol = 1.0e-6
     end
 end
 
