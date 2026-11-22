@@ -646,7 +646,8 @@ EpiBranch.records_contacts(::AlwaysRecord, parent, contact, state, t) = true
         @test !is_infected(individuals(immune)[3])
 
         # A risk reads the exposure from the contact's `infection_time`
-        # (`ProtectFromExposure`, defined with the pool's tests), which
+        # (`ProtectFromExposure`, shared helper in
+        # test/testutils/protect_from_exposure.jl), which
         # holds the proposed time while the risks are resolved. Protection from
         # time 3 lets the proposal at 2 through; protection from time 1 blocks
         # both, and a blocked contact's `infection_time` is left as it was.
