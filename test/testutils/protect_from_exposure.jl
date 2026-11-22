@@ -1,8 +1,8 @@
 using EpiBranch
 
-# Protects every contact exposed from `from_time` on, reading the exposure from
-# the contact's `infection_time`, which holds the proposed time while the
-# risks are resolved.
+# Protects every contact exposed from `from_time` on. The exposure time is the
+# contact's `infection_time`, set to the proposed time while the risks are
+# resolved.
 struct ProtectFromExposure <: EpiBranch.AbstractIntervention
     from_time::Float64
 end
