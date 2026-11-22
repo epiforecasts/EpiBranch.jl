@@ -21,6 +21,17 @@ end
 # differentiate. Enzyme fails to compile its loops on some Julia versions.
 EnzymeRules.inactive(::typeof(EpiBranch.validate_process_windows), args...) = nothing
 
+# The `ModelSpec` constructor's other checks only warn or throw and return
+# nothing. On the Julia lts Enzyme reports a runtime-activity error through the
+# symbol lookups in them.
+for f in (
+        :_warn_incomplete_terminal_coverage, :_validate_dose_schedule,
+        :_validate_test_triggers, :_validate_testing_sensitivity,
+        :_warn_unmet_trigger_requirements, :_warn_inert_interventions,
+    )
+    @eval EnzymeRules.inactive(::typeof(EpiBranch.$f), args...) = nothing
+end
+
 function EnzymeRules.augmented_primal(
         config, func::Enzyme.Const{typeof(EpiBranch._simulated_chain_size_loglik)},
         ::Type{RT}, args...
