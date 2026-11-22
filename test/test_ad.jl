@@ -576,8 +576,8 @@ end
 end
 
 # Reverse-mode Enzyme through the closed-form likelihood of a `ModelSpec` with
-# no progression. The extension marks the simulation fallback inactive, so
-# Enzyme compiles only the analytical path.
+# no progression. The extension marks the simulation fallback inactive.
+# Enzyme then compiles only the analytical path.
 @testset "AD (Enzyme reverse mode)" begin
     sizes_data = [1, 2, 1, 3, 1, 5, 2]
     enzyme = AutoEnzyme(; mode = Enzyme.Reverse)
@@ -592,9 +592,9 @@ end
             DifferentiationInterface.gradient(f, AutoForwardDiff(), [0.5]) rtol = 1.0e-6
     end
 
-    # A spec with no closed form is estimated by simulation, which Enzyme
-    # cannot differentiate. The gradient call must throw an error instead of
-    # returning zero.
+    # A spec with no closed form is estimated by simulation. Enzyme cannot
+    # differentiate that, so the gradient call must throw an error rather than
+    # return zero.
     iso = Isolation(delay = Exponential(1.0), duration = Inf)
     simulated(R) = loglikelihood(
         ChainSizes(sizes_data),
