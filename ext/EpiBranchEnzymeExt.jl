@@ -21,9 +21,9 @@ end
 # differentiate. Enzyme fails to compile its loops on some Julia versions.
 EnzymeRules.inactive(::typeof(EpiBranch.validate_process_windows), args...) = nothing
 
-# The `ModelSpec` constructor's other checks only warn or throw and return
-# nothing. On the Julia lts Enzyme reports a runtime-activity error through the
-# symbol lookups in them.
+# The other checks in the `ModelSpec` constructor warn or throw and return
+# nothing. On the Julia lts, Enzyme reports a runtime-activity error in their
+# symbol lookups.
 for f in (
         :_warn_incomplete_terminal_coverage, :_validate_dose_schedule,
         :_validate_test_triggers, :_validate_testing_sensitivity,
