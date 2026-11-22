@@ -1,14 +1,9 @@
-# What each model applies
+# Interventions with budgets and schedules
 
-One specification, a [`ModelSpec`](@ref) with its interventions, means the same thing to every model that reads it.
-Models differ in what they keep: individuals, counts of cases by type, or compartments by mixing group.
-A model with no individual to offer an intervention to applies only an intervention that describes its effect on a group. It refuses any other in the same words as every other such model.
-
-The three kinds of model are:
-
-- Individuals: [`simulate`](@ref) on a model of people, such as [`BranchingProcess`](@ref), [`HomogeneousProcess`](@ref), [`MixingProcess`](@ref) or a network or household model. It applies every intervention.
-- Counts by type: [`simulate_by_generation`](@ref) on a [`BranchingProcess`](@ref), which keeps the number of cases and susceptibles of each type.
-- Compartments by mixing group: [`MixingMeanFieldProcess`](@ref), [`MixingLinearNoiseProcess`](@ref) and [`HybridProcess`](@ref), which keep susceptible, infectious, removed and vaccinated compartments for each mixing group.
+An intervention with a dose budget or a schedule behaves the same in every model that applies it.
+This page describes a model by four components: the sharing of its budget, the timing of its schedule, the treatment of a person the budget turns away, and the groups it reads.
+[`simulate`](@ref) on a model of individuals, such as [`BranchingProcess`](@ref), [`HomogeneousProcess`](@ref), [`MixingProcess`](@ref) or a network or household model, applies every intervention.
+[`simulate_by_generation`](@ref), [`MixingMeanFieldProcess`](@ref), [`MixingLinearNoiseProcess`](@ref) and [`HybridProcess`](@ref) work on groups rather than people. They apply only the interventions listed under "What a model of groups applies". Any other intervention raises an `ArgumentError` naming it and pointing to `simulate` on a model of individuals.
 
 ## One budget, or one per group
 
@@ -34,27 +29,25 @@ process = MixingProcess(
 The groups are those of the population: the `groups` of a grouped population, or `1, 2, ...` when it names none.
 A group of the population missing from the mapping is an error. An unknown name is also an error, so a mistyped name cannot pass as a scenario with no doses.
 To give a group no doses, give it a budget of `0`.
-A population with no groups has none to name. `PerGroup` is refused there.
+A population with no groups has none to name. `PerGroup` raises an error there.
 `PerGroup` also sets the places of a [`HeldCapacity`](@ref) per group. It works with every intervention with a budget, including one written outside the package.
 
-## Support by kind of model
+## Schedule and refusal policy
 
-| Specification | Individuals | Counts by type | Compartments by mixing group |
-|:--------------|:------------|:---------------|:-----------------------------|
-| `GroupVaccination` under `CapacityConstrained`, shared budget | yes | yes | yes |
-| ... with a `PerGroup` budget | yes | yes | yes |
-| ... under `Scheduled` with a `start_time` and `end_time` | yes | yes | yes |
-| ... under `Scheduled` gated on cases, a trigger or a predicate | yes | refused | refused |
-| `CapacityConstrained` with `on_refusal = DeferRefused()` | yes | refused | refused |
-| `RingVaccination`, `MassVaccination` | yes | refused | refused |
-| `Isolation`, `ContactTracing`, `HeldCapacity` and any other intervention, alone or under `CapacityConstrained` (shared or `PerGroup` budget) | yes | refused | refused |
+A [`Scheduled`](@ref) with a `start_time` and `end_time` limits an intervention to a calendar window, in every model.
+A `Scheduled` that starts after a number of cases, or that waits on a trigger or a predicate, depends on individuals. Only `simulate` on a model of individuals applies it.
+By default `CapacityConstrained` drops a person the budget turns away (`on_refusal = DropRefused()`), in every model.
+`on_refusal = DeferRefused()` books that person into a later period. Only `simulate` on a model of individuals does this.
 
-A model that cannot apply a specification raises an `ArgumentError` naming the specification it cannot apply, followed by the same list of what it reads: a `GroupVaccination`, alone or under `Scheduled` (a `start_time` and `end_time` only) and `CapacityConstrained` (one per campaign, with a shared or `PerGroup` budget and `on_refusal = DropRefused()`).
-A model that keeps counts or compartments also refuses, and names, any input it cannot represent, such as a distribution as `efficacy`, a `delay_to_immunity` or `waning`.
+## What a model of groups applies
+
+`simulate_by_generation`, the mean-field and linear-noise approximations and `HybridProcess` apply a [`GroupVaccination`](@ref), alone or under `Scheduled` (a `start_time` and `end_time` only) and `CapacityConstrained` (one per campaign, with a shared or `PerGroup` budget and `on_refusal = DropRefused()`).
+They also name any input they cannot represent, such as a distribution as `efficacy`, a `delay_to_immunity` or `waning`.
 The docstring of each model lists them.
+[`RingVaccination`](@ref), [`MassVaccination`](@ref), [`Isolation`](@ref), [`ContactTracing`](@ref), [`HeldCapacity`](@ref) and any other intervention need `simulate` on a model of individuals.
 
-An intervention written outside the package opts in to counts and compartments by defining `EpiBranch.count_dosing`, a description of its effect on a group.
-Without it, every model of counts or compartments refuses it.
+An intervention written outside the package is applied to groups by defining `EpiBranch.count_dosing`, a description of its effect on a group.
+Without it, it needs `simulate` on a model of individuals.
 
-The test file `test/test_engine_support.jl` runs every kind of model against this table.
-If the input a model reads changes, the test fails until the table is updated.
+The test file `test/test_engine_support.jl` runs every kind of model against this page.
+If a model reads a different input, the test fails until the page is updated.
