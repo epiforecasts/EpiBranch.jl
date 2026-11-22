@@ -640,6 +640,114 @@ using EpiBranch, Distributions, Random, StableRNGs, Statistics, DataFrames
         @test state.counts == sum.(state.generation_counts)
     end
 
+    @testset "vaccination doses reach the susceptibles each day" begin
+        model = BranchingProcess(Poisson(2.5), gt; population = Population(1000))
+        spec(budget; efficacy = 1.0, period = 1.0) = ModelSpec(
+            model;
+            interventions = [
+                CapacityConstrained(
+                    GroupVaccination(efficacy = efficacy, group_key = :type);
+                    budget_per_period = budget, period = period
+                ),
+            ]
+        )
+        run(sp; n = 200, T = 20) = [
+            count_run(sp; n_initial = 5, max_time = T, rng = StableRNG(i)) for i in 1:n
+        ]
+        @test length(EpiBranch.count_rule(spec(10.0)).campaigns) == 1
+        # Enough doses on the first day protect everyone who is reached, so
+        # nothing spreads beyond the index cases.
+        none = run(spec(Steps([-0.5, 0.5], [0.0, 1.0e6, 0.0])))
+        @test all(s.cumulative_cases == 5 for s in none)
+        # A budget of half the people, spent at once at efficacy one, removes
+        # about half of the susceptibles (995 * 0.5). The epidemic is smaller
+        # than without it.
+        half = run(spec(Steps([-0.5, 0.5], [0.0, 497.0, 0.0])); n = 100)
+        @test mean(only(s.susceptibles) + s.cumulative_cases for s in half) ≈ 1000 - 497 * 995 / 1000 atol = 15
+        unvaccinated = run(model; n = 100)
+        @test mean(s.cumulative_cases for s in half) < mean(s.cumulative_cases for s in unvaccinated)
+        # A dose that protects with probability `efficacy` removes that share.
+        partial = run(spec(Steps([-0.5, 0.5], [0.0, 400.0, 0.0]); efficacy = 0.5); n = 100)
+        @test mean(only(s.susceptibles) + s.cumulative_cases for s in partial) ≈ 1000 - 200 * 0.995 atol = 15
+        # A campaign that counts cannot apply runs as individuals.
+        @test EpiBranch.count_rule(
+            ModelSpec(model; interventions = [GroupVaccination(efficacy = 1.0, group_key = :type)])
+        ) === nothing
+        @test EpiBranch.count_rule(
+            ModelSpec(BranchingProcess(Poisson(2.5), gt); interventions = spec(10.0).interventions)
+        ) === nothing
+        # A window that opens after the horizon or closes before the first dose
+        # changes nothing: no doses are given and no draws are spent on them.
+        windowed(; kw...) = ModelSpec(
+            model;
+            interventions = [
+                Scheduled(
+                    CapacityConstrained(
+                        GroupVaccination(efficacy = 1.0, group_key = :type);
+                        budget_per_period = 1.0e6, period = 1.0
+                    ); kw...
+                ),
+            ]
+        )
+        reference = [s.cumulative_cases for s in run(model; n = 30)]
+        @test [s.cumulative_cases for s in run(windowed(start_time = 100.0); n = 30)] == reference
+        @test [s.cumulative_cases for s in run(windowed(start_time = 0.0, end_time = 0.0); n = 30)] == reference
+        # Doses from day 3 stop the spread from then on, so the epidemic is smaller.
+        late = run(windowed(start_time = 3.0); n = 30)
+        @test mean(s.cumulative_cases for s in late) < mean(reference)
+        @test all(i.infection_time < 8 for s in late for i in individuals(s))
+        # A per-group budget gives each type its own doses: type 1 is covered
+        # and type 2 gets none.
+        two = BranchingProcess([2.0 0.0; 0.0 2.0], R -> Poisson(R), gt; population = Population([500, 500]))
+        grouped = ModelSpec(
+            two;
+            interventions = [
+                CapacityConstrained(
+                    GroupVaccination(efficacy = 1.0, group_key = :type);
+                    budget_per_period = PerGroup(1 => Steps([-0.5, 0.5], [0.0, 1.0e6, 0.0]), 2 => 0.0),
+                    period = 1.0
+                ),
+            ]
+        )
+        pg = [
+            simulate(grouped; index_types = [1, 2], max_time = 15, max_cases = nothing, max_generations = nothing, rng = StableRNG(i))
+                for i in 1:30
+        ]
+        @test all(s.susceptibles[1] == 0 for s in pg)
+        @test all(count(i -> individual_type(i) == 1, individuals(s)) == 1 for s in pg)
+        @test mean(s.susceptibles[2] for s in pg) < 400
+        # A shared budget over several types is split in proportion to
+        # population size. It covers half the people, so each type loses about half.
+        shared = ModelSpec(
+            two;
+            interventions = [
+                CapacityConstrained(
+                    GroupVaccination(efficacy = 1.0, group_key = :type);
+                    budget_per_period = Steps([-0.5, 0.5], [0.0, 500.0, 0.0]), period = 1.0
+                ),
+            ]
+        )
+        sh = [
+            simulate(shared; index_types = [1, 2], max_time = 1, max_cases = nothing, max_generations = nothing, rng = StableRNG(i))
+                for i in 1:60
+        ]
+        for j in 1:2
+            @test mean(s.susceptibles[j] for s in sh) ≈ 499 * 0.5 atol = 15
+        end
+        # A per-group budget that does not fit the population raises an error.
+        @test_throws ArgumentError EpiBranch.count_rule(
+            ModelSpec(
+                model;
+                interventions = [
+                    CapacityConstrained(
+                        GroupVaccination(efficacy = 1.0, group_key = :type);
+                        budget_per_period = PerGroup(1 => 10.0, 2 => 10.0), period = 1.0
+                    ),
+                ]
+            )
+        )
+    end
+
     @testset "counted offspring laws agree with the individual simulation" begin
         M = [1.2 0.4; 0.3 0.9]
         T = 6
@@ -729,8 +837,8 @@ using EpiBranch, Distributions, Random, StableRNGs, Statistics, DataFrames
         @test simulate(model; kw..., stopping_rules = [MaxTime(5.0)]) isa SimulationState
         @test simulate(model; kw..., condition = 1:1000) isa SimulationState
         @test simulate(model; kw..., rng = CommonRandomNumbers(1)) isa SimulationState
-        # A continuous generation time, a function-valued offspring, a
-        # population, a window that ends and interventions are individual.
+        # A continuous generation time, a function-valued offspring, a window
+        # that ends and interventions that counts cannot apply run as individuals.
         @test EpiBranch.count_rule(BranchingProcess(Poisson(1.2), Gamma(2.0, 1.0))) === nothing
         @test EpiBranch.count_rule(BranchingProcess(Poisson(1.2))) === nothing
         @test EpiBranch.count_rule(BranchingProcess(Poisson(1.2), gt; population = Population(1000))) !== nothing

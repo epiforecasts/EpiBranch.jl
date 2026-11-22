@@ -404,7 +404,7 @@ function _fold_reporting(progression, base, obs, attrs)
 end
 
 # Whether the closed form can read the progression's `Reporting` step.
-function _closed_form_reportable(prog, attrs)
+function _reporting_closed_form_readable(prog, attrs)
     try
         _effective_reporting_probability(prog, attrs)
     catch e
@@ -423,6 +423,6 @@ function _exact_reported_chain_size(offspring, prog, obs, attrs)
     any(t -> _is_reporting(t) && !(reporting_probability(t) isa Real), prog) && return nothing
     # A progression the closed form cannot read (a terminal step, or a step
     # that overwrites the `from` time) is simulated instead.
-    _closed_form_reportable(prog, attrs) || return nothing
+    _reporting_closed_form_readable(prog, attrs) || return nothing
     return _fold_reporting(prog, chain_size_distribution(offspring), obs, attrs)
 end

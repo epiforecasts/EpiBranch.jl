@@ -26,12 +26,12 @@
 The rule by which [`simulate`](@ref) runs `model` as daily counts rather than
 as individuals, or `nothing` if `model` has to be simulated as individuals.
 A model qualifies when nothing about an individual feeds back on
-transmission, apart from the depletion of a finite population by type, and its
+transmission, apart from the depletion of a finite population by type and the
+vaccination campaigns, which are applied to the counts as doses, and its
 generation time is a distribution on whole days. A
 [`BranchingProcess`](@ref) may have several infectiousness windows or several
-types. Adding a method for a new model type gives it the count-level path. The
-rule is a [`CountRule`](@ref), or a [`CountRules`](@ref) for several windows or
-types.
+types. A method for a new model type gives it the count-level path. The rule is
+a [`CountRule`](@ref), or a [`CountRules`](@ref) for several windows or types.
 """
 count_rule(::TransmissionModel) = nothing
 
@@ -88,23 +88,44 @@ which a type-`j` case infects through window `w`, and `allocation[w][i, j]` the
 share of those infections that are of type `i`. Each case draws its
 infectiousness for each window independently. A cohort of one type therefore
 holds one total for each window. The channels are all of one kind. Only a
-model with one window has counted channels.
+model with one window has counted channels. `campaigns` are the vaccination
+campaigns of a [`ModelSpec`](@ref) on a finite population: the doses of
+`[t - 1, t)` reach the susceptibles before day `t` is drawn, as
+[`simulate_by_generation`](@ref) gives them between generations.
 """
-struct CountRules{C <: AbstractMatrix{<:AbstractCountRule}}
+struct CountRules{C <: AbstractMatrix{<:AbstractCountRule}, V <: AbstractVector}
     channels::C
     allocation::Vector{Matrix{Float64}}
+    campaigns::V
 end
+
+CountRules(channels, allocation) = CountRules(channels, allocation, [])
 
 _as_rules(rule::AbstractCountRule) = CountRules(fill(rule, 1, 1), [ones(1, 1)])
 _as_rules(rules::CountRules) = rules
 _max_lag(rules::CountRules) = maximum(c -> length(c.g), rules.channels)
 
-# A `ModelSpec` qualifies when the layers it adds do not act on transmission.
+# A `ModelSpec` qualifies when the layers it adds do not act on transmission,
+# apart from vaccination campaigns on a finite population.
 function count_rule(spec::ModelSpec)
-    isempty(spec.interventions) || return nothing
     spec.case_definition === nothing || return nothing
     spec.recorder isa NoContactRecorder || return nothing
-    return count_rule(spec.process)
+    rule = count_rule(spec.process)
+    rule === nothing && return nothing
+    isempty(spec.interventions) && return rule
+    _count_sizes(population(spec.process)) === nothing && return nothing
+    # Eligibility depends only on how the interventions are read. A budget that
+    # does not fit the population is a configuration error and raises, as in
+    # `simulate_by_generation`.
+    campaigns = try
+        [_campaign(iv, (0.0, Inf), nothing) for iv in spec.interventions]
+    catch err
+        err isa ArgumentError && return nothing
+        rethrow()
+    end
+    campaigns = [_by_type(c, population(spec.process)) for c in campaigns]
+    rules = _as_rules(rule)
+    return CountRules(rules.channels, rules.allocation, campaigns)
 end
 
 function count_rule(model::BranchingProcess)
@@ -343,6 +364,7 @@ function _count_step!(s::CountSimulationState)
     n_windows, n_types = size(channels)
     g = s.max_generation
     t = s.day + 1
+    _vaccinate_counts!(s, t)
     rates = [_count_R_at(c, t) for c in channels]
     ncls = _classes_on(g, t)
     max_lag = _max_lag(rules)
@@ -408,6 +430,42 @@ function _free_inflow!(s, ::OffspringCountRule, sources, inflow, by_class)
             inflow[lag, w, j, k, i] = n
             by_class[i, _next_class(g, k)] += n
         end
+    end
+    return s
+end
+
+# The doses of `[t0, t1)` given to each type. A shared budget is a pool of doses
+# for everyone: each dose goes to a type in proportion to its population, as it
+# would to a person picked at random. A budget per group gives each type its own.
+function _doses_by_type(rng::AbstractRNG, c::_Campaign, budgets::AbstractVector, t0, t1, sizes)
+    return [_interval_doses(c, t0, t1, b) for b in budgets]
+end
+function _doses_by_type(rng::AbstractRNG, c::_Campaign, ::CapacityConstrained, t0, t1, sizes)
+    doses = _interval_doses(c, t0, t1)
+    doses == 0 && return zeros(Int, length(sizes))
+    length(sizes) == 1 && return [doses]
+    return rand(rng, Multinomial(doses, Float64.(sizes) ./ sum(sizes)))
+end
+
+# Give a campaign's doses for `[t0, t1)` to the susceptibles. A dose reaches a
+# susceptible of a type with probability equal to the share of susceptibles in
+# the population of the type at the start of the interval, and protects with
+# probability `efficacy`. With no doses nothing is drawn.
+function _vaccinate!(rng::AbstractRNG, c::_Campaign, t0, t1, susceptibles, sizes)
+    doses = _doses_by_type(rng, c, c.budget, t0, t1, sizes)
+    for i in eachindex(susceptibles)
+        doses[i] == 0 && continue
+        (susceptibles[i] <= 0 || sizes[i] <= 0) && continue
+        reached = min(rand(rng, Binomial(doses[i], susceptibles[i] / sizes[i])), susceptibles[i])
+        susceptibles[i] -= rand(rng, Binomial(reached, c.efficacy))
+    end
+    return susceptibles
+end
+
+# The doses of `[t - 1, t)` reach the susceptibles before day `t` is drawn.
+function _vaccinate_counts!(s::CountSimulationState, t)
+    for c in s.rule.campaigns
+        _vaccinate!(s.rng, c, t - 1, t, s.susceptibles, s.sizes)
     end
     return s
 end

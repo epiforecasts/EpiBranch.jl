@@ -10,7 +10,7 @@ end
 # Symbol and Bool lookups with no derivative. Left active, Enzyme on
 # Julia 1.10 reports their constant result as stored into a differentiable value.
 EnzymeRules.inactive(::typeof(EpiBranch._resolved_key), args...) = nothing
-EnzymeRules.inactive(::typeof(EpiBranch._closed_form_reportable), args...) = nothing
+EnzymeRules.inactive(::typeof(EpiBranch._reporting_closed_form_readable), args...) = nothing
 EnzymeRules.inactive(::typeof(EpiBranch.has_single_type_law), args...) = nothing
 
 function _refuse_simulation()
