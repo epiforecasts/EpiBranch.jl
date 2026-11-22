@@ -1,0 +1,1 @@
+The count-level path of `simulate` now runs a `ModelSpec` with `GroupVaccination` under `CapacityConstrained` (and `Scheduled` with a window) on a finite population. Each day's doses go to the susceptibles of each type before the day is drawn. The doses approximate the individual simulation, as in `simulate_by_generation`.

@@ -1,0 +1,1 @@
+`loglikelihood` of a `ModelSpec` built inside the differentiated function, such as a Turing model, now runs under Mooncake when the offspring law has a closed form, with or without a `Reporting` step. Mooncake must be installed and loaded; the new `EpiBranchMooncakeExt` loads with it.
