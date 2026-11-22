@@ -16,6 +16,7 @@ end
 
 include("testutils/sim_analytical_consistency.jl")
 include("testutils/progression.jl")
+include("testutils/protect_from_exposure.jl")
 
 # CI runs one job per group to keep each job well within its timeout.
 # `EPIBRANCH_TEST_GROUP` selects a group; `Pkg.test()` without it runs
