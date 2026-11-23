@@ -77,8 +77,8 @@ end
 """
     UnusedBudget
 
-The treatment by [`CapacityConstrained`](@ref) of capacity a period leaves
-unused. [`CarryOver`](@ref) and [`ExpireUnused`](@ref) are the built-in ones.
+What [`CapacityConstrained`](@ref) does with capacity a period leaves unused:
+[`CarryOver`](@ref) or [`ExpireUnused`](@ref).
 """
 abstract type UnusedBudget end
 
