@@ -240,5 +240,11 @@ using StableRNGs
         @test_throws ArgumentError state_from_cases(
             two_windows, DataFrame(infection_time = [0.0])
         )
+        multiplied = BranchingProcess(
+            Poisson(1.0), Gamma(2, 1); multiplier = Gamma(2.0, 0.5)
+        )
+        @test_throws ArgumentError state_from_cases(
+            multiplied, DataFrame(infection_time = [0.0])
+        )
     end
 end
