@@ -21,9 +21,9 @@ using StableRNGs
 # branch) and errors there; a direct gradient comparison against ForwardDiff
 # avoids that while still exercising the reverse path over the likelihood.
 # ReverseDiff is left out — no rule for the `logabsgamma` in the NegBin
-# chain-size path. Enzyme for the other likelihoods and the per-backend-tag
-# scenario pattern from CensoredDistributions.jl are the remaining end state;
-# see #105.
+# chain-size path. The per-backend-tag scenario pattern from
+# CensoredDistributions.jl is the remaining end state; see #105. The
+# model-route testset below covers Enzyme as well as Mooncake.
 
 @testset "AD" begin
     sizes_data = [1, 2, 1, 3, 1, 5, 2]
@@ -151,6 +151,107 @@ end
         g_forward = DifferentiationInterface.gradient(f, AutoForwardDiff(), x)
         @test g_reverse ≈ g_forward rtol = 1.0e-6
     end
+end
+
+# Reverse mode through the model constructors and likelihood wrappers, each
+# checked against ForwardDiff.
+@testset "AD (reverse mode through the model route)" begin
+    sizes_data = [1, 2, 1, 3, 1, 5, 2]
+    lengths_data = [0, 1, 2, 0, 3, 1]
+    many_sizes = [1, 1, 2, 1, 3, 1, 1, 5, 2, 1, 1, 4, 1, 2, 1, 1, 7, 1, 2, 1]
+    summed(law) = sum(y -> logpdf(law, y), many_sizes)
+
+    mooncake = AutoMooncake(; config = nothing)
+    enzyme = AutoEnzyme(; mode = Enzyme.Reverse)
+    enzyme_activity = AutoEnzyme(; mode = Enzyme.set_runtime_activity(Enzyme.Reverse))
+
+    # On Julia 1.10 Enzyme reports the constant symbol lookups in the
+    # closed-form checks as stored into a differentiable value. The bare
+    # model needs runtime activity there, but later versions do not.
+    enzyme_bare = VERSION >= v"1.11" ? enzyme : enzyme_activity
+
+    function check(f, x, backends)
+        g_forward = DifferentiationInterface.gradient(f, AutoForwardDiff(), x)
+        for backend in backends
+            g = DifferentiationInterface.gradient(f, backend, x)
+            @test g ≈ g_forward rtol = 1.0e-6
+        end
+        return g_forward
+    end
+
+    bare_model = [
+        (R -> (BranchingProcess(Poisson(R[1])); R[1]^2), [0.5]),
+        (R -> loglikelihood(ChainSizes(sizes_data), BranchingProcess(Poisson(R[1]))), [0.5]),
+        (
+            θ -> loglikelihood(ChainSizes(sizes_data), BranchingProcess(NegBin(θ[1], θ[2]))),
+            [0.5, 0.5],
+        ),
+        (
+            R -> loglikelihood(ChainLengths(lengths_data), BranchingProcess(Poisson(R[1]))),
+            [0.5],
+        ),
+        (R -> summed(chain_size_distribution(BranchingProcess(Poisson(R[1])))), [0.4]),
+        (R -> logpdf(offspring_distribution(BranchingProcess(Poisson(R[1]))), 2), [0.5]),
+        (R -> logpdf(chain_length_distribution(BranchingProcess(Poisson(R[1]))), 2), [0.5]),
+    ]
+    for (f, x) in bare_model
+        check(f, x, (mooncake, enzyme_bare))
+    end
+    @test only(
+        check(
+            R -> summed(chain_size_distribution(BranchingProcess(Poisson(R[1])))),
+            [0.4], (mooncake, enzyme_bare)
+        )
+    ) ≈ 8.5
+
+    clinical = clinical_presentation(
+        incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.0
+    )
+    iso = Isolation(delay = Exponential(1.0), duration = Inf)
+    with_intervention(R) = ModelSpec(
+        BranchingProcess(Poisson(R[1])); interventions = [iso], attributes = clinical
+    )
+    intervention_cases = [
+        R -> (with_intervention(R); R[1]^2),
+        R -> (chain_size_distribution(with_intervention(R)); R[1]^2),
+        R -> (chain_length_distribution(with_intervention(R)); R[1]^2),
+    ]
+    for f in intervention_cases
+        check(f, [0.5], (mooncake,))
+    end
+    check(intervention_cases[1], [0.5], (enzyme_activity,))
+    check(intervention_cases[3], [0.5], (enzyme_activity,))
+
+    spec_cases = [
+        R -> loglikelihood(
+            ChainSizes(sizes_data),
+            ModelSpec(
+                BranchingProcess(Poisson(R[1]));
+                progression = [Reporting(delay = Dirac(0.0), probability = 0.7, from = :infection)]
+            )
+        ),
+        R -> loglikelihood(
+            ChainSizes(sizes_data),
+            ModelSpec(BranchingProcess(Poisson(R[1])); observation = ChainDetection(0.4))
+        ),
+        R -> logpdf(offspring_distribution(ModelSpec(BranchingProcess(Poisson(R[1])))), 2),
+    ]
+    for f in spec_cases
+        check(f, [0.5], (mooncake,))
+    end
+    check(spec_cases[3], [0.5], (enzyme_bare,))
+
+    # Enzyme refuses a chain-length likelihood estimated by simulation and gives
+    # the extension's message instead of a compilation error from the simulator.
+    # The chain-size version has its own rule, in the EnzymeCore extension.
+    simulated(R) = loglikelihood(
+        ChainLengths(lengths_data),
+        ModelSpec(BranchingProcess(Poisson(R[1])); interventions = [iso], attributes = clinical);
+        n_sim = 20, rng = StableRNG(1)
+    )
+    @test_throws "estimated by simulation" DifferentiationInterface.gradient(
+        simulated, enzyme_activity, [0.5]
+    )
 end
 
 # Enzyme cannot compile the `ModelSpec` construction with a progression (the

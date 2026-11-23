@@ -410,7 +410,7 @@ function _has_exact_chain_size(offspring)
 end
 
 # Whether the closed form can read the progression's `Reporting` step.
-function _reporting_closed_form_readable(prog, attrs)
+@noinline function _reporting_closed_form_readable(prog, attrs)
     try
         _effective_reporting_probability(prog, attrs)
     catch e
@@ -426,6 +426,8 @@ function _exact_reported_chain_size(offspring, prog, obs, attrs)
     _has_exact_chain_size(offspring) || return nothing
     count(_is_reporting, prog) > 1 && return nothing
     any(t -> _is_reporting(t) && !(reporting_probability(t) isa Real), prog) && return nothing
+    # A progression the closed form cannot read (a terminal step, or a step
+    # that overwrites the `from` time) is simulated instead.
     _reporting_closed_form_readable(prog, attrs) || return nothing
     return _fold_reporting(prog, chain_size_distribution(offspring), obs, attrs)
 end

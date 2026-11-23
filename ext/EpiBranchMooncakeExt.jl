@@ -6,20 +6,11 @@ using Mooncake: Mooncake, CoDual
 # Zero adjoints for functions that Mooncake cannot differentiate and that
 # return results independent of the parameters.
 Mooncake.@zero_adjoint Mooncake.DefaultCtx Tuple{typeof(EpiBranch._resolved_key), Symbol}
-Mooncake.@zero_adjoint Mooncake.DefaultCtx Tuple{typeof(EpiBranch._validate_model_spec), Any, Any, Any}
 Mooncake.@zero_adjoint Mooncake.DefaultCtx Tuple{typeof(EpiBranch._reporting_closed_form_readable), Any, Any}
-Mooncake.@zero_adjoint Mooncake.DefaultCtx Tuple{typeof(EpiBranch.has_single_type_law), EpiBranch.TransmissionModel}
-for f in (
-        :validate_process_windows, :_validate_test_triggers, :_validate_testing_sensitivity,
-        :_warn_unmet_trigger_requirements,
-    )
-    @eval Mooncake.@zero_adjoint Mooncake.DefaultCtx Tuple{typeof(EpiBranch.$f), Any, Any}
-end
-for f in (
-        :_warn_incomplete_terminal_coverage, :_validate_dose_schedule, :_store_traits!,
-        :_warn_inert_interventions,
-    )
-    @eval Mooncake.@zero_adjoint Mooncake.DefaultCtx Tuple{typeof(EpiBranch.$f), Any}
+Mooncake.@zero_adjoint Mooncake.DefaultCtx Tuple{typeof(EpiBranch.has_single_type_law), Any}
+
+for f in EpiBranch._MODEL_CHECKS
+    @eval Mooncake.@zero_adjoint Mooncake.DefaultCtx Tuple{typeof($f), Vararg{Any}}
 end
 
 const _SimulateNCall = Tuple{

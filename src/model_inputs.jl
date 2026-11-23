@@ -41,9 +41,9 @@ recorder(::TransmissionModel) = NoContactRecorder()
 # The within-host natural history: the clinical-state transitions a case moves
 # through. Composed onto a process with a `ModelSpec`; empty for a bare process.
 """The within-host natural history `model` has: a vector of
-[`Transition`](@ref)s and other clinical steps, or `[]` if it has none
+[`Transition`](@ref)s and other clinical steps, or `()` if it has none
 (the default, for a bare process with no [`ModelSpec`](@ref) around it)."""
-progression(::TransmissionModel) = AbstractClinicalTransition[]
+progression(::TransmissionModel) = ()
 
 # Normalise an interventions keyword (a single intervention or a vector)
 # to a `Vector{AbstractIntervention}`, for constructors to use.
