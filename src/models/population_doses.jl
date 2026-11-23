@@ -1,10 +1,10 @@
 # ── Vaccinating the population on the individual-based race ──────────
 #
-# An intervention that doses the population rather than the people the race
-# creates opts in through `population_ledger`. The race asks each intervention
-# for a ledger once, at run start, holds the ledgers in `state.scratch` and
-# thins each contact against the susceptibles of its group less the share the
-# ledgers `protected_share` at the time of the exposure.
+# An intervention that doses the population, not the people the race creates,
+# opts in through `population_ledger`. At run start the race asks each
+# intervention once for a ledger and keeps the ledgers in `state.scratch`. It
+# thins each contact against the susceptibles of its group, less the share
+# that the ledgers report through `protected_share` at the time of exposure.
 
 const _MASS_LEDGERS_KEY = :_mass_ledgers
 
@@ -12,20 +12,20 @@ const _MASS_LEDGERS_KEY = :_mass_ledgers
     population_ledger(intervention, population, window = (0.0, Inf), budget = nothing)
 
 The ledger through which `intervention` doses the population, or `nothing`.
-The race calls this once at run start for each intervention. One that answers
-with a ledger is taken out of the race's interventions, and its ledger is
-asked for the share of each group it has protected ([`protected_share`](@ref
-EpiBranch.protected_share)) every time a contact is thinned against the
-susceptibles of a population. The default is `nothing`, so an intervention
-acts on the people the race creates.
+The race calls this once at run start for each intervention. An intervention
+that answers with a ledger leaves the interventions of the race. The race then
+asks its ledger for the share of each group protected
+([`protected_share`](@ref EpiBranch.protected_share)) whenever a contact is
+thinned against the susceptibles of a population. By default the answer is
+`nothing` and the intervention acts on the people the race creates.
 
-A budgeted [`MassVaccination`](@ref) answers with a ledger, since its doses
+A budgeted [`MassVaccination`](@ref) answers with a ledger because its doses
 must come from the susceptibles that infection has not already depleted. A
-campaign written outside the package can do the same by returning a ledger of
-its own with a `protected_share` method. `window` and `budget` are what the
-wrappers around `intervention` have gathered: [`Scheduled`](@ref) narrows
-`window` to its calendar window and [`CapacityConstrained`](@ref) supplies
-`budget`. A wrapper type of one's own forwards them.
+campaign defined outside the package can do the same by returning its own
+ledger with a `protected_share` method. The wrappers around `intervention`
+gather `window` and `budget`: [`Scheduled`](@ref) narrows `window` to its
+calendar window and [`CapacityConstrained`](@ref) supplies `budget`. A wrapper
+type defined outside the package forwards them.
 """
 population_ledger(::Any, population, window = (0.0, Inf), budget = nothing) = nothing
 function population_ledger(
@@ -60,12 +60,12 @@ end
 The share of the people of `group` (1 for a population with one group, the
 type for a grouped one) that `ledger` has protected at time `t`, as a number
 from 0 to 1. The race subtracts it from the share of the group still
-susceptible, so a ledger's answer must be a step function of `t`: a query at
-`t` reads the value at `t`, whatever times were asked before.
+susceptible. The answer must be a step function of `t`: a query at `t` reads
+the value at `t`, whatever times were asked before.
 """
 function protected_share end
 
-# A campaign's state between exposures: the doses given so far (`used`), the
+# State of a campaign between exposures: the doses given so far (`used`), the
 # next budget period to give (`next`) and, for each period given, the time
 # from which its doses count and the number protected in each group after it.
 # A query at `t` reads the last entry dated before `t`.
@@ -102,7 +102,7 @@ function _without_mass_campaigns(state, ivs)
     return filter(iv -> population_ledger(iv, state.population) === nothing, ivs)
 end
 
-# The budget's period, which a campaign's budgets per type share.
+# The period of the budget, shared by the budgets per type of a campaign.
 _ledger_period(c::_Campaign) = (c.budget isa AbstractVector ? first(c.budget) : c.budget).period
 
 # Gives, period by period, the doses due before `t` over the susceptibles left
@@ -153,7 +153,7 @@ end
 _ledger_group(::SinglePopulation, ind) = 1
 _ledger_group(::GroupedPopulation, ind) = individual_type(ind)
 
-# `share` less the share of `contact`'s group protected at `t`.
+# `share` less the share protected at `t` in the group of `contact`.
 _after_vaccination(share, ::Nothing, state, contact, t) = share
 function _after_vaccination(share, ledgers::Vector, state, contact, t)
     g = _ledger_group(state.population, contact)

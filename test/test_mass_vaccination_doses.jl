@@ -140,7 +140,8 @@ end
 
     @testset "a window that opens late agrees with the counts" begin
         # The counts date doses by generation interval and the individual-based
-        # run by the clock, so the two agree to a few per cent, not within noise.
+        # run by the clock. The two agree to a few per cent, which is looser
+        # than the noise.
         n = 2_000
         campaign = Scheduled(
             budget(mass(), 200.0; period = 4.0, carry_over = false);
