@@ -1,1 +1,1 @@
-The documentation of `simulate_by_generation` now says how its campaign doses differ from the individual-based simulation: the doses of a generation's interval are given in one step between generations, with no dating of contacts within it.
+The documentation of `simulate_by_generation` now says how its campaign doses differ from the individual-based simulation.

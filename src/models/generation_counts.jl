@@ -298,13 +298,10 @@ later contacts. The `eligibility` of the campaign is not read.
 Doses are dated by the interval, not the day: every contact of generation
 `g + 1` can use any dose of the interval.
 
-This differs from the individual-based simulation when a budget binds within
-an interval. There contacts are dated, a contact made before a window opens is
-held and dosed in order as the budget accrues, and a daily budget reaches the
-contacts made on the days it accrues. Here a count has no contact times, so the
-doses of an interval are given in one step between generations, to contacts
-of each type by its share of the susceptibles. With a budget that binds, the
-contacts dosed can differ.
+The individual-based simulation dates contacts, holds those made before a
+window opens and doses them in order as the budget accrues. Here a count has no
+contact times, so the doses of an interval are given in one step between
+generations, and with a binding budget the contacts dosed can differ.
 
 # Examples
 
