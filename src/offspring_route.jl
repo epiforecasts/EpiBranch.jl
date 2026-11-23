@@ -604,7 +604,13 @@ function _simulate_offspring(
     )
     sellke_race!(
         state, tree, rng, sim_opts;
-        seed! = (best, _, _) -> fill!(best, zero(T)), routes,
+        seed! = (best, _, _) -> begin
+            fill!(best, zero(T))
+            for (k, t) in enumerate(_import_times(model))
+                best[sim_opts.n_initial + k] = t
+            end
+            best
+        end, routes,
         interventions, contacts = (id, state) -> individuals(state)[id].secondary_case_ids,
         risks = transmission_risks(model), recorder
     )
