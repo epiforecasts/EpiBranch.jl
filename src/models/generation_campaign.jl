@@ -13,8 +13,7 @@ struct _Campaign{B}
     budget::B
 end
 
-# Reads the wrappers around an intervention (the same ones the mixing
-# approximations read), then its effect on a group (`gives_group_doses`). Anything
+# Reads the wrappers around an intervention, then its dose traits. Anything
 # else, or a `Scheduled` with a condition other than a calendar window, cannot be
 # applied to a count and is named in the error.
 function _campaign(iv::AbstractIntervention, window, budget)

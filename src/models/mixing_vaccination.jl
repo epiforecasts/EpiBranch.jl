@@ -116,9 +116,6 @@ end
 
 # ── The campaign read from a ModelSpec ───────────────────────────────
 
-# What a model of counts or compartments reads about an intervention that gives
-# doses to groups, collected from the traits below. `nothing` for an
-# intervention that does not opt in.
 struct GroupDosing{E, M, C, D, I, W}
     group_key::Symbol
     efficacy::E
@@ -132,14 +129,9 @@ end
 """
     gives_group_doses(intervention) -> Bool
 
-For extension authors: whether `intervention` gives doses to the members of a
-group, so that a model of counts or compartments, such as `simulate_by_generation`
-and the approximations for mixing populations, can apply it without individuals.
-The default, `false`, makes such a model refuse the intervention, and a
-[`simulate`](@ref) on a model of one runs as an individual simulation. An
-intervention that opts in defines the facts below, each as a method of its own
-type: `dose_group_key` and `dose_efficacy` have no default, and the others have
-the default that needs no extra modelling. [`GroupVaccination`](@ref) opts in.
+Whether `intervention` gives doses to groups, so that a model of counts or
+compartments can apply it. The default is `false`. An intervention that opts in
+defines `dose_group_key` and `dose_efficacy`, and may define the others:
 
   - `dose_group_key(iv) -> Symbol`: the attribute whose values are the groups.
   - `dose_efficacy(iv)`: the efficacy of a dose, a number between 0 and 1.

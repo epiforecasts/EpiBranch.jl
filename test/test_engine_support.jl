@@ -247,7 +247,6 @@ end
         @test dosing.mode isa LeakyMode
         @test dosing.coverage == 1.0
         @test dosing.dose_delay == 0.0
-        e = _SUPPORT_ENGINES.generation_counts
         cc = CapacityConstrained(_SupportPrEP(:type); budget_per_period = 50.0)
         campaign = EpiBranch._campaign(cc, (0.0, Inf), nothing)
         @test campaign.efficacy == 0.6
