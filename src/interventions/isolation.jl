@@ -127,6 +127,27 @@ required_fields(::IsolationTrigger) = ()
 required_fields(::AfterSymptomOnset) = (:onset_time,)
 required_fields(t::AfterPositiveTest) = [Symbol(t.name, :_time), Symbol(t.name, :_result)]
 
+"""
+    AtTestTime(f)
+
+Mark a `test_sensitivity` of [`Isolation`](@ref) as drawn at the test time.
+`f` is a function `(rng, ind, t) -> probability`, called once the case's test
+time `t` (the trigger plus `delay`, on the simulation clock) is known, so it
+can read the within-host load of the case then. A plain function
+`(rng, ind) -> ...`, a number or a distribution is still drawn when the case is
+created. A case with no finite test time, or that is not eligible, stays
+negative. The analytic effect of the isolation refuses it.
+
+# Examples
+```julia
+detect = AtTestTime((rng, ind, t) -> min(1.0, EpiBranch.trajectory_value(ind, t - ind.infection_time) / 1.5))
+Isolation(delay = 1.0, duration = Inf, test_sensitivity = detect)
+```
+"""
+struct AtTestTime{F}
+    f::F
+end
+
 # ── Isolation intervention ──────────────────────────────────────────
 
 """
@@ -165,7 +186,7 @@ known cases are quarantined through [`ContactTracing`](@ref).
   isolate them.
 - `test_sensitivity`: probability that an eligible case is detected and
   isolated (default 1). A number, a distribution or a function
-  `(rng, ind) -> ...`, drawn once per case. A function `(rng, ind, t) -> ...`
+  `(rng, ind) -> ...`, drawn once per case. `AtTestTime((rng, ind, t) -> ...)`
   is drawn once the test time `t` (trigger plus `delay`) is known and can read
   the within-host load of the case at that time. A [`Testing`](@ref) step in the
   model's `progression` can be given instead: a case is then detected when its
@@ -390,20 +411,19 @@ function _draw_test_positive(sensitivity, rng, individual)
     return rand(rng) < sample_value(sensitivity, rng, individual)
 end
 
-_at_test_time(f) = f isa Function && hasmethod(f, Tuple{Any, Any, Any})
-_draw_test_positive(f::Function, rng, individual) =
-    _at_test_time(f) ? false : rand(rng) < sample_value(f, rng, individual)
+# A sensitivity that waits for the test time is marked by its type, so a plain
+# function of any arity keeps being drawn at creation.
+_draw_test_positive(::AtTestTime, rng, individual) = false
 
 # Progression-step and test-time sensitivities are read once the progression
 # has resolved, not drawn at creation.
 _read_test_positive!(sensitivity, iso, individual, state) = nothing
-function _read_test_positive!(f::Function, iso, individual, state)
-    _at_test_time(f) || return nothing
+function _read_test_positive!(s::AtTestTime, iso, individual, state)
     t = _self_isolation_time(iso, individual, state)
     rng = stream(state.rng, individual.id, (:isolation, :test))
     individual.state[:test_positive] = isfinite(t) &&
         is_eligible_for_isolation(iso.eligibility, individual, state) &&
-        rand(rng) < f(rng, individual, t)
+        rand(rng) < s.f(rng, individual, t)
     return nothing
 end
 function resolve_individual!(iso::Isolation, individual, state)

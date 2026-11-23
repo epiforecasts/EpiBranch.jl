@@ -201,10 +201,10 @@ nothing # hide
 
 ## Test positivity from the load at the test
 
-[`Isolation`](@ref) draws whether a case tests positive once its onset and isolation delay are known. A `test_sensitivity` written `(rng, ind, t) -> probability` is evaluated then, with `t` the time the case is tested (the trigger plus `delay`, on the simulation clock). It can read the load at that time through the case's trajectory, Detection then follows the same draw as infectiousness and onset:
+[`Isolation`](@ref) draws whether a case tests positive once its onset and isolation delay are known. A `test_sensitivity` written `AtTestTime((rng, ind, t) -> probability)` is evaluated then, with `t` the time the case is tested (the trigger plus `delay`, on the simulation clock). It can read the load at that time through the case's trajectory, Detection then follows the same draw as infectiousness and onset:
 
 ```@example asymptomatic
-detect = (rng, ind, t) -> min(1.0, EpiBranch.trajectory_value(ind, t - ind.infection_time) / 1.5)
+detect = AtTestTime((rng, ind, t) -> min(1.0, EpiBranch.trajectory_value(ind, t - ind.infection_time) / 1.5))
 tested = ModelSpec(
     BranchingProcess(from_trajectory);
     attributes = hazard_onset,
@@ -282,7 +282,7 @@ Maximise `loglik` over `θ`, on a grid or with an optimiser.
 | Onset linked to infectiousness, no trajectory | `incubation_linked_generation_time`, or any `ind -> Distribution` as the generation time; `incubation_period` of `clinical_presentation` can be `(rng, ind) -> value` to give asymptomatic cases their own |
 | Trajectory drives onset, infectiousness or both | `within_host` to store the trajectory, an attribute builder that also sets `:asymptomatic` and `:incubation_period` where symptoms follow it, and a `HazardKernel` that reads it with `trajectory_value` |
 | Onset as a hazard on the load | an attribute builder that draws `rand(rng, HazardKernel(t -> k * load(t)))` |
-| Test positivity depends on the load at the test | `test_sensitivity = (rng, ind, t) -> probability` of `Isolation` |
+| Test positivity depends on the load at the test | `test_sensitivity = AtTestTime((rng, ind, t) -> probability)` of `Isolation` |
 
 ## Testing and classification
 

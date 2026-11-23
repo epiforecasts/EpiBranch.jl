@@ -110,7 +110,7 @@ end
     @testset "a sensitivity given as a function of the test time reads the load then" begin
         seen = Float64[]
         function by_load(threshold)
-            return (rng, ind, t) -> begin
+            return AtTestTime() do rng, ind, t
                 push!(seen, t - ind.infection_time)
                 load = EpiBranch.trajectory_value(ind, t - ind.infection_time)
                 return load >= threshold ? 1.0 : 0.0
@@ -139,6 +139,22 @@ end
             asymptomatic = filter(ind -> is_infected(ind) && is_asymptomatic(ind), state.individuals)
             @test !any(is_test_positive, asymptomatic)
         end
+    end
+
+    @testset "a plain function is drawn at creation whatever its arity" begin
+        calls = Ref(0)
+        spec = testing_spec(
+            progression = AbstractClinicalTransition[],
+            interventions = [
+                Isolation(
+                    delay = 1.0, duration = Inf,
+                    test_sensitivity = (rng, ind, extra = nothing) -> (calls[] += 1; 1.0),
+                ),
+            ]
+        )
+        state = simulate(spec; max_cases = 20, rng = StableRNG(6), n_initial = 10)
+        @test calls[] >= length(filter(is_infected, state.individuals))
+        @test_throws ArgumentError EpiBranch._closed_form_value(AtTestTime((rng, ind, t) -> 1.0))
     end
 
     @testset "a Testing sensitivity without a Testing step is an error" begin
