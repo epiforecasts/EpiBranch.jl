@@ -337,7 +337,7 @@ Whether this eligible contact is successfully traced (randomly, using `rng`).
 """
 traces(::TraceRate, infector, contact, state, rng) = false
 
-"""Each eligible contact is traced with probability `p`: a number, a
+"""Each eligible contact is traced with probability `p`, given as a number, a
 `Distribution` or a function of `(rng, infector)`."""
 struct ConstantRate{P} <: TraceRate
     p::P
@@ -561,12 +561,12 @@ traced contacts who are not yet known cases.
   [`OnLabConfirmation`](@ref), [`OnIsolation`](@ref), [`TraceEveryone`](@ref)
   or [`TraceNobody`](@ref). Combine with `&`, `|` and `!`. The keyword form
   defaults to [`SymptomaticParent`](@ref) (symptomatic and isolated).
-- `probability`: share of an eligible case's contacts that tracing finds: a
-  number, a `Distribution` or an `(rng, case) -> value` function, or a
+- `probability`: share of an eligible case's contacts that tracing finds, given
+  as a number, a `Distribution` or an `(rng, case) -> value` function, or a
   [`TraceRate`](@ref).
 - `isolation_to_trace_delay`: days from when tracing of the case starts (its
   isolation by default, onset for `OnSymptomOnset`) to each contact being
-  reached: a number, a `Distribution` or an `(rng, case) -> value` function.
+  reached, given as a number, a `Distribution` or an `(rng, case) -> value` function.
 - `action` (required): what happens to a contact who is found,
   [`Quarantine`](@ref) for a given `duration` or [`FlagOnly`](@ref) to record
   the trace without quarantining. There is no default, because policies differ
@@ -650,7 +650,7 @@ struct ContactTracing{
     depth::Int
 
     # Every construction path ends here, so the ring radius is validated once
-    # and `depth < 1` is rejected rather than silently behaving as depth 1.
+    # and `depth < 1` is rejected.
     function ContactTracing(
             eligibility::TraceEligibility, probability, isolation_to_trace_delay,
             action::TraceAction;
