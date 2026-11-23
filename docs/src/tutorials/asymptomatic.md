@@ -185,7 +185,7 @@ compare(onset_follows)
 
 ## Onset as a hazard on the load
 
-Onset can instead be a random time with a hazard proportional to the load, so a higher load brings symptoms sooner without a fixed threshold. A [`HazardKernel`](@ref) draws that time. A case whose hazard never produces an onset before `upper` gets `Inf` and is asymptomatic:
+Onset can instead be a random time with a hazard proportional to the load: a higher load brings symptoms sooner, with no fixed threshold. A [`HazardKernel`](@ref) draws that time. A case whose hazard never produces an onset before `upper` gets `Inf` and is asymptomatic:
 
 ```@example asymptomatic
 function hazard_onset(rng, ind)
@@ -201,7 +201,7 @@ nothing # hide
 
 ## Test positivity from the load at the test
 
-[`Isolation`](@ref) draws whether a case tests positive once its onset and isolation delay are known. A `test_sensitivity` written `(rng, ind, t) -> probability` is evaluated then, with `t` the time the case is tested (the trigger plus `delay`, on the simulation clock). It can read the load at that time through the case's trajectory, so detection follows the same draw as infectiousness and onset:
+[`Isolation`](@ref) draws whether a case tests positive once its onset and isolation delay are known. A `test_sensitivity` written `(rng, ind, t) -> probability` is evaluated then, with `t` the time the case is tested (the trigger plus `delay`, on the simulation clock). It can read the load at that time through the case's trajectory, Detection then follows the same draw as infectiousness and onset:
 
 ```@example asymptomatic
 detect = (rng, ind, t) -> min(1.0, EpiBranch.trajectory_value(ind, t - ind.infection_time) / 1.5)
@@ -223,7 +223,7 @@ A function with two arguments `(rng, ind)` is still drawn once when the case is 
 
 ## Calibrating a trajectory to an incubation period and a serial interval
 
-The incubation period fixes the time the load takes to reach the onset rule, here the peak time times the threshold over the peak. The serial interval adds the time from onset to transmission, so it splits the peak time from the threshold. Neither fixes the scale of the transmission hazard, which the reproduction number sets, or the units of the load. Parameters that enter only through such a combination need a prior or a fixed value.
+The incubation period fixes the time the load takes to reach the onset rule, here the peak time times the threshold over the peak. The serial interval adds the time from onset to transmission and separates the peak time from the threshold. Neither fixes the scale of the transmission hazard, which the reproduction number sets, or the units of the load. Parameters that enter only through such a combination need a prior or a fixed value.
 
 Write the trajectory model as a function of a parameter vector. Each candidate simulates the model, reads the realised incubation periods and [`realised_serial_intervals`](@ref), and scores the observed values against them. Observed serial intervals are whole-day and censored, so score them as [`serial_interval`](@ref) does, with `double_interval_censored` applied to a distribution fitted to the simulated intervals. The simulated intervals replace the convolution that `serial_interval` builds from independent delays. A fixed random seed per candidate keeps the objective smooth:
 
