@@ -1,6 +1,6 @@
 using ADTypes
-using DifferentiationInterface
 import Enzyme
+using DifferentiationInterface
 import DifferentiationInterfaceTest as DIT
 using FiniteDifferences
 using ForwardDiff
