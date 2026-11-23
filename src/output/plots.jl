@@ -1,8 +1,8 @@
 """
-    epicurve(states::Vector{<:SimulationState}; interval=7, by=:onset,
+    epicurve(states::Vector{<:SimulationState}; interval=7, by = TransitionCount(:onset),
              reference_date=Date(2020, 1, 1), range=nothing,
              probs=(0.025, 0.25, 0.5, 0.75, 0.975))
-    epicurve(state::SimulationState; interval=7, by=:onset,
+    epicurve(state::SimulationState; interval=7, by = TransitionCount(:onset),
              reference_date=Date(2020, 1, 1), range=nothing)
 
 Epidemic curve of simulated outbreaks as a Makie `Figure`, available after

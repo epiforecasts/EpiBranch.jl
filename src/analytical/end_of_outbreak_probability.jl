@@ -237,7 +237,8 @@ end
 """
     end_of_outbreak_inputs(df::AbstractDataFrame, at::Date; date = :date_onset,
                            id = :id, parent_id = :parent_id)
-    end_of_outbreak_inputs(state::SimulationState, at::Real; by = :onset)
+    end_of_outbreak_inputs(state::SimulationState, at::Real;
+                           by = TransitionCount(:onset))
 
 The days since onset of each case and the number of secondary cases each has
 caused by the date `at`, as `(; τs, secondary_cases)`, the two vectors the
@@ -272,7 +273,9 @@ function end_of_outbreak_inputs(
     return (; τs, secondary_cases = [secondary_cases[i] for i in ids])
 end
 
-function end_of_outbreak_inputs(state::SimulationState, at::Real; by::Symbol = :onset)
+function end_of_outbreak_inputs(
+        state::SimulationState, at::Real; by::TransitionCount = TransitionCount(:onset)
+    )
     cases = [ind for ind in individuals(state) if is_infected(ind)]
     times = [_weekly_time(by, ind) for ind in cases]
     observed = findall(t -> isfinite(t) && t <= at, times)

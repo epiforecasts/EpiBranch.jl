@@ -252,7 +252,7 @@ Reporting(delay = LogNormal(2.0, 0.3), from = ind -> ind.infection_time)
 `Transition(:reported; from = :infection, ...)` also times an event from
 infection (its default), but it records `:reported_time`. The line list then
 has a `date_reported` column in place of `date_reporting`, and
-`weekly_incidence(state; by = :reporting)` counts no cases. Use `Reporting`
+`weekly_incidence(state; by = TransitionCount(:reporting))` counts no cases. Use `Reporting`
 when you want the standard reporting dates. Each event has its own `from`: a timeline can admit cases a delay after onset
 and time their outcome from admission.
 
