@@ -219,7 +219,7 @@ symptomatic = [ind for state in states for ind in state.individuals
 )
 ```
 
-A function with two arguments `(rng, ind)` is still drawn once when the case is created. The closed-form [`analytic_offspring_effect`](@ref) refuses either kind of function.
+A function with two arguments `(rng, ind)` is still drawn once when the case is created. The closed-form [`EpiBranch.analytic_offspring_effect`](@ref) refuses either kind of function.
 
 ## Calibrating a trajectory to an incubation period and a serial interval
 
