@@ -148,12 +148,60 @@ needs `EpiBranch._group_trigger_time` for the intervention.
 gives_group_doses(::AbstractIntervention) = false
 gives_group_doses(::GroupVaccination) = true
 
+"""
+    dose_group_key(intervention) -> Symbol
+
+For extension authors: the attribute whose values are the groups that
+`intervention` gives doses to. No default; required when
+[`gives_group_doses`](@ref EpiBranch.gives_group_doses) is `true`.
+"""
 function dose_group_key end
+
+"""
+    dose_efficacy(intervention)
+
+For extension authors: the efficacy of a dose of `intervention`, a number between
+0 and 1. No default; required when
+[`gives_group_doses`](@ref EpiBranch.gives_group_doses) is `true`.
+"""
 function dose_efficacy end
+
+"""
+    dose_mode(intervention) -> AbstractEffectMode
+
+For extension authors: whether a dose of `intervention` is leaky or
+all-or-nothing. Defaults to `LeakyMode()`.
+"""
 dose_mode(::AbstractIntervention) = LeakyMode()
+
+"""
+    dose_coverage(intervention)
+
+For extension authors: the share of a triggered group that `intervention`
+reaches. Defaults to `1.0`.
+"""
 dose_coverage(::AbstractIntervention) = 1.0
+
+"""
+    dose_delay(intervention)
+
+For extension authors: the days from the trigger to the dose. Defaults to `0.0`.
+"""
 dose_delay(::AbstractIntervention) = 0.0
+
+"""
+    dose_delay_to_immunity(intervention)
+
+For extension authors: the days from a dose to protection. Defaults to `0`.
+"""
 dose_delay_to_immunity(::AbstractIntervention) = 0
+
+"""
+    dose_waning(intervention)
+
+For extension authors: the waning of protection after a dose. Defaults to
+`nothing`, no waning.
+"""
 dose_waning(::AbstractIntervention) = nothing
 
 dose_group_key(gv::GroupVaccination) = gv.group_key
