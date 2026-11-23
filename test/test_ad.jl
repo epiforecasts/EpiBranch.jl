@@ -14,8 +14,8 @@ using StableRNGs
 #
 # Scope: ForwardDiff through DIT, plus a Mooncake reverse-mode pass in a
 # separate testset below. Enzyme reverse mode is covered for
-# `incidence_moments` only. Mooncake is the reverse-mode backend the package
-# targets, so the analytical likelihoods are checked both ways. It is not run
+# `incidence_moments` and for the closed-form `ModelSpec` likelihood. Mooncake is
+# the reverse-mode backend the package targets, so the analytical likelihoods are checked both ways. It is not run
 # through DIT because DIT's correctness harness builds its reverse rule
 # through the `ChainSizes`/etc. data constructor (including its validation
 # branch) and errors there; a direct gradient comparison against ForwardDiff
@@ -249,8 +249,9 @@ end
     )
 end
 
-# Enzyme cannot compile the `ModelSpec` construction (the window validation
-# over a progression vector) on Julia 1.10. The test runs from 1.11.
+# Enzyme cannot compile the `ModelSpec` construction with a progression (the
+# window validation over a progression vector) on Julia 1.10. The test runs
+# from 1.11.
 if VERSION >= v"1.11"
     @testset "AD (Enzyme reverse mode) through a Reporting spec" begin
         sizes_data = [1, 2, 1, 3, 1, 5, 2]
@@ -747,4 +748,36 @@ end
     )
     @test ForwardDiff.derivative(θ -> qred(θ)[1], 0.9) ≈ fdm(θ -> qred(θ)[1], 0.9) rtol = 1.0e-5
     @test ForwardDiff.derivative(θ -> qred(θ)[2], 0.9) == 0
+end
+
+# Reverse-mode Enzyme through the closed-form likelihood of a `ModelSpec` with
+# no progression. The extension marks the simulation fallback inactive.
+# Enzyme then compiles only the analytical path. As above, Enzyme cannot compile
+# the `ModelSpec` construction on Julia 1.10; the test runs from 1.11.
+if VERSION >= v"1.11"
+    @testset "AD (Enzyme reverse mode)" begin
+        sizes_data = [1, 2, 1, 3, 1, 5, 2]
+        enzyme = AutoEnzyme(; mode = Enzyme.set_runtime_activity(Enzyme.Reverse))
+        spec(R) = ModelSpec(BranchingProcess(Poisson(R[1])))
+
+        cases = [
+            R -> loglikelihood(ChainSizes(sizes_data), spec(R)),
+            R -> logpdf(chain_size_distribution(spec(R)), 3),
+        ]
+        for f in cases
+            @test DifferentiationInterface.gradient(f, enzyme, [0.5]) ≈
+                DifferentiationInterface.gradient(f, AutoForwardDiff(), [0.5]) rtol = 1.0e-6
+        end
+
+        # A spec with no closed form is estimated by simulation, which Enzyme
+        # cannot differentiate. The gradient call must throw an error rather than
+        # return zero.
+        iso = Isolation(delay = Exponential(1.0), duration = Inf)
+        simulated(R) = loglikelihood(
+            ChainSizes(sizes_data),
+            ModelSpec(BranchingProcess(Poisson(R[1])); interventions = [iso]);
+            n_sim = 20, rng = StableRNG(1)
+        )
+        @test_throws ArgumentError DifferentiationInterface.gradient(simulated, enzyme, [0.5])
+    end
 end
