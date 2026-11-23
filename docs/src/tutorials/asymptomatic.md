@@ -223,9 +223,9 @@ A function with two arguments `(rng, ind)` is still drawn once when the case is 
 
 ## Calibrating a trajectory to an incubation period and a serial interval
 
-A trajectory model has more free parameters than an incubation period and a serial interval can pin down. The incubation period fixes how long the load takes to reach the onset rule, which here is the peak time times the threshold over the peak. It says nothing separate about the peak time and the threshold. The serial interval adds the time from onset to transmission, because the infector's infectiousness follows the same load. It fixes the peak time against the onset rule, and so splits the two. Neither distribution fixes the scale of the transmission hazard, which the reproduction number sets, or the units of the load, which cancel against the threshold and the hazard scale. Parameters that only enter through such a combination need a prior or a fixed value, and a fit that moves them along the combination changes nothing.
+The incubation period fixes the time the load takes to reach the onset rule, here the peak time times the threshold over the peak. The serial interval adds the time from onset to transmission, so it splits the peak time from the threshold. Neither fixes the scale of the transmission hazard, which the reproduction number sets, or the units of the load. Parameters that enter only through such a combination need a prior or a fixed value.
 
-Calibration needs no model of its own. Write the trajectory model as a function of a parameter vector and fit that vector to the data. Each candidate simulates the model, reads the realised incubation periods and [`realised_serial_intervals`](@ref), and scores the observed values against them. Observed serial intervals are reported in whole days and are censored, so score them as [`serial_interval`](@ref) does, with CensoredDistributions.jl's `double_interval_censored` applied to a distribution fitted to the simulated intervals. With a shared trajectory the generation time and the two incubation periods are correlated, so the simulated intervals replace the convolution that `serial_interval` builds from independent delays. Using the same random seed for every candidate keeps the objective smooth enough for a grid or an optimiser:
+Write the trajectory model as a function of a parameter vector. Each candidate simulates the model, reads the realised incubation periods and [`realised_serial_intervals`](@ref), and scores the observed values against them. Observed serial intervals are whole-day and censored, so score them as [`serial_interval`](@ref) does, with `double_interval_censored` applied to a distribution fitted to the simulated intervals. The simulated intervals replace the convolution that `serial_interval` builds from independent delays. A fixed random seed per candidate keeps the objective smooth:
 
 ```julia
 using EpiBranch, Distributions, CensoredDistributions, StableRNGs
@@ -269,7 +269,7 @@ function loglik(θ, incubation_obs, serial_obs)
 end
 ```
 
-Maximise `loglik` over `θ`, on a grid or with an optimiser. Candidates that give the same incubation distribution, for example a later peak with a lower threshold, are told apart only by the serial-interval term.
+Maximise `loglik` over `θ`, on a grid or with an optimiser.
 
 ## Which seam states which link
 
