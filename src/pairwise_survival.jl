@@ -1471,7 +1471,7 @@ end
 function MassActionHazard(;
         transmission_rate, population = NoPopulation(), population_size = NoPopulation()
     )
-    pop = _population_input(population, population_size)
+    pop = _reject_immune(_population_input(population, population_size), "MassActionHazard")
     pop isa GroupedPopulation && throw(
         ArgumentError(
             "MassActionHazard mixes one population, so give `Population(n)`, not sizes by group"

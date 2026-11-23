@@ -516,10 +516,46 @@ function simulate_once(
     )
     # An empty tuple lets the race omit intervention setup and per-case hooks.
     return _simulate_offspring(
-        model, model.infectiousness, sim_opts, isempty(interventions) ? () : interventions;
+        model, _multiplied(model.infectiousness, model.multiplier), sim_opts,
+        isempty(interventions) ? () : interventions;
         attributes, progression, observation, recorder, rng
     )
 end
+
+# Draws the offspring of a case with its mean scaled by the multiplier of the run
+# for the generation of the case. The multiplier is drawn once per generation and
+# shared by every window.
+struct _Multiplied{O, M}
+    offspring::O
+    multiplier::M
+    draws::Dict{Int, Any}
+end
+
+_multiplied(windows::Tuple, ::Nothing) = windows
+function _multiplied(windows::Tuple, multiplier)
+    draws = Dict{Int, Any}()
+    return map(windows) do w
+        Infectiousness(
+            _Multiplied(w.offspring, multiplier, draws), w.from, w.from_key, w.until,
+            w.kernel, w.calendar, w.name
+        )
+    end
+end
+
+reads_settled_state(m::_Multiplied) = reads_settled_state(m.offspring)
+
+function draw_offspring(rng, o::_Multiplied, individual, state)
+    m = get!(o.draws, individual.generation) do
+        _draw_multiplier(
+            stream(state.rng, :multiplier, (:generation, individual.generation)), o.multiplier
+        )
+    end
+    return _draw_scaled(rng, o.offspring, individual, m)
+end
+_draw_scaled(rng, offspring::Distribution, individual, m) =
+    rand(rng, scale_mean(offspring, _type_multiplier(m, 1)))
+_draw_scaled(rng, offspring::MultiTypeOffspring, individual, m) =
+    _draw_by_type(rng, offspring, individual, m)
 
 # A model of its own that says how many contacts each case makes, through
 # `generate_offspring`, is a branching process with one window: the count is

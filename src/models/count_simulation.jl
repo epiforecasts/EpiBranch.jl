@@ -30,7 +30,8 @@ transmission, apart from the depletion of a finite population by type and the
 vaccination campaigns, which are applied to the counts as doses, and its
 generation time is a distribution on whole days. A
 [`BranchingProcess`](@ref) may have several infectiousness windows or several
-types. A method for a new model type gives it the count-level path. The rule is
+types, but not a `multiplier` or an `immune` population, which run as
+individuals. A method for a new model type gives it the count-level path. The rule is
 a [`CountRule`](@ref), or a [`CountRules`](@ref) for several windows or types.
 """
 count_rule(::TransmissionModel) = nothing
@@ -130,6 +131,8 @@ end
 
 function count_rule(model::BranchingProcess)
     isempty(transmission_risks(model)) || return nothing
+    model.multiplier === nothing || return nothing
+    _immune_total(population(model)) == 0 || return nothing
     _counts_population(population(model), n_types(model)) || return nothing
     windows = model.infectiousness
     all(w -> w.from === :infection && isempty(w.until) && w.calendar === nothing, windows) ||

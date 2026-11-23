@@ -128,12 +128,12 @@ function BranchingProcess(
         dist_fn,
         gt;
         population = NoPopulation(), population_size = NoPopulation(),
-        type_labels::Union{Vector{String}, NoTypeLabels} = NoTypeLabels()
+        type_labels::Union{Vector{String}, NoTypeLabels} = NoTypeLabels(), multiplier = nothing
     )
     offspring = MultiTypeOffspring(offspring_matrix, dist_fn)
     return BranchingProcess(
         (Infectiousness(offspring; kernel = gt),);
-        n_types = _n_types(offspring), population, population_size, type_labels
+        n_types = _n_types(offspring), population, population_size, type_labels, multiplier
     )
 end
 
@@ -178,11 +178,11 @@ function BranchingProcess(
         contacts::AbstractMatrix{<:Real}, q::Union{Real, AbstractVector{<:Real}},
         D::Real, dist_fn, gt;
         population = NoPopulation(), population_size = NoPopulation(),
-        type_labels::Union{Vector{String}, NoTypeLabels} = NoTypeLabels()
+        type_labels::Union{Vector{String}, NoTypeLabels} = NoTypeLabels(), multiplier = nothing
     )
     return BranchingProcess(
         FrequencyDependent(contacts), q, D, dist_fn, gt;
-        population, population_size, type_labels
+        population, population_size, type_labels, multiplier
     )
 end
 
@@ -198,6 +198,17 @@ function draw_offspring(
         rng::AbstractRNG, offspring::MultiTypeOffspring,
         individual, state::SimulationState
     )
+    return _draw_by_type(rng, offspring, individual, nothing)
+end
+
+function _check_scalable(o::MultiTypeOffspring)
+    for (j, R) in enumerate(o.R_by_type)
+        R > 0 && scale_mean(_type_law(o.dist_fn, R, j), 1.0)
+    end
+    return nothing
+end
+
+function _draw_by_type(rng, offspring::MultiTypeOffspring, individual, m)
     n = _n_types(offspring)
     pt = individual_type(individual)
     R = offspring.R_by_type[pt]
@@ -205,7 +216,9 @@ function draw_offspring(
     # before calling `dist_fn`: the documented `R -> NegBin(R, k)` form throws at
     # R = 0 because `NegBin` requires R > 0.
     R <= 0 && return zeros(Int, n)
-    total = rand(rng, _type_law(offspring.dist_fn, R, pt))
+    law = _type_law(offspring.dist_fn, R, pt)
+    m === nothing || (law = scale_mean(law, _type_multiplier(m, pt)))
+    total = rand(rng, law)
     total == 0 && return zeros(Int, n)
     return rand(rng, Multinomial(total, offspring.alloc_probs[:, pt]))
 end

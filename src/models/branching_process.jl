@@ -273,7 +273,8 @@ end
 # ── BranchingProcess type and constructors ──────────────────────────
 
 """
-    BranchingProcess(offspring, generation_time; population = NoPopulation(), importations = nothing)
+    BranchingProcess(offspring, generation_time; population = NoPopulation(),
+                     multiplier = nothing, importations = nothing)
     BranchingProcess(offspring)
     BranchingProcess(windows::Infectiousness...)
 
@@ -292,7 +293,16 @@ Transmission slows as cases accumulate (unlimited by default).
 `population_size = n` is shorthand for `population = Population(n)`. A
 multi-type model (an offspring function or a contact matrix) takes the size of
 each type's population, `Population(sizes)`, and depletes each type against
-its own size.
+its own size. The `immune` of the population are never infected.
+
+`multiplier` is a `Distribution` of mean one, or one per type, drawn once for
+each generation (index cases are generation 0): it scales the offspring mean of
+every case in that generation, across every infectiousness window. A vector
+gives each type its own draw. The offspring must be a `Distribution` with an
+[`EpiBranch.scale_mean`](@ref) method, or an offspring matrix whose laws have
+one; any other model raises an `ArgumentError` when built. A model with a
+`multiplier` runs as individuals, not on the daily count-level path of
+[`simulate`](@ref). [`simulate_by_generation`](@ref) draws the same multiplier.
 
 `importations` is a vector of times at which further index cases arrive,
 added to the `n_initial` index cases at time 0. Their `:infection_route` is
@@ -333,12 +343,44 @@ For transmission by several routes, or starting and stopping at points in
 the natural history, build the process from [`Infectiousness`](@ref)
 windows. The forms above make a single one that starts at infection.
 """
-struct BranchingProcess{W <: Tuple, P, L, I} <: TransmissionModel
+struct BranchingProcess{W <: Tuple, P, L, M, I} <: TransmissionModel
     infectiousness::W
     population::P
     n_types::Int
     type_labels::L
+    multiplier::M
     importations::I
+end
+
+function BranchingProcess(windows::Tuple, population, n_types::Int, type_labels)
+    return BranchingProcess(windows, population, n_types, type_labels, nothing, nothing)
+end
+
+_check_multiplier(::Nothing, windows, n_types::Integer) = nothing
+function _check_multiplier(multiplier, windows, n_types::Integer)
+    all(d -> d isa UnivariateDistribution, multiplier isa AbstractVector ? multiplier : (multiplier,)) ||
+        throw(
+        ArgumentError(
+            "`multiplier` must be a Distribution, or a vector with one per type, " *
+                "not $(typeof(multiplier))"
+        )
+    )
+    multiplier isa AbstractVector && length(multiplier) != n_types && throw(
+        ArgumentError(
+            "`multiplier` has $(length(multiplier)) distributions for $n_types types"
+        )
+    )
+    foreach(w -> _check_scalable(w.offspring), windows)
+    return multiplier
+end
+_check_scalable(o::Distribution) = scale_mean(o, 1.0)
+function _check_scalable(o)
+    throw(
+        ArgumentError(
+            "`multiplier` scales the mean of an offspring law, so the offspring must be " *
+                "a Distribution or an offspring matrix, not $(typeof(o))"
+        )
+    )
 end
 
 _check_importations(::Nothing) = nothing
@@ -484,12 +526,14 @@ population_size(m::BranchingProcess) = total_size(m.population)
 n_types(m::BranchingProcess) = m.n_types
 
 # A finite population thins transmission as cases accumulate, a window with
-# `until` stops it before every drawn contact happens, and a window's
-# `calendar` scales its kernel's hazard over time; all three reshape the
+# `until` stops it before every drawn contact happens, a window's
+# `calendar` scales its kernel's hazard over time, and a `multiplier` makes
+# cases of a generation share their variation; all four reshape the
 # offspring law away from the bare distribution, so the analytical chain-size
 # likelihood must not take the model's offspring law as read.
 function offspring_law_unchanged(m::BranchingProcess)
     m.population isa NoPopulation || return false
+    m.multiplier === nothing || return false
     return all(w -> isempty(w.until) && w.calendar === nothing, m.infectiousness)
 end
 
@@ -558,24 +602,23 @@ end
 # Single-type with a contact interval (one default window).
 function BranchingProcess(
         offspring::Distribution, gt;
-        population = NoPopulation(), population_size = NoPopulation(), importations = nothing
+        population = NoPopulation(), population_size = NoPopulation(), multiplier = nothing,
+        importations = nothing
     )
     return BranchingProcess(
-        (Infectiousness(offspring; kernel = gt),),
-        _branching_population(population, population_size, 1), 1, NoTypeLabels(),
-        _check_importations(importations)
+        (Infectiousness(offspring; kernel = gt),); population, population_size, multiplier,
+        importations
     )
 end
 
 # Single-type without a contact interval (pure chain statistics).
 function BranchingProcess(
         offspring::Distribution;
-        population = NoPopulation(), population_size = NoPopulation(), importations = nothing
+        population = NoPopulation(), population_size = NoPopulation(), multiplier = nothing,
+        importations = nothing
     )
     return BranchingProcess(
-        (Infectiousness(offspring),),
-        _branching_population(population, population_size, 1), 1, NoTypeLabels(),
-        _check_importations(importations)
+        (Infectiousness(offspring),); population, population_size, multiplier, importations
     )
 end
 
@@ -583,11 +626,12 @@ end
 function BranchingProcess(
         offspring, gt;
         n_types::Int = 1, population = NoPopulation(), population_size = NoPopulation(),
-        type_labels::Union{Vector{String}, NoTypeLabels} = NoTypeLabels(), importations = nothing
+        type_labels::Union{Vector{String}, NoTypeLabels} = NoTypeLabels(), multiplier = nothing,
+        importations = nothing
     )
     return BranchingProcess(
         (Infectiousness(offspring; kernel = gt),); n_types, population, population_size,
-        type_labels, importations
+        type_labels, multiplier, importations
     )
 end
 
@@ -595,11 +639,13 @@ end
 function BranchingProcess(
         windows::Tuple{Infectiousness, Vararg{Infectiousness}};
         n_types::Int = 1, population = NoPopulation(), population_size = NoPopulation(),
-        type_labels::Union{Vector{String}, NoTypeLabels} = NoTypeLabels(), importations = nothing
+        type_labels::Union{Vector{String}, NoTypeLabels} = NoTypeLabels(), multiplier = nothing,
+        importations = nothing
     )
     pop = _branching_population(population, population_size, n_types)
     return BranchingProcess(
-        windows, pop, n_types, _type_labels(pop, type_labels), _check_importations(importations)
+        windows, pop, n_types, _type_labels(pop, type_labels),
+        _check_multiplier(multiplier, windows, n_types), _check_importations(importations)
     )
 end
 function BranchingProcess(window::Infectiousness, windows::Infectiousness...; kwargs...)
