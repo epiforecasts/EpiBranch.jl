@@ -309,7 +309,9 @@ added to the `n_initial` index cases at time 0. Their `:infection_route` is
 `:external`. In a multi-type model each import's type is drawn uniformly from
 the types; `index_types` applies only to the index cases at time 0. Only the
 offspring route of `BranchingProcess` reads `importations`; a model with its
-own `initialise_state` does not.
+own `initialise_state` does not. [`simulate_by_generation`](@ref) and
+starting from observed cases raise an `ArgumentError` for a model with
+`importations`.
 
 The transmission model describes only who infects whom and when. Add the
 natural history, interventions, population characteristics and reporting

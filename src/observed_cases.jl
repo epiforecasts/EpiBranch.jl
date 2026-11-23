@@ -200,6 +200,12 @@ function _initialise_observed(
                 "`multiplier`: build the process without one"
         )
     )
+    process.importations === nothing || throw(
+        ArgumentError(
+            "starting from observed cases does not apply `importations`: " *
+                "build the process without them"
+        )
+    )
     validate_process_windows(process, progression)
     _check_population(process)
     obs = _read_observed_cases(cases)

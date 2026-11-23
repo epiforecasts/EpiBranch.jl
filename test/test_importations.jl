@@ -1,3 +1,7 @@
+using Distributions
+using DataFrames
+using StableRNGs
+
 @testset "BranchingProcess importations" begin
     times = [3.0, 10.0, 25.0]
 
@@ -76,4 +80,17 @@ end
     @test EpiBranch.count_rule(model) === nothing
     state = simulate(model; max_time = 20.0, rng = StableRNG(6))
     @test [i.infection_time for i in individuals(state)] == [0.0, 7.0]
+end
+
+@testset "Entry points that cannot apply importations refuse them" begin
+    model = BranchingProcess(Poisson(1.0); importations = [7.0])
+    @test_throws ArgumentError simulate_by_generation(model; rng = StableRNG(7))
+    @test_throws ArgumentError simulate_by_generation(
+        ModelSpec(model); rng = StableRNG(7)
+    )
+    cases = DataFrame(
+        id = [1, 2], parent_id = [missing, 1], infection_time = [0.0, 2.0]
+    )
+    obs_model = BranchingProcess(Poisson(1.0), Gamma(2.0, 2.0); importations = [7.0])
+    @test_throws ArgumentError state_from_cases(obs_model, cases; rng = StableRNG(7))
 end

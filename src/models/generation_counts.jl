@@ -229,7 +229,8 @@ no generation-time kernel (discrete generations), no `until` and no
 offspring matrix (`MultiTypeOffspring`); any other model raises an
 `ArgumentError` naming which of these it fails. The model's `multiplier` is
 drawn once per generation (see [`BranchingProcess`](@ref)); with `Poisson`
-offspring the generation's total is a mixed Poisson. The susceptibles of a
+offspring the generation's total is a mixed Poisson. A model with `importations`
+raises an `ArgumentError`. The susceptibles of a
 type start at its population minus those in the `immune` of the population and its
 index cases.
 
@@ -366,6 +367,12 @@ end
 function _initial_generation_state(
         model::BranchingProcess, n_initial, rng, population_by_type, depletion,
         generation_length
+    )
+    model.importations === nothing || throw(
+        ArgumentError(
+            "`simulate_by_generation` does not apply `importations`: " *
+                "build the process without them"
+        )
     )
     nt = n_types(model)
     counts = _per_type_counts(model, n_initial, :n_initial)
