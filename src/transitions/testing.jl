@@ -132,7 +132,7 @@ end
 
 The log-probability of the result `positive` and the log-density of `reading`
 for a sample at trajectory value `value`: the reverse of
-[`measure`](@ref). A `NaN` reading carries no density. Define it for a new
+[`measure`](@ref). A `NaN` reading has no density. Define it for a new
 `AbstractAssay` to use it with [`progression_loglik`](@ref).
 """
 function measure_loglik(a::Assay, value, reading, positive)
@@ -166,7 +166,7 @@ function _detect_loglik(rule, value, positive)
     )
 end
 
-# A sample too low to give a reading records `NaN`, which carries no density.
+# A sample too low to give a reading records `NaN`, which has no density.
 _reading_loglik(noise, base, reading) = isnan(reading) ? 0.0 : _reading_density(noise, base, reading)
 _reading_density(::Nothing, base, reading) = isapprox(base, reading) ? 0.0 : -Inf
 _reading_density(noise::Distribution, base, reading) = logpdf(noise, reading - base)
