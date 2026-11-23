@@ -166,8 +166,8 @@ end
     enzyme_activity = AutoEnzyme(; mode = Enzyme.set_runtime_activity(Enzyme.Reverse))
 
     # On Julia 1.10 Enzyme reports the constant symbol lookups in the
-    # closed-form checks as stored into a differentiable value, so the bare
-    # model needs runtime activity there; later versions do not.
+    # closed-form checks as stored into a differentiable value. The bare
+    # model needs runtime activity there, but later versions do not.
     enzyme_bare = VERSION >= v"1.11" ? enzyme : enzyme_activity
 
     function check(f, x, backends)
