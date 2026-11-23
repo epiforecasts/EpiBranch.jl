@@ -280,8 +280,12 @@ function chain_size_distribution(
             isempty(interventions(m)) && has_single_type_law(m) &&
             offspring_law_unchanged(m) && offspring_law_unchanged(attributes(m)) &&
             all(offspring_law_unchanged, progression(m))
+        offspring = single_type_offspring(m)
+        if isempty(progression(m)) && _has_exact_chain_size(offspring)
+            return observe(chain_size_distribution(offspring), observation(m))
+        end
         folded = _exact_reported_chain_size(
-            single_type_offspring(m), progression(m), observation(m), attributes(m)
+            offspring, progression(m), observation(m), attributes(m)
         )
         folded !== nothing && return observe(folded, observation(m))
     end
