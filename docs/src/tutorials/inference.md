@@ -559,11 +559,8 @@ block_grad = mean(
 println("d(# surviving)/dp ≈ $(round(block_grad, digits = 1)) (exact: $(-n_contacts))")
 ```
 
-These two patterns do not extend to `simulate` under interventions, and
-gradients of simulated outputs there are out of scope. Whether a transmission
-is blocked decides infection times, which cases exist and what the stopping
-rules see, so no single `propagate` call covers it. For a gradient-based
-sampler, use the likelihood functions with Enzyme or Mooncake instead.
+Gradients of simulated outputs under interventions are out of scope. For a
+gradient-based sampler, use the likelihood functions with Enzyme or Mooncake.
 
 ## Clusters started by more than one case
 
