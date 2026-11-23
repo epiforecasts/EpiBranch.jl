@@ -541,6 +541,8 @@ function _multiplied(windows::Tuple, multiplier)
     end
 end
 
+reads_settled_state(m::_Multiplied) = reads_settled_state(m.offspring)
+
 function draw_offspring(rng, o::_Multiplied, individual, state)
     m = get!(o.draws, individual.generation) do
         _draw_multiplier(
