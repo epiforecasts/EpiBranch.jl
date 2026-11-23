@@ -1,4 +1,4 @@
-# A commit's report is the ten coverage uploads together: the four groups
+# A commit's report is the coverage uploads together: each group
 # of the root suite on two Julia versions, EpiNetwork and EpiHouseholds. When a
 # job fails, its flag never uploads, and without carry-forward the files it
 # covers vanish from the report: a failing root job left main measured on 483
@@ -27,3 +27,10 @@ coverage:
     patch:
       default:
         target: 90%
+
+# Post the status and comment once, when the `coverage` job in CI.yml says
+# every upload is in. A report made after only some uploads compares a partly
+# measured commit with its base and shows a drop of several points.
+codecov:
+  notify:
+    manual_trigger: true
