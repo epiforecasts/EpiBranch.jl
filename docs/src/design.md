@@ -116,14 +116,14 @@ times using the quantities used to simulate.
 A model is the whole description of how the data arise. It has five parts:
 
 - **transmission**: how infection spreads between people, and nothing else;
-- disease: the natural history within each case, the timed states it moves
+- **disease**: the natural history within each case, the timed states it moves
   through (latent, infectious, onset, severe, recovered or died), with
   treatment as a step it may pass through;
 - **population characteristics**: who the people are (age, susceptibility,
   infectiousness), which can affect transmission, the course of disease, and
   whom interventions reach;
-- interventions: what is done about it (isolation, tracing, vaccination);
-- observation: how cases are seen. Per-case reporting (the probability that a case is reported and the delay to its report) is a `Reporting` step of the disease progression, so each case records whether and when it was reported. Observation models cover the chain-level recording, such as `MinimumSize` and `ChainDetection`, which turn the true outbreak into the chains that are observed. A case definition classifies each case as confirmed, probable or suspected from the events recorded on it in the same way. An intervention can read the classification of a case at any time during the run. The line list shows it after the run.
+- **interventions**: what is done about it (isolation, tracing, vaccination);
+- **observation**: how cases are seen. Per-case reporting (the probability that a case is reported and the delay to its report) is a `Reporting` step of the disease progression, so each case records whether and when it was reported. Observation models cover the chain-level recording, such as `MinimumSize` and `ChainDetection`, which turn the true outbreak into the chains that are observed. A case definition classifies each case as confirmed, probable or suspected from the events recorded on it in the same way. An intervention can read the classification of a case at any time during the run. The line list shows it after the run.
 
 These match how epidemiologists describe an outbreak: a pathogen spreads,
 infection causes disease, in a population of people, under a response, watched
