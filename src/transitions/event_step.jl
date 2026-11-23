@@ -41,9 +41,7 @@ function transition_loglik(
     )
 end
 
-# The log-likelihood of an event step and whether the event counts as having
-# occurred (by `followup_end` and before the case's outcome), for steps that
-# score more than the event.
+# Returns the event log-likelihood and whether the event occurred.
 function _event_loglik(
         x, individual::Individual, flag_key, time_key, from_key;
         followup_end, truncated

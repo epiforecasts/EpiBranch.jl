@@ -84,17 +84,12 @@ An assay that maps the value in a sample to a reading and to a result.
   result is positive when the value reaches it. A function
   `(rng, value) -> Bool` gives a result that can be probabilistic, for example a
   detection probability that rises with the value. Use
-  [`DetectionProbability`](@ref) for a probabilistic result that
-  [`progression_loglik`](@ref) can score; a plain function has no probability
-  to evaluate.
+  [`DetectionProbability`](@ref) for a result that
+  [`progression_loglik`](@ref) can score.
 - `noise`: `nothing` for a reading that is exactly `value(v)`, or a
-  `Distribution` of the measurement error added to it. The likelihood scores a
-  recorded reading by the density of that error, so it is needed to use
-  observed Ct values for inference; without it a reading either matches the
-  trajectory exactly or is impossible.
+  `Distribution` of the measurement error added to it.
 
-`value` and `detect` have no default, as both depend on the assay and the
-pathogen tested for.
+`value` and `detect` have no default.
 
 # Examples
 
@@ -114,8 +109,7 @@ Assay(; value, detect, noise = nothing) = Assay(value, detect, noise)
     DetectionProbability(probability)
 
 A `detect` rule for [`Assay`](@ref): a sample with value `v` is positive with
-probability `probability(v)`. Unlike a plain `(rng, value) -> Bool` function,
-[`progression_loglik`](@ref) can score the result it gives.
+probability `probability(v)`.
 """
 struct DetectionProbability{F}
     probability::F
@@ -138,8 +132,7 @@ end
 
 The log-probability of the result `positive` and the log-density of `reading`
 for a sample at trajectory value `value`: the reverse of
-[`measure`](@ref), used by [`transition_loglik`](@ref EpiBranch.transition_loglik)
-for [`Testing`](@ref). A `NaN` reading carries no density. Define it for a new
+[`measure`](@ref). A `NaN` reading carries no density. Define it for a new
 `AbstractAssay` to use it with [`progression_loglik`](@ref).
 """
 function measure_loglik(a::Assay, value, reading, positive)
@@ -313,8 +306,6 @@ function _read_test_positive!(t::Testing, iso, individual, state)
     return nothing
 end
 
-# The probability and timing of the sample, then the result and reading it gave
-# given the case's trajectory at the sampling time.
 function transition_loglik(
         t::Testing, individual::Individual; followup_end = Inf, truncated = false
     )
