@@ -801,7 +801,7 @@ outbreak reaches rather than to the size of the population. Every slot in
 `individuals(state)` starts out pointing to one placeholder, shared by every
 slot and never mutated: it reads as never infected (`is_infected` false),
 untouched by any intervention, with susceptibility and infectiousness at
-their neutral value of 1. The engine replaces it with a real person, drawing
+their neutral value of 1. The simulation replaces it with a real person, drawing
 their population characteristics from the per-person streams [`stream`](@ref)
 gives every other draw, the first time it proposes that node an infection or
 an intervention reaches it; `setup` and `interventions` are applied then,

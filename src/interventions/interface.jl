@@ -446,8 +446,8 @@ asks this of each intervention it is given and warns when one answers `false`,
 so an inert intervention does not run unnoticed.
 
 The default reads the method tables: `true` for a type with a method of its own,
-at the number of arguments the engine calls it with, for one of the hooks the
-package dispatches on an intervention. An intervention that reaches the model
+at an arity the simulation calls, for one of the package's
+intervention hooks. An intervention that reaches the model
 some other way, through a seam a package of its own defines for instance,
 defines `EpiBranch.has_effect(::MyIntervention) = true` to say so. The question
 is asked once per intervention type, so the answer should not depend on the

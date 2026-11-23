@@ -110,7 +110,7 @@ The times of one case's contacts on a window, measured from the window's
 offspring function that already knows when each contact falls, such as one
 built day by day, returns this to place every contact at its own time rather
 than losing that to an independent draw from the window's `kernel`, which
-this makes unnecessary and which the engine then does not call.
+this makes unnecessary and the simulation then never calls.
 
 Has no per-type label, so it only works with a single-type model
 (`n_types = 1`); a multi-type model raises an error rather than assigning
