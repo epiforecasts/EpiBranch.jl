@@ -296,17 +296,13 @@ each type's population, `Population(sizes)`, and depletes each type against
 its own size. The `immune` of the population are never infected.
 
 `multiplier` is a `Distribution` of mean one, or one per type, drawn once for
-each generation: it scales the mean of the offspring law of every case in
-that generation before the case draws from it, so cases of a generation share
-their variation in transmission. A vector gives each type its own draw. A case's
-generation is its number of steps from an index case, which is generation 0.
-The same draw applies to every infectiousness window. The offspring must be a
-`Distribution` with an [`EpiBranch.scale_mean`](@ref) method, or an offspring
-matrix whose laws have one; any other model raises an `ArgumentError` when
-built. The daily count-level path of [`simulate`](@ref) does not apply
-to a model with a `multiplier`, and its runs are of individuals.
-[`simulate_by_generation`](@ref) draws the same multiplier for the counts of a
-generation.
+each generation (index cases are generation 0): it scales the offspring mean of
+every case in that generation, across every infectiousness window. A vector
+gives each type its own draw. The offspring must be a `Distribution` with an
+[`EpiBranch.scale_mean`](@ref) method, or an offspring matrix whose laws have
+one; any other model raises an `ArgumentError` when built. A model with a
+`multiplier` runs as individuals, not on the daily count-level path of
+[`simulate`](@ref). [`simulate_by_generation`](@ref) draws the same multiplier.
 
 The transmission model describes only who infects whom and when. Add the
 natural history, interventions, population characteristics and reporting
@@ -349,8 +345,6 @@ function BranchingProcess(windows::Tuple, population, n_types::Int, type_labels)
     return BranchingProcess(windows, population, n_types, type_labels, nothing)
 end
 
-# The `multiplier` a process is built with: `nothing`, one `Distribution`, or
-# one per type. Every offspring law must be one whose mean can be scaled.
 _check_multiplier(::Nothing, windows, n_types::Integer) = nothing
 function _check_multiplier(multiplier, windows, n_types::Integer)
     all(d -> d isa UnivariateDistribution, multiplier isa AbstractVector ? multiplier : (multiplier,)) ||

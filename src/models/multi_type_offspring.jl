@@ -208,7 +208,6 @@ function _check_scalable(o::MultiTypeOffspring)
     return nothing
 end
 
-# `m`, when not `nothing`, is the multiplier that scales the mean of the law.
 function _draw_by_type(rng, offspring::MultiTypeOffspring, individual, m)
     n = _n_types(offspring)
     pt = individual_type(individual)

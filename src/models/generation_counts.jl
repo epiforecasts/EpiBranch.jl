@@ -141,8 +141,8 @@ function _generation_offspring(model::BranchingProcess)
     return offspring
 end
 
-# A per-type count argument (`n_initial`) as the starting counts: an `Int` for a
-# single-type model, a vector of one count per type for a multi-type one.
+# `n_initial` as the starting counts: an `Int` for a single-type model, a vector
+# with one count per type for a multi-type one.
 function _per_type_counts(model::BranchingProcess, x, name::Symbol)
     nt = n_types(model)
     if nt == 1
@@ -228,9 +228,7 @@ no generation-time kernel (discrete generations), no `until` and no
 `calendar`, and an offspring specification of a `Distribution` or an
 offspring matrix (`MultiTypeOffspring`); any other model raises an
 `ArgumentError` naming which of these it fails. The model's `multiplier` is
-drawn once per generation, as in a run of individuals (see
-[`BranchingProcess`](@ref)): it scales the mean of the offspring law of every
-case in the generation before each draws from it, so that with `Poisson`
+drawn once per generation (see [`BranchingProcess`](@ref)); with `Poisson`
 offspring the generation's total is a mixed Poisson. The susceptibles of a
 type start at its population minus those in the population's `immune` and its
 index cases.
@@ -388,7 +386,6 @@ function _generation_length(length::Real)
     return Float64(length)
 end
 
-# The people immune at the start, as the population gives them.
 _immune(::NoPopulation, nt) = 0
 function _immune(p::SinglePopulation, nt)
     nt == 1 && return p.immune
@@ -610,8 +607,6 @@ _scalar(x::Int) = x
 _scalar(x::Vector{Int}) = only(x)
 _like(::Vector{Int}, v::Vector{Int}) = v
 
-# One draw of the model's multiplier: none, one shared by every type, or one per
-# type.
 _draw_multiplier(rng, ::Nothing) = nothing
 _draw_multiplier(rng, d::UnivariateDistribution) = rand(rng, d)
 _draw_multiplier(rng, ds::AbstractVector) = [rand(rng, d) for d in ds]

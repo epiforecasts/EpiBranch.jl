@@ -522,9 +522,8 @@ function simulate_once(
     )
 end
 
-# The offspring of a case in generation `g` is drawn from its law with the mean
-# scaled by this run's multiplier for `g`, drawn on the first case of the
-# generation and shared by the rest, and by every window.
+# Draws a case's offspring with its mean scaled by the run's multiplier for the
+# case's generation, drawn once per generation and shared by every window.
 struct _Multiplied{O, M}
     offspring::O
     multiplier::M

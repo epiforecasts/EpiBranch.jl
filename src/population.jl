@@ -104,12 +104,10 @@ function Population(
     return GroupedPopulation(sizes, groups, immune)
 end
 
-# The number immune at the start, summed over groups.
 _immune_total(::NoPopulation) = 0
 _immune_total(p::SinglePopulation) = p.immune
 _immune_total(p::GroupedPopulation) = sum(p.immune)
 
-# A model that does not read `immune` refuses it rather than ignore it.
 function _reject_immune(pop, model::AbstractString)
     _immune_total(pop) == 0 || throw(
         ArgumentError(
