@@ -537,12 +537,12 @@ end
         data = _TestInfections([1], [0.0], [0.0], [3.0], [true]; obs_end = 5.0)
         mass_action = MassActionHazard(; transmission_rate = 0.6, population_size = 4)
         @test pairwise_surv_loglik(Exponential(1.0), data; external_hazard = mass_action) == 0.0
-        L = compile_contact_pairs(data; external = true, explain_index = false)
+        L = compile_contact_pairs(data; external = true, condition_on = RecruitedIndex())
         @test pairwise_surv_loglik(Exponential(1.0), data, L; external_hazard = mass_action) == 0.0
 
-        # a layout built the obvious way, with explain_index defaulting to
-        # external = true, disagrees with the explain_index = false mass
-        # action needs, and must be rejected rather than silently scoring
+        # a layout built the obvious way, with condition_on defaulting to
+        # ExplainIndex() under external = true, disagrees with the
+        # RecruitedIndex() mass action needs, and must be rejected rather than silently scoring
         # every index case as unexplained
         Lbad = compile_contact_pairs(data; external = true)
         @test_throws ArgumentError pairwise_surv_loglik(
@@ -590,8 +590,18 @@ end
         lone = _TestInfections([1], [0.0], [0.0], [3.0], [true]; obs_end = 5.0)
         @test pairwise_surv_loglik(Exponential(1.0), lone; external_hazard = total) ≈ log(α)
         @test pairwise_surv_loglik(Exponential(1.0), lone; external_hazard = mass) == 0.0
-        Lsum = compile_contact_pairs(lone; external = true, explain_index = true)
+        Lsum = compile_contact_pairs(lone; external = true, condition_on = ExplainIndex())
         @test pairwise_surv_loglik(Exponential(1.0), lone, Lsum; external_hazard = total) ≈ log(α)
+
+        # a rule of your own conditions on whatever its mask names
+        struct _LastHost <: ConditionOn end
+        EpiBranch.condition_mask(::_LastHost, data::InfectionLayer) =
+            [i == length(data.is_index) for i in eachindex(data.is_index)]
+        pair = _TestInfections([1, 1], [0.0, 1.0], [0.0, 1.0], [3.0, 3.0], [true, false]; obs_end = 5.0)
+        @test length(compile_contact_pairs(pair; condition_on = RecruitedIndex())) == 1
+        @test length(compile_contact_pairs(pair; condition_on = _LastHost())) == 1
+        @test compile_contact_pairs(pair; condition_on = RecruitedIndex()).sus == [2]
+        @test compile_contact_pairs(pair; condition_on = _LastHost()).sus == [1]
 
         # 1 is an index case infectious over (0, 3]; 2 is infected at 3, when
         # mass action gives 1 and the importation 0.1, over a cumulative
@@ -681,7 +691,7 @@ end
             [1, 1, 2], [0.0, NaN, 0.0], [0.0, NaN, 0.0],
             [3.0, Inf, 3.0], [true, false, true]; obs_end = 5.0
         )
-        L = compile_contact_pairs(data; external = true, explain_index = false)
+        L = compile_contact_pairs(data; external = true, condition_on = RecruitedIndex())
         k = Exponential(2.0)
         mass_action = MassActionHazard(; transmission_rate = β, population_size = N)
 

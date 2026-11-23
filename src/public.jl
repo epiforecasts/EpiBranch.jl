@@ -145,6 +145,9 @@ public InterventionAction, intervention_actions, action_draw!, action_cache,
 # change to the package.
 public PairwiseReduction, ngroups, group, pairwise_reduce
 
+# A `ConditionOn` rule of your own defines `condition_mask`.
+public condition_mask
+
 # Vaccine effect modes: a new mode defines `realised_efficacy`, and overrides
 # `realise_prior_dose!` only to change what a dose recorded before the run gets.
 public realised_efficacy, realise_prior_dose!

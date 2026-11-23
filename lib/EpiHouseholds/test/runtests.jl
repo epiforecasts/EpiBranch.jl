@@ -24,7 +24,7 @@ end
 
 # A `ConditionOn` with no `condition_mask` method, to check the seam is
 # reached by dispatch rather than by a branch.
-struct _MaskLessRule <: EpiHouseholds.ConditionOn end
+struct _MaskLessRule <: ConditionOn end
 
 @testset "EpiHouseholds.jl" begin
     @testset "loglikelihood accepts a precompiled layout" begin
@@ -966,14 +966,18 @@ struct _MaskLessRule <: EpiHouseholds.ConditionOn end
             data; condition_on = _MaskLessRule()
         )
 
-        # a community hazard already explains every host, so which host
-        # `condition_on` names makes no difference to the layout
-        ext_index = compile_household_pairs(data; external = true, condition_on = RecruitedIndex())
+        # with a community hazard the default explains every host, and the
+        # conditioned member of each household is explicit otherwise
+        ext_default = compile_household_pairs(data; external = true)
+        ext_explain = compile_household_pairs(
+            data; external = true, condition_on = ExplainIndex()
+        )
+        @test ext_default.sus == ext_explain.sus
+        @test ext_default.infector == ext_explain.infector
         ext_earliest = compile_household_pairs(
             data; external = true, condition_on = EarliestInfected()
         )
-        @test ext_index.sus == ext_earliest.sus
-        @test ext_index.infector == ext_earliest.infector
+        @test length(ext_earliest) < length(ext_default)
 
         # a household with a single case has no household-mate to condition
         # against either way, and both modes evaluate it the same
