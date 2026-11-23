@@ -300,9 +300,7 @@ Doses are dated by the interval, not the day: every contact of generation
 
 Doses left unused by earlier generations, from `carry_over` or a single
 budget, still go to contacts of later generations after the window has
-closed. The individual-based simulation does the same: it dates a dose by
-when a contact becomes eligible, so a contact made after the window can be
-dosed if its eligibility falls inside it.
+closed.
 
 # Examples
 
