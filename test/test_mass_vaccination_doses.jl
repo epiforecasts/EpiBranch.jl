@@ -138,6 +138,67 @@ end
         @test mean(individual) < 0.7 * n
     end
 
+    @testset "a window that opens late agrees with the counts" begin
+        # The counts date doses by generation interval and the individual-based
+        # run by the clock, so the two agree to a few per cent, not within noise.
+        n = 2_000
+        campaign = Scheduled(
+            budget(mass(), 200.0; period = 4.0, carry_over = false);
+            start_time = 12.0, end_time = 40.0
+        )
+        timed = BranchingProcess(Poisson(2.0), Gamma(2.0, 2.0); population = Population(n))
+        untimed = BranchingProcess(Poisson(2.0); population = Population(n))
+        reps = 150
+        rng = StableRNG(11)
+        individual = [
+            simulate(
+                ModelSpec(timed; interventions = [campaign]); n_initial = 10,
+                max_generations = 60, max_cases = 10^6, rng
+            ).cumulative_cases for _ in 1:reps
+        ]
+        counts = [
+            simulate_by_generation(
+                ModelSpec(untimed; interventions = [campaign]); n_initial = 10,
+                max_generations = 60, generation_length = 4.0, rng
+            ).cumulative_cases for _ in 1:reps
+        ]
+        @test abs(mean(individual) - mean(counts)) < 0.1 * mean(counts)
+    end
+
+    @testset "population_ledger is opt-in and read through wrappers" begin
+        pop = Population(1_000)
+        @test EpiBranch.population_ledger(mass(), pop) === nothing
+        @test EpiBranch.population_ledger(budget(mass(), Inf), pop) === nothing
+        @test EpiBranch.population_ledger(budget(mass(), 5.0), pop) !== nothing
+        @test EpiBranch.population_ledger(
+            Scheduled(budget(mass(), 5.0); start_time = 3.0), pop
+        ) !== nothing
+        @test EpiBranch.population_ledger(
+            budget(Scheduled(mass(); start_time = 3.0), 5.0), pop
+        ) !== nothing
+    end
+
+    @testset "a ledger answers by the time asked, in any order" begin
+        model = BranchingProcess(Poisson(2.0), Gamma(2.0, 2.0); population = Population(1_000))
+        campaign = Scheduled(
+            budget(mass(), 300.0; period = 5.0, carry_over = false);
+            start_time = 10.0, end_time = 30.0
+        )
+        state = simulate(
+            ModelSpec(model; interventions = [campaign]); n_initial = 1,
+            max_generations = 1, rng = StableRNG(3)
+        )
+        ledger = EpiBranch.population_ledger(campaign, model.population)
+        @test ledger !== nothing
+        share(t) = EpiBranch.protected_share(ledger, state, 1, t)
+        late = share(50.0)
+        @test late > 0
+        @test share(5.0) == 0
+        @test share(10.0) == 0
+        @test 0 < share(12.0) < late
+        @test share(50.0) == late
+    end
+
     @testset "without a population or a limit each person is dosed in turn" begin
         open_model = BranchingProcess(Poisson(2.0), Gamma(2.0, 2.0))
         state = simulate(
@@ -163,6 +224,6 @@ end
         state = simulate(spec, state; max_time = 40.0)
         @test !any(ind -> get(ind.state, :vaccinated, false), individuals(state))
         @test only(state.scratch[:_mass_ledgers]).used == [1_000]
-        @test only(state.scratch[:_mass_ledgers]).protected[1] <= 1_000
+        @test only(state.scratch[:_mass_ledgers]).history[end][1] <= 1_000
     end
 end

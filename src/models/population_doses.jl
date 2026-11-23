@@ -1,91 +1,164 @@
 # ── Vaccinating the population on the individual-based race ──────────
 #
-# A `MassVaccination` under a `CapacityConstrained` gives its doses to the
-# population rather than to the people the race creates. The race holds one
-# `_MassLedger` per campaign and thins each contact against the susceptibles
-# of its group less those protected.
+# An intervention that doses the population rather than the people the race
+# creates opts in through `population_ledger`. The race asks each intervention
+# for a ledger once, at run start, holds the ledgers in `state.scratch` and
+# thins each contact against the susceptibles of its group less the share the
+# ledgers `protected_share` at the time of the exposure.
 
 const _MASS_LEDGERS_KEY = :_mass_ledgers
 
-# Whether `iv` is a `MassVaccination` with a limited dose budget, through the
-# wrappers a count of doses can read.
-_mass_budgeted(::Any, budgeted::Bool = false) = false
-_mass_budgeted(::MassVaccination, budgeted::Bool = false) = budgeted
-function _mass_budgeted(s::Scheduled, budgeted::Bool = false)
-    return s.window isa ClockWindow && _mass_budgeted(s.intervention, budgeted)
+"""
+    population_ledger(intervention, population, window = (0.0, Inf), budget = nothing)
+
+The ledger through which `intervention` doses the population, or `nothing`.
+The race calls this once at run start for each intervention. One that answers
+with a ledger is taken out of the race's interventions, and its ledger is
+asked for the share of each group it has protected ([`protected_share`](@ref
+EpiBranch.protected_share)) every time a contact is thinned against the
+susceptibles of a population. The default is `nothing`, so an intervention
+acts on the people the race creates.
+
+A budgeted [`MassVaccination`](@ref) answers with a ledger, since its doses
+must come from the susceptibles that infection has not already depleted. A
+campaign written outside the package can do the same by returning a ledger of
+its own with a `protected_share` method. `window` and `budget` are what the
+wrappers around `intervention` have gathered: [`Scheduled`](@ref) narrows
+`window` to its calendar window and [`CapacityConstrained`](@ref) supplies
+`budget`. A wrapper type of one's own forwards them.
+"""
+population_ledger(::Any, population, window = (0.0, Inf), budget = nothing) = nothing
+function population_ledger(
+        w::InterventionWrapper, population, window = (0.0, Inf), budget = nothing
+    )
+    return population_ledger(w.intervention, population, window, budget)
 end
-function _mass_budgeted(cc::CapacityConstrained, budgeted::Bool = false)
+function population_ledger(s::Scheduled, population, window = (0.0, Inf), budget = nothing)
+    s.window isa ClockWindow || return nothing
+    narrowed = (max(window[1], s.window.start), min(window[2], s.window.stop))
+    return population_ledger(s.intervention, population, narrowed, budget)
+end
+function population_ledger(
+        cc::CapacityConstrained, population, window = (0.0, Inf), budget = nothing
+    )
     limited = !(cc.budget_per_period isa Real && isinf(cc.budget_per_period))
-    return limited && cc.on_refusal isa DropRefused && _mass_budgeted(cc.intervention, true)
+    (limited && cc.on_refusal isa DropRefused && budget === nothing) || return nothing
+    return population_ledger(cc.intervention, population, window, cc)
+end
+function population_ledger(mv::MassVaccination, population, window = (0.0, Inf), budget = nothing)
+    budget === nothing && return nothing
+    population isa NoPopulation && return nothing
+    c = _by_type(
+        _campaign(mv, window, budget; engine = "a model of individuals"), population
+    )
+    return _MassLedger(c, population)
 end
 
-# A campaign's state between exposures: doses given so far (`used`), the time
-# they were given up to (`clock`) and the number protected in each group.
+"""
+    protected_share(ledger, state, group, t) -> Real
+
+The share of the people of `group` (1 for a population with one group, the
+type for a grouped one) that `ledger` has protected at time `t`, as a number
+from 0 to 1. The race subtracts it from the share of the group still
+susceptible, so a ledger's answer must be a step function of `t`: a query at
+`t` reads the value at `t`, whatever times were asked before.
+"""
+function protected_share end
+
+# A campaign's state between exposures: the doses given so far (`used`), the
+# next budget period to give (`next`) and, for each period given, the time
+# from which its doses count and the number protected in each group after it.
+# A query at `t` reads the last entry dated before `t`.
 mutable struct _MassLedger{C <: _Campaign}
     campaign::C
     used::Vector{Int}
-    clock::Float64
-    protected::Vector{Int}
+    next::Int
+    times::Vector{Float64}
+    history::Vector{Vector{Int}}
     sizes::Vector{Int}
 end
 
 _group_sizes(p::SinglePopulation) = [p.size]
 _group_sizes(p::GroupedPopulation) = p.sizes
 
-function _mass_ledger(iv, population)
-    c = _by_type(
-        _campaign(iv, (0.0, Inf), nothing; engine = "a model of individuals"), population
-    )
+function _MassLedger(c::_Campaign, population)
     sizes = _group_sizes(population)
     used = zeros(Int, c.budget isa AbstractVector ? length(c.budget) : 1)
-    return _MassLedger(c, used, 0.0, zeros(Int, length(sizes)), sizes)
+    return _MassLedger(c, used, 0, [-Inf], [zeros(Int, length(sizes))], sizes)
 end
 
-# Moves budgeted campaigns out of `interventions` into ledgers in
-# `state.scratch`.
+# Moves the interventions that answer `population_ledger` out of `interventions`
+# into ledgers in `state.scratch`.
 function _take_mass_campaigns!(state, interventions)
     state.population isa NoPopulation && return interventions
-    any(_mass_budgeted, interventions) || return interventions
-    state.scratch[_MASS_LEDGERS_KEY] = [
-        _mass_ledger(iv, state.population) for iv in interventions if _mass_budgeted(iv)
-    ]
-    return filter(!_mass_budgeted, interventions)
+    ledgers = [population_ledger(iv, state.population) for iv in interventions]
+    all(isnothing, ledgers) && return interventions
+    state.scratch[_MASS_LEDGERS_KEY] = filter(!isnothing, ledgers)
+    return [iv for (iv, l) in zip(interventions, ledgers) if l === nothing]
 end
 
-_without_mass_campaigns(state, ivs) =
-    haskey(state.scratch, _MASS_LEDGERS_KEY) ? filter(!_mass_budgeted, ivs) : ivs
+function _without_mass_campaigns(state, ivs)
+    haskey(state.scratch, _MASS_LEDGERS_KEY) || return ivs
+    return filter(iv -> population_ledger(iv, state.population) === nothing, ivs)
+end
 
-# Gives the doses due up to `t` over the susceptibles left in each group.
+# The budget's period, which a campaign's budgets per type share.
+_ledger_period(c::_Campaign) = (c.budget isa AbstractVector ? first(c.budget) : c.budget).period
+
+# Gives, period by period, the doses due before `t` over the susceptibles left
+# in each group, and dates each period's doses at its start (or the window's).
 function _advance!(l::_MassLedger, state, t)
-    t > l.clock || return nothing
     c = l.campaign
-    d = _doses_of(c, c.budget, l.clock, t, l.used)
-    l.clock = t
+    s, e = c.window
+    period = _ledger_period(c)
+    if isinf(period)
+        l.next == 0 && t > s && _give_period!(l, state, 0.0, Inf, s)
+        return nothing
+    end
+    while l.next * period < min(t, e)
+        k = l.next
+        _give_period!(l, state, k * period, (k + 1) * period, max(k * period, s))
+    end
+    return nothing
+end
+
+function _give_period!(l::_MassLedger, state, t0, t1, dated)
+    c = l.campaign
+    l.next += 1
+    d = _doses_of(c, c.budget, t0, t1, l.used)
     by_type = d isa Int ? _split_by_size(state.rng, d, l.sizes) : d
     cases = _cases_by_group(state.population, state)
+    protected = copy(l.history[end])
     for g in eachindex(by_type)
-        susceptibles = max(l.sizes[g] - cases[g] - l.protected[g], 0)
-        l.protected[g] += protected_by_doses(
+        susceptibles = max(l.sizes[g] - cases[g] - protected[g], 0)
+        protected[g] += protected_by_doses(
             c.dosing, state.rng, by_type[g], c.efficacy, susceptibles, l.sizes[g]
         )
     end
     l.used .+= length(l.used) == 1 ? sum(by_type) : by_type
+    push!(l.times, dated)
+    push!(l.history, protected)
     return nothing
 end
 
 _cases_by_group(::SinglePopulation, state) = [state.cumulative_cases]
 _cases_by_group(::GroupedPopulation, state) = state.group_cases
 
+function protected_share(l::_MassLedger, state, group, t)
+    _advance!(l, state, t)
+    i = searchsortedlast(l.times, t; lt = <=)
+    return l.history[i][group] / l.sizes[group]
+end
+
 _ledger_group(::SinglePopulation, ind) = 1
 _ledger_group(::GroupedPopulation, ind) = individual_type(ind)
 
-# `share` less the share of `contact`'s group protected by `t`.
+# `share` less the share of `contact`'s group protected at `t`.
 _after_vaccination(share, ::Nothing, state, contact, t) = share
 function _after_vaccination(share, ledgers::Vector, state, contact, t)
     g = _ledger_group(state.population, contact)
     for l in ledgers
-        _advance!(l, state, t)
-        share -= l.protected[g] / l.sizes[g]
+        share -= protected_share(l, state, g, t)
     end
     return max(share, 0.0)
 end
