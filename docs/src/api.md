@@ -437,6 +437,15 @@ summarise
 scenario_sweep
 ```
 
+## Plots
+
+Figures of simulation output. They are methods of a package extension, loaded with `using Makie` or a backend such as `using CairoMakie`.
+
+```@docs
+epicurve
+chain_size_plot
+```
+
 ## Closed-form results
 
 Results calculated exactly from the offspring distribution, without

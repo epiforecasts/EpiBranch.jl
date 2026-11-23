@@ -148,6 +148,7 @@ include("output/tracing.jl")
 include("output/chains.jl")
 include("output/generation_intervals.jl")
 include("output/summary.jl")
+include("output/plots.jl")
 include("analytical/poisson_mixtures.jl")
 include("models/count_simulation.jl")
 
@@ -196,6 +197,7 @@ export MeanFieldProcess, MeanFieldState, LinearNoiseProcess, LinearNoiseState
 export StratifiedContacts, flatten_contacts, contacts_from_table, mixing_rate
 export Mixing, FrequencyDependent, DensityDependent
 export read_contacts, ContactFileFormat, CSVFormat, NetCDFFormat
+export epicurve, chain_size_plot
 export MixingMeanFieldProcess, MixingMeanFieldState
 export MixingLinearNoiseProcess, MixingLinearNoiseState
 export DoseAllocation, TriggeredInPriority, SplitByGroupSize, SplitBySusceptibles
