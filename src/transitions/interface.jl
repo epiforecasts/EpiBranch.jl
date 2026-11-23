@@ -489,9 +489,9 @@ end
 
 # The state-dict key a `from` name resolves to: `:onset` names the state
 # and resolves to its `:onset_time` key, while `:onset_time` (the key
-# itself, kept for backward compatibility) resolves to itself. Not inlined, so
-# the Enzyme extension's `inactive` rule applies to it rather than being
-# bypassed by the optimiser.
+# itself, kept for backward compatibility) resolves to itself. It is not inlined,
+# because the optimiser would otherwise bypass the `inactive` rule of the
+# Enzyme extension.
 @noinline _resolved_key(s::Symbol) = endswith(String(s), "_time") ? s : Symbol(s, :_time)
 
 # `_resolved_key` of a `from` given as a name, `nothing` for a callable. The key
