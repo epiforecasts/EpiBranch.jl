@@ -21,4 +21,19 @@ using RecipesBase: RecipesBase
     @test px == [p.infection_time for p in people]
     leaves = [!any(q -> q.parent_id == p.id, people) for p in people]
     @test allunique(py[leaves])
+
+    @testset "uninfected contacts are not drawn" begin
+        state = simulate(model; rng = StableRNG(1), max_cases = 40)
+        leaf = last(individuals(state))
+        leaf.state[:infected] = false
+        leaf.infection_time = NaN
+        series = RecipesBase.apply_recipe(Dict{Symbol, Any}(), state)
+        xs, ys = series[1].args
+        px, py = series[2].args
+        @test !any(isnan, px)
+        @test !any(isnan, py)
+        @test length(px) == length(filter(is_infected, individuals(state)))
+        @test length(xs) == 4 * count(p -> is_infected(p) && p.parent_id != 0, individuals(state))
+        @test count(isnan, xs) == length(xs) ÷ 4
+    end
 end

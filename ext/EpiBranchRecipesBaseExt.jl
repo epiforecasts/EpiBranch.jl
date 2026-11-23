@@ -1,10 +1,11 @@
 module EpiBranchRecipesBaseExt
 
-using EpiBranch: EpiBranch, SimulationState, individuals
+using EpiBranch: EpiBranch, SimulationState, individuals, is_infected
 using RecipesBase: RecipesBase, @recipe, @series
 
 @recipe function f(state::SimulationState)
-    people = individuals(state)
+    # A returned state can hold contacts that were never infected.
+    people = filter(is_infected, individuals(state))
     index = Dict(p.id => k for (k, p) in enumerate(people))
     children = [Int[] for _ in people]
     roots = Int[]
