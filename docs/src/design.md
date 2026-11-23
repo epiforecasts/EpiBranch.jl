@@ -202,14 +202,12 @@ are unchanged, because they act on individual people, not on types.
 
 The five parts map onto them as follows:
 
-- **transmission and population**: `MeanFieldProcess` and `LinearNoiseProcess` take the population size and a `transmission_rate` directly. The mixing variants read the contact rates and the groups from a [`ModelSpec`](@ref) built on a `MixingProcess`, so the groups are those the exact model assigns through its population characteristics;
-- **disease**: the disease part collapses to a single `removal_rate`, the rate at which infectious people leave the infectious compartment, as in `Transition(:recovered; rate = removal_rate, terminal = true)`. Latent periods, onset, severity and treatment are not represented;
-- **interventions**: the only intervention they represent is a [`GroupVaccination`](@ref) campaign in the `ModelSpec` of the mixing variants, which moves people between compartments. The mixing variants refuse any other intervention instead of leaving it out. The scalar variants take none;
+- **transmission and population**: `MeanFieldProcess` and `LinearNoiseProcess` take the population size and a `transmission_rate` directly. The mixing variants read the contact rates and the groups from a [`ModelSpec`](@ref) built on a `MixingProcess`;
+- **disease**: the disease part collapses to a single `removal_rate`, the rate at which infectious people leave the infectious compartment. Latent periods, onset, severity and treatment are not represented;
+- **interventions**: the only intervention they represent is a [`GroupVaccination`](@ref) campaign in the `ModelSpec` of the mixing variants, which moves people between compartments. The mixing variants refuse any other intervention, and the scalar variants take none;
 - **observation**: there is none. The output is the compartment trajectory.
 
 `HybridProcess` joins the two. It runs an exact `ModelSpec` while the outbreak is small and hands over to an approximation once the number of currently infectious people reaches a threshold, keeping the compartment counts at the switch. The two must agree on the dynamics, which the constructor checks. Up to the switch the exact model supplies all five parts. Afterwards only the reduced form above applies.
-
-Because they share the engine's `simulate` entry point and the exact model's population groups and vaccination campaign, they stay in the package, but a quantity that depends on the disease or intervention parts beyond those above has to be simulated exactly.
 
 ## Host timeline and transmission-route windows
 
