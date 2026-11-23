@@ -239,7 +239,7 @@ end
     for f in spec_cases
         check(f, [0.5], (mooncake,))
     end
-    check(spec_cases[3], [0.5], (enzyme,))
+    check(spec_cases[3], [0.5], (enzyme_bare,))
 
     # Enzyme refuses a chain-length likelihood estimated by simulation and gives
     # the extension's message instead of a compilation error from the simulator.
