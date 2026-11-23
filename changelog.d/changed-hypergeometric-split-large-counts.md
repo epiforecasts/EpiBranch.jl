@@ -1,1 +1,1 @@
-The split of a shared dose budget, and of the contacts kept by depletion, between contact types now uses a hypergeometric sampler that scales with the spread of the split, so counts of 10^8 and more are fast.
+A shared dose budget, and the contacts kept by depletion, are now split between contact types with a hypergeometric sampler. Its cost scales with the spread of the split, so counts of 10^8 and more run quickly.
