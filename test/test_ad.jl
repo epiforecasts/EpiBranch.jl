@@ -14,8 +14,8 @@ using StableRNGs
 #
 # Scope: ForwardDiff through DIT, plus a Mooncake reverse-mode pass in a
 # separate testset below. Enzyme reverse mode is covered for
-# `incidence_moments` and for the closed-form `ModelSpec` likelihood. Mooncake is the reverse-mode backend the package
-# targets, so the analytical likelihoods are checked both ways. It is not run
+# `incidence_moments` and for the closed-form `ModelSpec` likelihood. Mooncake is
+# the reverse-mode backend the package targets, so the analytical likelihoods are checked both ways. It is not run
 # through DIT because DIT's correctness harness builds its reverse rule
 # through the `ChainSizes`/etc. data constructor (including its validation
 # branch) and errors there; a direct gradient comparison against ForwardDiff
@@ -657,7 +657,7 @@ end
 # Reverse-mode Enzyme through the closed-form likelihood of a `ModelSpec` with
 # no progression. The extension marks the simulation fallback inactive.
 # Enzyme then compiles only the analytical path. As above, Enzyme cannot compile
-# the `ModelSpec` construction on Julia 1.10, so the test runs from 1.11.
+# the `ModelSpec` construction on Julia 1.10; the test runs from 1.11.
 if VERSION >= v"1.11"
     @testset "AD (Enzyme reverse mode)" begin
         sizes_data = [1, 2, 1, 3, 1, 5, 2]
@@ -673,8 +673,8 @@ if VERSION >= v"1.11"
                 DifferentiationInterface.gradient(f, AutoForwardDiff(), [0.5]) rtol = 1.0e-6
         end
 
-        # A spec with no closed form is estimated by simulation. Enzyme cannot
-        # differentiate that, so the gradient call must throw an error rather than
+        # A spec with no closed form is estimated by simulation, which Enzyme
+        # cannot differentiate. The gradient call must throw an error rather than
         # return zero.
         iso = Isolation(delay = Exponential(1.0), duration = Inf)
         simulated(R) = loglikelihood(
