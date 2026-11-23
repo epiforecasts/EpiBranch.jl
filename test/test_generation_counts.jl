@@ -1,3 +1,7 @@
+using Distributions
+using StableRNGs
+using Statistics
+
 @testset "Simulating a branching process by generation, as counts" begin
     @testset "model validation" begin
         @test_throws ArgumentError simulate_by_generation(
@@ -22,9 +26,7 @@
         @test_throws ArgumentError simulate_by_generation(
             BranchingProcess(NegBin(2.0, 0.5); population_size = 10); n_initial = 20
         )
-        @test_throws ArgumentError simulate_by_generation(
-            BranchingProcess(NegBin(2.0, 0.5)); multiplier = Gamma(0.5, 2.0)
-        )
+        @test_throws ArgumentError BranchingProcess(NegBin(2.0, 0.5); multiplier = Gamma(0.5, 2.0))
     end
 
     @testset "agrees in distribution with per-case simulation" begin
@@ -73,10 +75,10 @@
         # generation's cases drew.
         I, λ, k = 1000, 2.0, 0.5
         model = BranchingProcess(Poisson(λ))
+        shared = BranchingProcess(Poisson(λ); multiplier = Gamma(k, 1 / k))
         totals = [
             simulate_by_generation(
-                model; n_initial = I, max_generations = 1,
-                multiplier = Gamma(k, 1 / k), rng = StableRNG(s)
+                shared; n_initial = I, max_generations = 1, rng = StableRNG(s)
             ).counts for s in 1:4000
         ]
         target = NegBin(I * λ, k)
@@ -121,14 +123,14 @@
         # after one generation is its own total, so the counts correlate only
         # through a shared multiplier.
         I, k = 1000, 0.5
-        model = BranchingProcess(
-            [2.0 0.0; 0.0 2.0], R -> Poisson(R), EpiBranch.NoGenerationTime()
+        model(multiplier) = BranchingProcess(
+            [2.0 0.0; 0.0 2.0], R -> Poisson(R), EpiBranch.NoGenerationTime(); multiplier
         )
         draw(multiplier) = reduce(
             hcat, [
                 simulate_by_generation(
-                    model; n_initial = [I, I], max_generations = 1,
-                    multiplier, rng = StableRNG(s)
+                    model(multiplier); n_initial = [I, I], max_generations = 1,
+                    rng = StableRNG(s)
                 ).counts for s in 1:3000
             ]
         )
@@ -143,18 +145,19 @@
             @test isapprox(var(per_type[i, :]), var(target); rtol = 0.2)
         end
         # A single type has only one draw to make.
-        single = BranchingProcess(Poisson(2.0))
         a = simulate_by_generation(
-            single; n_initial = 10, max_generations = 5, multiplier = Gamma(k, 1 / k),
-            rng = StableRNG(7)
+            BranchingProcess(Poisson(2.0); multiplier = Gamma(k, 1 / k));
+            n_initial = 10, max_generations = 5, rng = StableRNG(7)
         )
         b = simulate_by_generation(
-            single; n_initial = 10, max_generations = 5, multiplier = [Gamma(k, 1 / k)],
-            rng = StableRNG(7)
+            BranchingProcess(Poisson(2.0); multiplier = [Gamma(k, 1 / k)]);
+            n_initial = 10, max_generations = 5, rng = StableRNG(7)
         )
         @test a.counts == b.counts
-        @test_throws ArgumentError simulate_by_generation(
-            model; n_initial = [I, I], max_generations = 1, multiplier = [Gamma(k, 1 / k)]
+        @test_throws ArgumentError model([Gamma(k, 1 / k)])
+        @test_throws ArgumentError BranchingProcess(
+            (rng, ind) -> rand(rng, Poisson(2.0)), EpiBranch.NoGenerationTime();
+            multiplier = Gamma(k, 1 / k)
         )
     end
 
@@ -188,6 +191,7 @@ end
 @testset "A single type allocates nothing per generation" begin
     finite = BranchingProcess(NegBin(2.0, 0.5); population = Population(200_000))
     unlimited = BranchingProcess(Poisson(0.9))
+    shared = BranchingProcess(Poisson(0.9); multiplier = Gamma(5, 1 / 5))
     vaccinated = ModelSpec(
         BranchingProcess(Poisson(1.5); population = Population(100_000));
         interventions = [
@@ -199,21 +203,114 @@ end
     )
     continue_to(model, state, n; kw...) = simulate(model, state; max_generations = n, kw...)
     for (model, kw) in (
-            (finite, (;)), (unlimited, (;)), (unlimited, (; multiplier = Gamma(5, 1 / 5))),
+            (finite, (;)), (unlimited, (;)), (shared, (;)),
             (vaccinated, (; generation_length = 7.0)),
         )
         state = simulate_by_generation(
             model; n_initial = 1000, max_generations = 2, rng = StableRNG(1), kw...
         )
-        cont = (; (k => v for (k, v) in pairs(kw) if k === :multiplier)...)
         # Each run uses a fresh stream with the same seed, so the runs draw alike.
         # The checks below guard against an extinct chain passing trivially.
-        continue_to(model, state, 4; rng = StableRNG(2), cont...)
-        short = @allocated continue_to(model, state, 4; rng = StableRNG(2), cont...)
-        long = @allocated continue_to(model, state, 14; rng = StableRNG(2), cont...)
-        reached = continue_to(model, state, 14; rng = StableRNG(2), cont...)
+        continue_to(model, state, 4; rng = StableRNG(2))
+        short = @allocated continue_to(model, state, 4; rng = StableRNG(2))
+        long = @allocated continue_to(model, state, 14; rng = StableRNG(2))
+        reached = continue_to(model, state, 14; rng = StableRNG(2))
         @test reached.generation == 14
         @test reached.counts > 0
         @test long == short
+    end
+end
+
+@testset "An individual run of a model with a multiplier and immune people" begin
+    @testset "a multiplier is drawn once per generation for every case" begin
+        I, λ, k = 100, 2.0, 0.5
+        model = BranchingProcess(
+            Poisson(λ), Exponential(1.0); multiplier = Gamma(k, 1 / k)
+        )
+        @test EpiBranch.count_rule(model) === nothing
+        totals = [
+            simulate(
+                model; n_initial = I, max_generations = 1, rng = StableRNG(s)
+            ).cumulative_cases - I for s in 1:2000
+        ]
+        target = NegBin(I * λ, k)
+        @test isapprox(mean(totals), mean(target); atol = 5 * sqrt(var(target) / length(totals)))
+        @test isapprox(var(totals), var(target); rtol = 0.2)
+    end
+
+    @testset "a vector of multipliers is drawn for each type in each generation" begin
+        I, k = 100, 0.5
+        model(multiplier) = BranchingProcess(
+            [2.0 0.0; 0.0 2.0], R -> Poisson(R), EpiBranch.NoGenerationTime(); multiplier
+        )
+        draw(multiplier) = reduce(
+            hcat, [
+                begin
+                    state = simulate(
+                        model(multiplier); index_types = repeat([1, 2], inner = I),
+                        max_generations = 1, rng = StableRNG(s)
+                    )
+                    [
+                        count(i -> i.generation == 1 && individual_type(i) == j, individuals(state))
+                            for j in 1:2
+                    ]
+                end for s in 1:1500
+            ]
+        )
+        shared = draw(Gamma(k, 1 / k))
+        per_type = draw([Gamma(k, 1 / k), Gamma(k, 1 / k)])
+        @test cor(shared[1, :], shared[2, :]) > 0.9
+        @test abs(cor(per_type[1, :], per_type[2, :])) < 0.15
+    end
+
+    @testset "immune people are never infected and agree with the counts" begin
+        N, n_reps = 400, 3000
+        model = BranchingProcess(
+            NegBin(2.0, 1.0); population = Population(N; immune = 200),
+            multiplier = nothing
+        )
+        @test EpiBranch.count_rule(model) === nothing
+        by_case = [
+            simulate(
+                model; n_initial = 5, max_generations = 4, max_cases = N,
+                rng = StableRNG(s)
+            ).cumulative_cases for s in 1:n_reps
+        ]
+        by_generation = [
+            simulate_by_generation(
+                model; n_initial = 5, max_generations = 4, rng = StableRNG(10^6 + s)
+            ).cumulative_cases for s in 1:n_reps
+        ]
+        se = sqrt(var(by_case) / n_reps + var(by_generation) / n_reps)
+        @test isapprox(mean(by_case), mean(by_generation); atol = 5se)
+        @test maximum(by_case) <= N - 200
+    end
+
+    @testset "a multiplier and immunity together agree with the counts" begin
+        N, n_reps = 600, 3000
+        model = BranchingProcess(
+            Poisson(1.8); population = Population(N; immune = 150),
+            multiplier = Gamma(2.0, 0.5)
+        )
+        by_case = [
+            simulate(
+                model; n_initial = 5, max_generations = 5, max_cases = N,
+                rng = StableRNG(s)
+            ).cumulative_cases for s in 1:n_reps
+        ]
+        by_generation = [
+            simulate_by_generation(
+                model; n_initial = 5, max_generations = 5, rng = StableRNG(10^6 + s)
+            ).cumulative_cases for s in 1:n_reps
+        ]
+        se = sqrt(var(by_case) / n_reps + var(by_generation) / n_reps)
+        @test isapprox(mean(by_case), mean(by_generation); atol = 5se)
+        @test isapprox(var(by_case), var(by_generation); rtol = 0.25)
+    end
+
+    @testset "a model that does not read the immune refuses them" begin
+        @test_throws ArgumentError HomogeneousProcess(
+            transmission_rate = 0.4, population = Population(100; immune = 10)
+        )
     end
 end

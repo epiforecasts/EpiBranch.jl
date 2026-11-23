@@ -247,7 +247,7 @@ public lazily_populate!
 public effect_mode
 public dose_label
 
-# `simulate_by_generation` with a `multiplier`: the mean-scaling rule and the
-# one-step generation total an offspring family can define.
+# A `BranchingProcess` with a `multiplier`, and `simulate_by_generation`: the
+# mean-scaling rule and the one-step generation total an offspring family can define.
 public scale_mean
 public sum_offspring

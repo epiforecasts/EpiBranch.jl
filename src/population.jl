@@ -5,8 +5,8 @@
 # keyword that is sometimes an `Int` and sometimes a vector.
 
 """
-    Population(size)
-    Population(sizes; groups = NoTypeLabels())
+    Population(size; immune = 0)
+    Population(sizes; groups = NoTypeLabels(), immune = 0)
 
 The people a model is run over, given once: `Population(5000)` is one group of
 5000 people, and `Population([1500, 3500]; groups = ["child", "adult"])` is
@@ -16,8 +16,12 @@ Without a population, a [`BranchingProcess`](@ref) has no limit on the number
 of people it can infect.
 
 A group is depleted against its own size: each person is infected once, and a
-case of one group leaves the others' susceptibles untouched. `groups` names
-the groups, in the order of `sizes`:
+case of one group leaves the others' susceptibles untouched. `immune` is the
+number in each group immune at the start: one `Int` shared by every group, or
+one entry per group. A contact reaches a susceptible with probability equal to
+the share of its group that is neither immune nor yet infected. Only a
+[`BranchingProcess`](@ref) reads it; any other model raises an `ArgumentError`
+for a nonzero `immune`. `groups` names the groups, in the order of `sizes`:
 
 - for a [`BranchingProcess`](@ref), labels for the types, as `type_labels`;
 - for a [`MixingProcess`](@ref), the value of the `mixing_by` attributes of
@@ -45,9 +49,13 @@ abstract type Population end
 """One group of `size` people: `Population(size)`."""
 struct SinglePopulation <: Population
     size::Int
-    function SinglePopulation(size::Integer)
+    immune::Int
+    function SinglePopulation(size::Integer, immune::Integer = 0)
         size >= 1 || throw(ArgumentError("population size must be ≥ 1"))
-        return new(Int(size))
+        0 <= immune <= size || throw(
+            ArgumentError("immune must be between 0 and the population size ($size), got $immune")
+        )
+        return new(Int(size), Int(immune))
     end
 end
 
@@ -56,7 +64,11 @@ end
 struct GroupedPopulation{G} <: Population
     sizes::Vector{Int}
     groups::G
-    function GroupedPopulation(sizes::AbstractVector{<:Integer}, groups)
+    immune::Vector{Int}
+    function GroupedPopulation(
+            sizes::AbstractVector{<:Integer}, groups,
+            immune::Union{Integer, AbstractVector{<:Integer}} = 0
+        )
         isempty(sizes) && throw(ArgumentError("a population needs at least one group"))
         all(>=(0), sizes) ||
             throw(ArgumentError("group sizes must not be negative, got $(collect(sizes))"))
@@ -70,13 +82,41 @@ struct GroupedPopulation{G} <: Population
             allunique(groups) || throw(ArgumentError("`groups` are not unique"))
             groups = collect(groups)
         end
-        return new{typeof(groups)}(Vector{Int}(sizes), groups)
+        immune = immune isa Integer ? fill(Int(immune), length(sizes)) : collect(Int, immune)
+        length(immune) == length(sizes) || throw(
+            ArgumentError("`immune` has $(length(immune)) entries for $(length(sizes)) group sizes")
+        )
+        all(0 .<= immune .<= sizes) || throw(
+            ArgumentError(
+                "`immune` must be between 0 and the size of each group, got $immune " *
+                    "for sizes $(collect(sizes))"
+            )
+        )
+        return new{typeof(groups)}(Vector{Int}(sizes), groups, immune)
     end
 end
 
-Population(size::Integer) = SinglePopulation(size)
-function Population(sizes::AbstractVector{<:Integer}; groups = NoTypeLabels())
-    return GroupedPopulation(sizes, groups)
+Population(size::Integer; immune::Integer = 0) = SinglePopulation(size, immune)
+function Population(
+        sizes::AbstractVector{<:Integer}; groups = NoTypeLabels(),
+        immune::Union{Integer, AbstractVector{<:Integer}} = 0
+    )
+    return GroupedPopulation(sizes, groups, immune)
+end
+
+# The number immune at the start, summed over groups.
+_immune_total(::NoPopulation) = 0
+_immune_total(p::SinglePopulation) = p.immune
+_immune_total(p::GroupedPopulation) = sum(p.immune)
+
+# A model that does not read `immune` refuses it rather than ignore it.
+function _reject_immune(pop, model::AbstractString)
+    _immune_total(pop) == 0 || throw(
+        ArgumentError(
+            "$model does not read the population's `immune`; only a BranchingProcess does"
+        )
+    )
+    return pop
 end
 
 # What a model's `population_size` seam may return is turned into a population.
@@ -135,7 +175,7 @@ function _closed_population(population, population_size)
     pop isa NoPopulation && throw(
         ArgumentError("a population is needed: give `population` or `population_size`")
     )
-    return pop
+    return _reject_immune(pop, "this model")
 end
 
 _single_population(p::SinglePopulation, ::AbstractString) = p

@@ -124,7 +124,11 @@ a large or finite population. It shares `simulate(model, state;
 max_generations)` with the exact, individual-based simulation.
 
 The state holds the susceptibles of each type, set from the population size
-and the number immune. `PerContactDepletion` removes them one potential contact
+and the number immune. The population's `immune` and the model's `multiplier`
+apply equally to an individual run: the immune are never infected, and the
+`multiplier` is drawn once per generation and scales the offspring mean of
+every case in it, so an individual run and a run by generation have the same
+law for the counts of a generation. `PerContactDepletion` removes them one potential contact
 at a time, as the individual-based simulation does, but draws the result
 without visiting every contact. With a `Poisson` or `NegBin` offspring law the
 cost of a generation is independent of the number of cases; with another law it
