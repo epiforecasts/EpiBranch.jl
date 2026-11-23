@@ -51,4 +51,16 @@
         @test_throws ArgumentError BranchingProcess(Poisson(1.0); importations = [-1.0])
         @test_throws ArgumentError BranchingProcess(Poisson(1.0); importations = 0.1)
     end
+
+    @testset "Imports in a multi-type model draw their type uniformly" begin
+        model = BranchingProcess(
+            (rng, ind) -> zeros(Int, 2), Exponential(5.0);
+            n_types = 2, importations = fill(1.0, 200)
+        )
+        state = simulate(model; index_types = [1], rng = StableRNG(5))
+        inds = individuals(state)
+        @test individual_type(inds[1]) == 1
+        n2 = count(i -> individual_type(i) == 2, inds[2:end])
+        @test 60 < n2 < 140
+    end
 end
