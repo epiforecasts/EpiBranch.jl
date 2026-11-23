@@ -25,6 +25,7 @@ Makie = "ee78f7c6-11fb-53f2-987a-cfe4a2b5a57a"
 ConvolvedDistributions = "f5b942c9-bc5b-4664-8486-7f531bb06742"
 Mooncake = "da2b9cff-9c12-43a0-ae48-6db2b0edb7d6"
 NCDatasets = "85f8d34a-cbdd-5861-8df4-14fed0d494ab"
+RecipesBase = "3cdcf5f2-1ef4-517c-9805-6587b60abb01"
 SSMProblems = "26aad666-b158-4e64-9d35-0e672562fa48"
 
 [extensions]
@@ -36,6 +37,7 @@ EpiBranchCSVExt = "CSV"
 EpiBranchCensoredDistributionsExt = "ConvolvedDistributions"
 EpiBranchMooncakeExt = "Mooncake"
 EpiBranchNCDatasetsExt = "NCDatasets"
+EpiBranchRecipesBaseExt = "RecipesBase"
 EpiBranchSSMProblemsExt = "SSMProblems"
 
 [compat]
@@ -53,6 +55,7 @@ EnzymeCore = "0.8"
 ForwardDiff = "0.10, 1.4"
 Makie = "0.24"
 Mooncake = "0.5"
+RecipesBase = "1"
 LinearAlgebra = "1"
 QuadGK = "2"
 Random = "1"

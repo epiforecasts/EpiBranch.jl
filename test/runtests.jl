@@ -90,6 +90,7 @@ const TEST_GROUPS = (
         "test_mixing_vaccination.jl",
         "test_generation_campaigns.jl",
         "test_per_group.jl",
+        "test_plot_recipe.jl",
     ],
     inference = [
         "test_model_spec.jl",
