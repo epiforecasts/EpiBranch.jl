@@ -1333,8 +1333,8 @@ abstract type AbstractDosing end
 
 The default [`AbstractDosing`](@ref): each dose goes to a person picked at
 random, and protects with probability `efficacy` times the susceptible share.
-The number protected is one binomial draw, so its cost does not grow with the
-doses.
+The number protected comes from one binomial draw, whose cost is independent of
+the number of doses.
 """
 struct RandomDosing <: AbstractDosing end
 
@@ -1352,8 +1352,8 @@ function protected_by_doses(
     )
     (doses > 0 && susceptibles > 0 && efficacy > 0) || return 0
     # A susceptible escapes all `doses` with probability (1 - efficacy / size)^doses.
-    # One binomial draw then costs the same for any number of doses. It treats
-    # people as independent, which is close to exact for a large population.
+    # One binomial draw then costs the same for any number of doses. Treating
+    # people as independent is close to exact in a large population.
     p = -expm1(doses * log1p(-min(efficacy / size, 1.0)))
     return rand(rng, Binomial(susceptibles, p))
 end
