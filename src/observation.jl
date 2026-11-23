@@ -410,7 +410,7 @@ function _has_exact_chain_size(offspring)
 end
 
 # Whether the closed form can read the progression's `Reporting` step.
-function _reporting_closed_form_readable(prog, attrs)
+@noinline function _reporting_closed_form_readable(prog, attrs)
     try
         _effective_reporting_probability(prog, attrs)
     catch e

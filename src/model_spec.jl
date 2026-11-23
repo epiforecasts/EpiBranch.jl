@@ -555,7 +555,7 @@ population(s::ModelSpec) = population(s.process)
 # helpers and the Turing `~` distribution wrappers treat a spec like the
 # process it wraps.
 single_type_offspring(s::ModelSpec) = single_type_offspring(s.process)
-has_single_type_law(s::ModelSpec) = has_single_type_law(s.process)
+@noinline has_single_type_law(s::ModelSpec) =has_single_type_law(s.process)
 offspring_law_unchanged(s::ModelSpec) = offspring_law_unchanged(s.process)
 _analytic_offspring(s::ModelSpec) = _analytic_offspring(s.process)
 n_types(s::ModelSpec) = n_types(s.process)
