@@ -207,7 +207,7 @@ The five parts map onto them as follows:
 - **interventions**: the only intervention they represent is a [`GroupVaccination`](@ref) campaign in the `ModelSpec` of the mixing variants, which moves people between compartments. The mixing variants refuse any other intervention, and the scalar variants take none;
 - **observation**: there is none. The output is the compartment trajectory.
 
-`HybridProcess` joins the two. It runs an exact `ModelSpec` while the outbreak is small and hands over to an approximation once the number of currently infectious people reaches a threshold, keeping the compartment counts at the switch. The two must agree on the dynamics, which the constructor checks. Up to the switch the exact model supplies all five parts. Afterwards only the reduced form above applies.
+`HybridProcess` joins the two. It runs an exact `ModelSpec` while the outbreak is small and hands over to an approximation once the number of currently infectious people reaches a threshold, keeping the compartment counts at the switch. The constructor checks that the two share the population size. For the scalar pairing it also checks that the transmission and removal rates match. For the mixing pairing it checks only the groups, so a `removal_rate` that differs from the exact model's progression is not caught and is the user's responsibility. Up to the switch the exact model supplies all five parts. Afterwards only the reduced form above applies.
 
 ## Host timeline and transmission-route windows
 
