@@ -1,8 +1,7 @@
 module EpiBranchEnzymeExt
 
 # Enzyme cannot compile these checks and lookups in the `ModelSpec`
-# constructor. They return nothing or a symbol, so there is nothing to
-# differentiate.
+# constructor. They return nothing or a symbol and have no derivative.
 
 using EpiBranch: EpiBranch
 using Enzyme: Enzyme
