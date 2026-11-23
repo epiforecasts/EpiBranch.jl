@@ -13,14 +13,13 @@ struct _Campaign{B}
     budget::B
 end
 
-# Reads the wrappers around an intervention (the same ones the mixing
-# approximations read), then its effect on a group (`count_dosing`). Anything
+# Reads the wrappers around an intervention, then its dose traits. Anything
 # else, or a `Scheduled` with a condition other than a calendar window, cannot be
 # applied to a count and is named in the error.
 function _campaign(iv::AbstractIntervention, window, budget)
     engine = "simulate_by_generation"
     leaf, window, budget = _unwrap_campaign(iv, window, budget, engine)
-    dosing = count_dosing(leaf)
+    dosing = _group_dosing(leaf)
     dosing === nothing && _refuse_campaign(engine, nameof(typeof(leaf)))
     budget === nothing && throw(
         ArgumentError(

@@ -46,7 +46,7 @@ They also name any input they cannot represent, such as a distribution as `effic
 The docstring of each model lists them.
 [`RingVaccination`](@ref), [`MassVaccination`](@ref), [`Isolation`](@ref), [`ContactTracing`](@ref), [`HeldCapacity`](@ref) and any other intervention need `simulate` on a model of individuals.
 
-An intervention written outside the package is applied to groups by defining `EpiBranch.count_dosing`, a description of its effect on a group.
+An intervention written outside the package is applied to groups by defining `EpiBranch.gives_group_doses` as `true` and the `EpiBranch.dose_*` facts of its dose; see its docstring.
 Without it, it needs `simulate` on a model of individuals.
 
 The test file `test/test_engine_support.jl` runs every kind of model against this page.

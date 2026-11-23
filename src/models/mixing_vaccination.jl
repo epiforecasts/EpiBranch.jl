@@ -116,15 +116,6 @@ end
 
 # ── The campaign read from a ModelSpec ───────────────────────────────
 
-"""
-    GroupDosing
-
-The description of an intervention that gives doses to groups, as read by a
-model that keeps counts or compartments rather than individuals: the `group_key`
-whose values are the groups, the `efficacy` and `mode` of the dose, the
-`coverage` of a group reached, the `dose_delay` after the trigger, and the
-`delay_to_immunity` and `waning` of the dose. See [`count_dosing`](@ref EpiBranch.count_dosing).
-"""
 struct GroupDosing{E, M, C, D, I, W}
     group_key::Symbol
     efficacy::E
@@ -136,24 +127,96 @@ struct GroupDosing{E, M, C, D, I, W}
 end
 
 """
-    count_dosing(intervention) -> Union{Nothing, GroupDosing}
+    gives_group_doses(intervention) -> Bool
 
-For extension authors: the effect of `intervention` on a model that keeps counts
-of cases by type or compartments by mixing group, such as `simulate_by_generation`
-and the approximations for mixing populations. These models have no individual to
-offer an intervention to, so they apply only an intervention that describes its
-effect on a group: it returns a [`GroupDosing`](@ref EpiBranch.GroupDosing). The
-default, `nothing`, means it has no such description. The model then refuses it in
-the same words as any other intervention it cannot apply. [`GroupVaccination`](@ref)
-defines it; a new intervention that gives doses to groups opts in by defining it.
+Whether `intervention` gives doses to groups, so that a model of counts or
+compartments can apply it. The default is `false`. An intervention that opts in
+defines `dose_group_key` and `dose_efficacy`, and may define the others:
+
+  - `dose_group_key(iv) -> Symbol`: the attribute whose values are the groups.
+  - `dose_efficacy(iv)`: the efficacy of a dose, a number between 0 and 1.
+  - `dose_mode(iv)`: the [`AbstractEffectMode`](@ref) of a dose (default
+    `LeakyMode()`).
+  - `dose_coverage(iv)`: the share of a triggered group reached (default `1.0`).
+  - `dose_delay(iv)`: the days from the trigger to the dose (default `0.0`).
+  - `dose_delay_to_immunity(iv)`: the days from dose to protection (default `0`).
+  - `dose_waning(iv)`: the waning of protection (default `nothing`).
+
 A model that hands an individual-based run over to a mixing approximation also
 needs `EpiBranch._group_trigger_time` for the intervention.
 """
-count_dosing(::AbstractIntervention) = nothing
-function count_dosing(gv::GroupVaccination)
+gives_group_doses(::AbstractIntervention) = false
+gives_group_doses(::GroupVaccination) = true
+
+"""
+    dose_group_key(intervention) -> Symbol
+
+For extension authors: the attribute whose values are the groups that
+`intervention` gives doses to. No default; required when
+[`gives_group_doses`](@ref EpiBranch.gives_group_doses) is `true`.
+"""
+function dose_group_key end
+
+"""
+    dose_efficacy(intervention)
+
+For extension authors: the efficacy of a dose of `intervention`, a number between
+0 and 1. No default; required when
+[`gives_group_doses`](@ref EpiBranch.gives_group_doses) is `true`.
+"""
+function dose_efficacy end
+
+"""
+    dose_mode(intervention) -> AbstractEffectMode
+
+For extension authors: whether a dose of `intervention` is leaky or
+all-or-nothing. Defaults to `LeakyMode()`.
+"""
+dose_mode(::AbstractIntervention) = LeakyMode()
+
+"""
+    dose_coverage(intervention)
+
+For extension authors: the share of a triggered group that `intervention`
+reaches. Defaults to `1.0`.
+"""
+dose_coverage(::AbstractIntervention) = 1.0
+
+"""
+    dose_delay(intervention)
+
+For extension authors: the days from the trigger to the dose. Defaults to `0.0`.
+"""
+dose_delay(::AbstractIntervention) = 0.0
+
+"""
+    dose_delay_to_immunity(intervention)
+
+For extension authors: the days from a dose to protection. Defaults to `0`.
+"""
+dose_delay_to_immunity(::AbstractIntervention) = 0
+
+"""
+    dose_waning(intervention)
+
+For extension authors: the waning of protection after a dose. Defaults to
+`nothing`, no waning.
+"""
+dose_waning(::AbstractIntervention) = nothing
+
+dose_group_key(gv::GroupVaccination) = gv.group_key
+dose_efficacy(gv::GroupVaccination) = efficacy(gv)
+dose_mode(gv::GroupVaccination) = effect_mode(gv)
+dose_coverage(gv::GroupVaccination) = gv.coverage
+dose_delay(gv::GroupVaccination) = gv.dose_delay
+dose_delay_to_immunity(gv::GroupVaccination) = delay_to_immunity(gv)
+dose_waning(gv::GroupVaccination) = waning(gv)
+
+function _group_dosing(iv::AbstractIntervention)
+    gives_group_doses(iv) || return nothing
     return GroupDosing(
-        gv.group_key, efficacy(gv), effect_mode(gv), gv.coverage, gv.dose_delay,
-        delay_to_immunity(gv), waning(gv)
+        dose_group_key(iv), dose_efficacy(iv), dose_mode(iv), dose_coverage(iv),
+        dose_delay(iv), dose_delay_to_immunity(iv), dose_waning(iv)
     )
 end
 
@@ -252,7 +315,7 @@ function _read_campaign(ivs::AbstractVector, mixing_by, groups, allocation, what
     isempty(ivs) && return NoCampaign()
     length(ivs) == 1 || _refuse_campaign(what, "a model with $(length(ivs)) interventions")
     iv, window, budget = _unwrap_campaign(only(ivs), (-Inf, Inf), nothing, what)
-    dosing = count_dosing(iv)
+    dosing = _group_dosing(iv)
     dosing === nothing && _refuse_campaign(what, nameof(typeof(iv)))
     key = dosing.group_key
     position = findfirst(==(key), mixing_by)
