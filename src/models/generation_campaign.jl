@@ -6,10 +6,8 @@
 # generation's interval come from the budget of a `CapacityConstrained` and the
 # window of a `Scheduled` around it.
 
-# A vaccination campaign `simulate_by_generation` can apply: the efficacy of
-# its dose, the days it may give doses between, the budget limiting how many,
-# and the dosing rule of a campaign that vaccinates the population (`nothing`
-# for one dosing contacts).
+# A vaccination campaign `simulate_by_generation` can apply. `dosing` is
+# `nothing` for one dosing contacts.
 struct _Campaign{B, D}
     efficacy::Float64
     window::Tuple{Float64, Float64}
@@ -184,11 +182,8 @@ function _doses_left(c::_Campaign, cc::CapacityConstrained, t0, t1, used)
     return b > s ? max(0, floor(Int, _doses_by(cc, b)) - used) : 0
 end
 
-# The doses of the campaigns that vaccinate the population in generation
-# `gen`, given at once at the start of its interval to the susceptibles
-# before its contacts are thinned. A shared budget is spread over the types
-# in proportion to their size. The susceptibles are lowered by those the
-# doses protect; `used` counts the doses given.
+# Gives the population campaigns' doses for generation `gen` at the start of
+# its interval, lowering `susceptibles` by those protected.
 function _vaccinate_population!(
         rng, campaigns, used, generation_length, gen, susceptibles::Vector{Int}, sizes
     )
@@ -206,14 +201,6 @@ function _vaccinate_population!(
         used[k] .+= length(used[k]) == 1 ? sum(by_type) : by_type
     end
     return susceptibles
-end
-
-function _vaccinate_population(
-        rng, campaigns, used, generation_length, gen, susceptibles::Int, size::Int
-    )
-    s = [susceptibles]
-    _vaccinate_population!(rng, campaigns, used, generation_length, gen, s, [size])
-    return only(s)
 end
 
 _split_by_size(rng, doses, sizes) =

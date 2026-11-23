@@ -545,10 +545,11 @@ function _run_generations(
     vaccinates_population = !all(_doses_contacts, campaigns)
     while gen < max_generations && counts != 0
         if vaccinates_population && susceptibles !== nothing
-            susceptibles = _vaccinate_population(
-                rng, campaigns, used, state.generation_length, gen, susceptibles,
-                something(sizes)
+            s = [susceptibles]
+            _vaccinate_population!(
+                rng, campaigns, used, state.generation_length, gen, s, [something(sizes)]
             )
+            susceptibles = only(s)
         end
         dosed = _scalar_doses!(doses, campaigns, used, state.generation_length, gen)
         m = _single_multiplier(rng, multiplier)

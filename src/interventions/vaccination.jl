@@ -1323,10 +1323,8 @@ end
 """
     AbstractDosing
 
-How a [`MassVaccination`](@ref) spreads a batch of doses over the people of a
-group, the `dosing` it is given. A rule defines
-[`protected_by_doses`](@ref EpiBranch.protected_by_doses); a new rule is a
-subtype with that method, with no change to `MassVaccination`.
+How a [`MassVaccination`](@ref) spreads a batch of doses over a group, its
+`dosing`. A rule defines [`protected_by_doses`](@ref EpiBranch.protected_by_doses).
 """
 abstract type AbstractDosing end
 
@@ -1334,19 +1332,17 @@ abstract type AbstractDosing end
     RandomDosing()
 
 The default [`AbstractDosing`](@ref): each dose goes to a person picked at
-random, whether or not they are still susceptible, so it protects with
-probability `efficacy` times the share of the group still susceptible.
+random, and protects with probability `efficacy` times the susceptible share.
 """
 struct RandomDosing <: AbstractDosing end
 
 """
     EpiBranch.protected_by_doses(rule, rng, doses, efficacy, susceptibles, size) -> Int
 
-For extension authors: how many of a group's `susceptibles`, out of `size`
-people, a batch of `doses` protects under the dosing `rule`, each dose
-protecting a susceptible it reaches with probability `efficacy`. The caller
-removes them from the susceptibles, so that vaccination and infection deplete
-the same people. A new [`AbstractDosing`](@ref) defines this method.
+How many of a group's `susceptibles`, out of `size` people, a batch of
+`doses` protects under the dosing `rule`, each dose protecting a susceptible it
+reaches with probability `efficacy`. The caller removes them from the
+susceptibles. A new [`AbstractDosing`](@ref) defines this method.
 """
 function protected_by_doses(
         ::RandomDosing, rng::AbstractRNG, doses::Integer, efficacy::Real,
@@ -1386,9 +1382,9 @@ Vaccinate the population on a schedule, independently of contact tracing.
   actually vaccinated (consent, absence, logistics). Default 1. A number, a
   distribution or a function `(rng, ind) -> ...`, as for
   [`RingVaccination`](@ref)'s `coverage`.
-- `dosing`: how a dose budget is spread over the people of a type, an
-  [`AbstractDosing`](@ref) such as [`RandomDosing`](@ref) (the default). It is
-  read only under [`CapacityConstrained`](@ref), see below.
+- `dosing`: how a dose budget is spread, an [`AbstractDosing`](@ref)
+  (default [`RandomDosing`](@ref)). Read only under
+  [`CapacityConstrained`](@ref).
 - `efficacy`, `delay_to_immunity`, `severity_efficacy`, `symptom_efficacy`: take the same forms,
   drawn once per vaccinated person, for example an age-dependent efficacy or
   immunity taking one to three weeks. See [`AbstractVaccination`](@ref).
@@ -1410,19 +1406,14 @@ only if their vaccination day plus `delay_to_immunity` comes before it.
 Under [`CapacityConstrained`](@ref), whose `budget_per_period` is the number
 of doses (a [`PerGroup`](@ref) budget gives one type its own), the campaign
 gives its doses to the population instead of to each person on their
-`eligibility_time`: that is not read, and a [`Scheduled`](@ref) window sets
-the days. The `dosing` rule decides who receives each dose; the default,
-[`RandomDosing`](@ref), gives it to a person picked at random, so a campaign of
-`d` doses over `n` people is a `coverage` of `d / n`. A person it protects
-is removed from the susceptibles that every later contact is thinned against,
-as an infected person is, so infection and vaccination deplete the same people.
-On a [`BranchingProcess`](@ref) with a [`Population`](@ref) the doses are given
-as the simulation reaches their days, so the model needs a generation time, and
-no dose is recorded on a person. Without a population, or with an unlimited
-budget, each person is dosed on their `eligibility_time` as it is without one.
-[`simulate_by_generation`](@ref) applies a budgeted `MassVaccination` this way
-too. Without a budget, `coverage` and `eligibility_time` act on each person as
-above.
+`eligibility_time`, which is not read; a [`Scheduled`](@ref) window sets
+the days. The `dosing` rule decides who receives each dose. A person it
+protects is removed from the susceptibles every later contact is thinned
+against, as an infected person is. On a [`BranchingProcess`](@ref) with a [`Population`](@ref) the doses are given
+as the simulation reaches their days, and no dose is recorded on a person.
+Without a population, or with an unlimited budget, each person is dosed on
+their `eligibility_time`. [`simulate_by_generation`](@ref) applies a budgeted
+`MassVaccination` this way too.
 
 # Closed-form offspring distribution
 
