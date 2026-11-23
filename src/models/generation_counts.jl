@@ -230,7 +230,7 @@ offspring matrix (`MultiTypeOffspring`); any other model raises an
 `ArgumentError` naming which of these it fails. The model's `multiplier` is
 drawn once per generation (see [`BranchingProcess`](@ref)); with `Poisson`
 offspring the generation's total is a mixed Poisson. The susceptibles of a
-type start at its population minus those in the population's `immune` and its
+type start at its population minus those in the `immune` of the population and its
 index cases.
 
 - `n_initial`: the number of index cases, an `Int` for a single-type model or
@@ -779,8 +779,8 @@ end
 """
     EpiBranch.scale_mean(d, m)
 
-`d`'s law with its mean scaled by `m`, the multiplier a model with a
-`multiplier` draws once per generation. Defined for `Poisson`, the family its
+The law of `d` with its mean scaled by `m`, the draw that a model with a
+`multiplier` makes once per generation. Defined for `Poisson`, the family its
 negative-binomial identity needs; add a method of your own for another
 offspring family to use it with `multiplier`.
 """

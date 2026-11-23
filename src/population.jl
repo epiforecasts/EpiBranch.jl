@@ -16,7 +16,7 @@ Without a population, a [`BranchingProcess`](@ref) has no limit on the number
 of people it can infect.
 
 A group is depleted against its own size: each person is infected once, and a
-case of one group leaves the others' susceptibles untouched. `immune` is the
+case of one group leaves the susceptibles of the others untouched. `immune` is the
 number in each group immune at the start: one `Int` shared by every group, or
 one entry per group. A contact reaches a susceptible with probability equal to
 the share of its group that is neither immune nor yet infected. Only a

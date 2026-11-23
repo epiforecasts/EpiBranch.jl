@@ -522,8 +522,9 @@ function simulate_once(
     )
 end
 
-# Draws a case's offspring with its mean scaled by the run's multiplier for the
-# case's generation, drawn once per generation and shared by every window.
+# Draws the offspring of a case with its mean scaled by the multiplier of the run
+# for the generation of the case. The multiplier is drawn once per generation and
+# shared by every window.
 struct _Multiplied{O, M}
     offspring::O
     multiplier::M

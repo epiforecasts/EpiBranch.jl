@@ -213,7 +213,7 @@ println("Cases: $(state.cumulative_cases)")
 Give the model the population size of each type with `Population(sizes)`: here there is one size for each of the three age groups.
 Each potential infection then succeeds with probability equal to the share of
 its own type not yet infected, so a small type is used up while a large one
-carries on. `simulate` and `simulate_by_generation` read the same population, including its `immune`, the number in each type immune at the start (`Population(sizes; immune)`).
+carries on. Both `simulate` and `simulate_by_generation` read the same population, including the number of each type immune at the start (`Population(sizes; immune)`).
 The closed forms refuse a finite population, as for a single type, because
 depletion reshapes the offspring law.
 
