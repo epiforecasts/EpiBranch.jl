@@ -29,8 +29,8 @@
     end
 
     @testset "Imports share capacity limits and the population" begin
-        # Only the import has offspring; it arrives once the index case has
-        # used up a population of two, so none of them can infect anyone.
+        # Only the import has offspring. It arrives after the index case has
+        # used up a population of two, so none of its offspring can be infected.
         model = BranchingProcess(
             (rng, ind) -> ind.infection_time > 0 ? 10 : 0, Exponential(5.0);
             importations = [1.0], population_size = 2

@@ -297,8 +297,8 @@ its own size.
 `importations` is a vector of times at which further index cases arrive,
 added to the `n_initial` index cases at time 0. Their `:infection_route` is
 `:external`. In a multi-type model each import's type is drawn uniformly from
-the types; `index_types` applies only to the index cases at time 0. Only
-`BranchingProcess`'s own offspring route reads `importations`; a model with its
+the types; `index_types` applies only to the index cases at time 0. Only the
+offspring route of `BranchingProcess` reads `importations`; a model with its
 own `initialise_state` does not.
 
 The transmission model describes only who infects whom and when. Add the
