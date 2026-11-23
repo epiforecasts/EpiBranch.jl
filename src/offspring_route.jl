@@ -232,7 +232,10 @@ function _drop_if_prevented!(o::_Offspring, race, ind, k)
 end
 
 function _offspring_builtin_risk_blocks(parent, contact, state, transmission_time)
-    pop_suscept = susceptible_fraction(state, contact)
+    pop_suscept = _after_vaccination(
+        susceptible_fraction(state, contact), get(state.scratch, _MASS_LEDGERS_KEY, nothing),
+        state, contact, transmission_time
+    )
     pop_suscept <= 0.0 && return true
     pop_suscept < 1.0 && rand(state.rng) > pop_suscept && return true
     return _builtin_risk_blocks(parent, contact, state, transmission_time)
@@ -560,6 +563,7 @@ function _simulate_offspring(
     # The race counts the index cases as it settles them.
     state.cumulative_cases = 0
     fill!(state.group_cases, 0)
+    interventions = _take_mass_campaigns!(state, interventions)
     T = _timetype(state)
     tree = _take_tree(T, length(individuals(state)), map(w -> w.until, windows))
     routes = ntuple(

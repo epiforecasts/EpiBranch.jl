@@ -141,6 +141,7 @@ include("models/mixing_population_dynamics.jl")
 include("models/hybrid.jl")
 include("models/generation_counts.jl")
 include("models/generation_campaign.jl")
+include("models/population_doses.jl")
 
 # Output
 include("output/linelist.jl")
@@ -222,7 +223,7 @@ export TraceRate, ConstantRate
 export TraceDelay, ConstantDelay
 export TraceAction, Quarantine, FlagOnly
 export AbstractVaccination, VaccineEffect, RingVaccination, MassVaccination,
-    GroupVaccination
+    GroupVaccination, AbstractDosing, RandomDosing
 export AbstractEffectMode, LeakyMode, AllOrNothingMode
 export Scheduled, Risk
 export AbstractTrigger, is_triggered!, trigger_can_lapse, required_transitions,

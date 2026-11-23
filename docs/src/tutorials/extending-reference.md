@@ -1079,6 +1079,7 @@ before.
 | A capacity limit | `CapacityConstrained(iv; budget_per_period = ...)`, with `capacity_key` and `capacity_time_key` for `iv` (or for its `TraceAction`, for `ContactTracing`) | When actions are admitted, once per case; or, for an effect `iv` writes directly in `resolve_individual!`, right after that hook runs |
 | A capacity limit per group of the population, such as a district or centre | Nothing: `CapacityConstrained(iv; budget_per_period = PerGroup(...))` finds each person's group | When actions are admitted, once per case |
 | The effect of an intervention on counts of cases or compartments | `EpiBranch.count_dosing(iv)`, returning an `EpiBranch.GroupDosing` | When a model of counts or compartments reads the specification |
+| How a `MassVaccination` spreads its doses over a group | A type `<: AbstractDosing` and `EpiBranch.protected_by_doses` | When the campaign's dose budget is given, on a branching process and in `simulate_by_generation` |
 | An exact effect on the offspring distribution | `analytic_offspring_effect` for an intervention | Closed-form results on a `ModelSpec` |
 | A model, attribute or progression transition that leaves the single-type offspring law exactly as drawn | `EpiBranch.offspring_law_unchanged` | The chain-size likelihood's analytical path |
 | A progression transition that reports cases with a fixed probability, and the time it reports from | `EpiBranch.reporting_probability`, `EpiBranch.reporting_from` | The chain-size closed forms and `end_of_outbreak_probability`, which thin by it |

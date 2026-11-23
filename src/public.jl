@@ -232,6 +232,7 @@ public capacity_key
 public capacity_time_key
 public held_until
 public count_dosing
+public protected_by_doses
 public GroupDosing
 public refused_action
 public InterventionWrapper

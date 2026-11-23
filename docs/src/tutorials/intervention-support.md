@@ -41,10 +41,10 @@ By default `CapacityConstrained` drops a person the budget turns away (`on_refus
 
 ## What a model of groups applies
 
-`simulate_by_generation`, the mean-field and linear-noise approximations and `HybridProcess` apply a [`GroupVaccination`](@ref), alone or under `Scheduled` (a `start_time` and `end_time` only) and `CapacityConstrained` (one per campaign, with a shared or `PerGroup` budget and `on_refusal = DropRefused()`).
+`simulate_by_generation`, the mean-field and linear-noise approximations and `HybridProcess` apply a [`GroupVaccination`](@ref), or in `simulate_by_generation` a [`MassVaccination`](@ref) with a dose budget, alone or under `Scheduled` (a `start_time` and `end_time` only) and `CapacityConstrained` (one per campaign, with a shared or `PerGroup` budget and `on_refusal = DropRefused()`).
 They also name any input they cannot represent, such as a distribution as `efficacy`, a `delay_to_immunity` or `waning`.
 The docstring of each model lists them.
-[`RingVaccination`](@ref), [`MassVaccination`](@ref), [`Isolation`](@ref), [`ContactTracing`](@ref), [`HeldCapacity`](@ref) and any other intervention need `simulate` on a model of individuals.
+[`RingVaccination`](@ref), a [`MassVaccination`](@ref) in the approximations, [`Isolation`](@ref), [`ContactTracing`](@ref), [`HeldCapacity`](@ref) and any other intervention need `simulate` on a model of individuals.
 
 An intervention written outside the package is applied to groups by defining `EpiBranch.count_dosing`, a description of its effect on a group.
 Without it, it needs `simulate` on a model of individuals.

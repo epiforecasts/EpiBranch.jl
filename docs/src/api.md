@@ -249,6 +249,8 @@ VaccineEffect
 RingVaccination
 MassVaccination
 GroupVaccination
+AbstractDosing
+RandomDosing
 AbstractEffectMode
 EpiBranch.effect_mode
 EpiBranch.dose_label
@@ -928,6 +930,7 @@ EpiBranch.record_capacity_use!
 EpiBranch.refused_action
 EpiBranch.held_until
 EpiBranch.count_dosing
+EpiBranch.protected_by_doses
 EpiBranch.GroupDosing
 ```
 

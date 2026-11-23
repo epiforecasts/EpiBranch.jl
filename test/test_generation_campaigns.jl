@@ -136,7 +136,7 @@ EpiBranch.trigger_time(e::_EligibleAt, infector, state) = e.time
             return kept
         end
         function by_counting(rng, n, s, size, doses)
-            campaigns = [EpiBranch._Campaign(e, (0.0, Inf), nothing) for (_, e) in doses]
+            campaigns = [EpiBranch._Campaign(e, (0.0, Inf), nothing, nothing) for (_, e) in doses]
             used = [[0] for _ in doses]
             kept, left = EpiBranch._deplete_dosed(
                 rng, PerContactDepletion(), n, s, size, campaigns, first.(doses), used

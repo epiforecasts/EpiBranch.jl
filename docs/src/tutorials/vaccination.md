@@ -540,6 +540,23 @@ mv_heterogeneous = MassVaccination(
 nothing # hide
 ```
 
+### A mass campaign with a dose budget
+
+Wrapped in [`CapacityConstrained`](@ref), a `MassVaccination` gives a number of doses to the population instead of vaccinating each person on their `eligibility_time`.
+Each dose goes to a person picked at random (the `dosing` rule, [`RandomDosing`](@ref) by default) and protects a susceptible it reaches with probability `efficacy`.
+Those it protects leave the susceptibles for good, as infected people do, so the contacts of a later generation are thinned against the people neither infected nor protected.
+A [`PerGroup`](@ref) budget gives one type of a model with several types its own doses.
+This applies to a [`BranchingProcess`](@ref) with a [`Population`](@ref) and to [`simulate_by_generation`](@ref); there the doses of a generation are given at the start of its interval.
+
+```julia
+model = BranchingProcess(Poisson(4.0); population = Population(100_000))
+campaign = CapacityConstrained(MassVaccination(efficacy = 0.9, eligibility_time = 0.0);
+    budget_per_period = Steps([14.0, 28.0], [0.0, 50_000.0, 0.0]), period = 14.0,
+    carry_over = false)
+state = simulate_by_generation(ModelSpec(model; interventions = [campaign]);
+    n_initial = 100, max_generations = 4, generation_length = 14.0, immune = 10_000)
+```
+
 ## Multi-dose schedules
 
 For prime and boost (or longer) schedules, list one `MassVaccination` or
