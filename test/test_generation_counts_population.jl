@@ -4,32 +4,36 @@ using Statistics
 
 @testset "Generation counts with susceptibles and depletion rules" begin
     @testset "susceptibles and the immune, per type" begin
-        model = BranchingProcess(Poisson(0.5); population_size = 1000)
+        model = BranchingProcess(Poisson(0.5); population = Population(1000; immune = 300))
         state = simulate_by_generation(
-            model; n_initial = 10, immune = 300, max_generations = 1, rng = StableRNG(1)
+            model; n_initial = 10, max_generations = 1, rng = StableRNG(1)
         )
         @test state.type_sizes == 1000
         @test state.susceptibles == 1000 - 300 - 10 - state.counts
-        @test_throws ArgumentError simulate_by_generation(model; n_initial = 10, immune = 995)
+        @test_throws ArgumentError simulate_by_generation(
+            BranchingProcess(Poisson(0.5); population = Population(1000; immune = 995));
+            n_initial = 10
+        )
+        @test_throws ArgumentError Population(1000; immune = 1001)
+        @test_throws ArgumentError Population([400, 600]; immune = [500, 0])
+        @test_throws ArgumentError Population([400, 600]; immune = [1, 2, 3])
+        @test Population([400, 600]; immune = 5).immune == [5, 5]
         @test_throws ArgumentError simulate_by_generation(
             model; n_initial = 10, population_by_type = [500, 500]
         )
 
         multi = BranchingProcess(
             [0.5 0.1; 0.1 0.5], R -> Poisson(R), EpiBranch.NoGenerationTime();
-            population = Population([400, 600])
+            population = Population([400, 600]; immune = [100, 0])
         )
         state = simulate_by_generation(
-            multi; n_initial = [5, 5], immune = [100, 0], max_generations = 1, rng = StableRNG(1)
+            multi; n_initial = [5, 5], max_generations = 1, rng = StableRNG(1)
         )
         @test state.type_sizes == [400, 600]
         @test state.population_size == 1000
         @test state.susceptibles == [400 - 100 - 5, 600 - 5] .- state.counts
         @test_throws ArgumentError simulate_by_generation(
             multi; n_initial = [5, 5], population_by_type = [400, 600]
-        )
-        @test_throws ArgumentError simulate_by_generation(
-            multi; n_initial = [5, 5], population_by_type = [400, 600], immune = [1, 2, 3]
         )
 
         # `population_by_type` is deprecated: it still splits a total between
@@ -39,11 +43,16 @@ using Statistics
             population_size = 1000
         )
         old = @test_logs (:warn, r"population_by_type") match_mode = :any simulate_by_generation(
-            total; n_initial = [5, 5], immune = [100, 0], population_by_type = [400, 600],
+            total; n_initial = [5, 5], population_by_type = [400, 600],
             max_generations = 1, rng = StableRNG(1)
         )
         @test old.type_sizes == state.type_sizes
-        @test old.counts == state.counts
+        @test_throws ArgumentError simulate_by_generation(
+            BranchingProcess(
+                [0.5 0.1; 0.1 0.5], R -> Poisson(R), EpiBranch.NoGenerationTime();
+                population = Population(1000; immune = 100)
+            ); n_initial = [5, 5], population_by_type = [400, 600]
+        )
         @test_throws ArgumentError simulate_by_generation(
             total; n_initial = [5, 5], population_by_type = [400, 500]
         )
@@ -54,11 +63,11 @@ using Statistics
         # and 500 / 1000 of them.
         mixed = BranchingProcess(
             [1.0 1.0; 1.0 1.0], R -> Poisson(R), EpiBranch.NoGenerationTime();
-            population = Population([1000, 1000])
+            population = Population([1000, 1000]; immune = [800, 0])
         )
         kept = [
             simulate_by_generation(
-                mixed; n_initial = [50, 500], immune = [800, 0], max_generations = 1,
+                mixed; n_initial = [50, 500], max_generations = 1,
                 rng = StableRNG(s)
             ).counts for s in 1:200
         ]
@@ -126,10 +135,14 @@ using Statistics
             return kept
         end
         reps = 20_000
-        function check(model, n_initial, immune; sizes)
+        function check(build, n_initial, immune; sizes)
+            model = build(
+                length(sizes) == 1 ? Population(only(sizes); immune = only(immune)) :
+                    Population(sizes; immune)
+            )
             counts = [
                 simulate_by_generation(
-                    model; n_initial, immune, max_generations = 1, rng = StableRNG(i)
+                    model; n_initial, max_generations = 1, rng = StableRNG(i)
                 ).counts for i in 1:reps
             ]
             rng = StableRNG(10^6)
@@ -150,20 +163,22 @@ using Statistics
 
         # Mixed Poisson offspring, drawn through the Poisson mean
         for law in (Poisson(3.0), NegBin(3.0, 0.5))
-            model = BranchingProcess(law; population_size = 300)
-            counts, reference = check(model, 40, 60; sizes = [300])
+            counts, reference = check(
+                pop -> BranchingProcess(law; population = pop), 40, 60; sizes = [300]
+            )
             same_law(counts, only.(reference))
         end
 
         # Another offspring law, drawn by skipping over the contacts that miss
-        model = BranchingProcess(Binomial(6, 0.5); population_size = 300)
-        counts, reference = check(model, 40, 60; sizes = [300])
+        counts, reference = check(
+            pop -> BranchingProcess(Binomial(6, 0.5); population = pop), 40, 60; sizes = [300]
+        )
         same_law(counts, only.(reference))
 
         # Several types, each thinned by its own share
-        multi = BranchingProcess(
+        multi(pop) = BranchingProcess(
             [2.0 1.0; 0.5 2.5], R -> NegBin(R, 0.5), EpiBranch.NoGenerationTime();
-            population = Population([200, 400])
+            population = pop
         )
         counts, reference = check(multi, [30, 10], [50, 100]; sizes = [200, 400])
         for i in 1:2
@@ -197,10 +212,11 @@ using Statistics
 
     @testset "a generation costs the same whatever the number of cases" begin
         function per_generation(N)
-            model = BranchingProcess(Poisson(2.0); population_size = N)
+            model = BranchingProcess(
+                Poisson(2.0); population_size = N, multiplier = Gamma(6.5, 1 / 6.5)
+            )
             run() = simulate_by_generation(
-                model; n_initial = 10, max_generations = 25, multiplier = Gamma(6.5, 1 / 6.5),
-                rng = StableRNG(1)
+                model; n_initial = 10, max_generations = 25, rng = StableRNG(1)
             )
             state = run()
             t = minimum(@elapsed(run()) for _ in 1:5)
