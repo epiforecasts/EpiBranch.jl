@@ -268,7 +268,7 @@ elig(policy, infector) = is_eligible(policy, infector, _CONTACT, nothing)
     @testset "Contact tracing times the trace with the contact" begin
         ct = ContactTracing(
             AfterContactInfected() | TraceNobody(), ConstantRate(1.0),
-            ConstantDelay(Dirac(0.0)), RecordTraceTime()
+            Dirac(0.0), RecordTraceTime()
         )
         state = simulate(
             ModelSpec(
@@ -426,7 +426,7 @@ elig(policy, infector) = is_eligible(policy, infector, _CONTACT, nothing)
         function simulate_with(eligibility, action = Quarantine(duration = Inf))
             ct = ContactTracing(
                 eligibility, ConstantRate(1.0),
-                ConstantDelay(Exponential(1.0)), action
+                Exponential(1.0), action
             )
             simulate(
                 ModelSpec(
@@ -465,7 +465,7 @@ elig(policy, infector) = is_eligible(policy, infector, _CONTACT, nothing)
         ct = ContactTracing(OnSymptomOnset(), 0.7, Exponential(1.5), Quarantine(duration = Inf))
         @test ct.eligibility isa OnSymptomOnset
         @test ct.trace_rate isa ConstantRate
-        @test ct.isolation_to_trace_delay isa ConstantDelay
+        @test ct.isolation_to_trace_delay isa Distribution
         @test ct.action isa Quarantine
 
         ct2 = ContactTracing(OnSymptomOnset() | OnLabConfirmation(), 0.5, Exponential(2.0), FlagOnly())

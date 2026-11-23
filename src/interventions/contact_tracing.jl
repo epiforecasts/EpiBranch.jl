@@ -337,36 +337,15 @@ Whether this eligible contact is successfully traced (randomly, using `rng`).
 """
 traces(::TraceRate, infector, contact, state, rng) = false
 
-"""Each eligible contact is traced with the same probability `p`."""
-struct ConstantRate <: TraceRate
-    p::Float64
+"""Each eligible contact is traced with probability `p`: a number, a
+`Distribution` or a function of `(rng, infector)`, read with
+[`sample_value`](@ref)."""
+struct ConstantRate{P} <: TraceRate
+    p::P
 end
-traces(r::ConstantRate, infector, contact, state, rng) = rand(rng) < r.p
-
-"""
-    TraceDelay
-
-Rule for the delay, in days, from the case's tracing start (its isolation by
-default; see [`trigger_time`](@ref EpiBranch.trigger_time)) to its contact
-being reached. Built in: [`ConstantDelay`](@ref), one distribution for every
-contact. To write a new rule, define a subtype and a method of
-[`draw_trace_delay`](@ref EpiBranch.draw_trace_delay).
-"""
-abstract type TraceDelay end
-
-"""
-    draw_trace_delay(delay, infector, contact, state, rng) -> Float64
-
-Draw the delay in days before this contact is reached.
-"""
-draw_trace_delay(::TraceDelay, infector, contact, state, rng) = 0.0
-
-"""Every contact's tracing delay (days) is drawn from the same distribution
-`dist`."""
-struct ConstantDelay{D <: Distribution} <: TraceDelay
-    dist::D
-end
-draw_trace_delay(d::ConstantDelay, infector, contact, state, rng) = float(rand(rng, d.dist))
+traces(r::ConstantRate, infector, contact, state, rng) =
+    rand(rng) < sample_value(r.p, rng, infector)
+traces(r::ConstantRate{<:Real}, infector, contact, state, rng) = rand(rng) < r.p
 
 """
     TraceAction
@@ -564,10 +543,12 @@ end
 # same tracing state, so the methods that depend only on those are written once.
 abstract type _Tracing <: AbstractIntervention end
 
-_trace_rate(probability::Real) = ConstantRate(probability)
+_trace_rate(probability) = ConstantRate(probability)
 _trace_rate(rate::TraceRate) = rate
-_trace_delay(delay::Distribution) = ConstantDelay(delay)
-_trace_delay(delay::TraceDelay) = delay
+
+# Days from the start of tracing to the contact being reached, drawn once per
+# attempt as a per-case value, as the delays of other interventions are.
+_draw_trace_delay(delay, infector, rng) = sample_value(delay, rng, infector)
 
 """
     ContactTracing(eligibility, probability, isolation_to_trace_delay, action;
@@ -585,10 +566,12 @@ traced contacts who are not yet known cases.
   [`OnLabConfirmation`](@ref), [`OnIsolation`](@ref), [`TraceEveryone`](@ref)
   or [`TraceNobody`](@ref). Combine with `&`, `|` and `!`. The keyword form
   defaults to [`SymptomaticParent`](@ref) (symptomatic and isolated).
-- `probability`: share of an eligible case's contacts that tracing finds.
-- `isolation_to_trace_delay`: distribution of days from when tracing of the
-  case starts (its isolation by default, onset for `OnSymptomOnset`) to each
-  contact being reached.
+- `probability`: share of an eligible case's contacts that tracing finds: a
+  number, a `Distribution` or an `(rng, case) -> value` function, or a
+  [`TraceRate`](@ref).
+- `isolation_to_trace_delay`: days from when tracing of the case starts (its
+  isolation by default, onset for `OnSymptomOnset`) to each contact being
+  reached: a number, a `Distribution` or an `(rng, case) -> value` function.
 - `action` (required): what happens to a contact who is found,
   [`Quarantine`](@ref) for a given `duration` or [`FlagOnly`](@ref) to record
   the trace without quarantining. There is no default, because policies differ
@@ -663,7 +646,7 @@ end
 ```
 """
 struct ContactTracing{
-        E <: TraceEligibility, F <: TraceRate, D <: TraceDelay, A <: TraceAction,
+        E <: TraceEligibility, F <: TraceRate, D, A <: TraceAction,
     } <: _Tracing
     eligibility::E
     trace_rate::F
@@ -675,24 +658,22 @@ struct ContactTracing{
     # and `depth < 1` is rejected rather than silently behaving as depth 1. A
     # plain probability or delay distribution becomes a constant rate or delay.
     function ContactTracing(
-            eligibility::TraceEligibility, probability::Union{Real, TraceRate},
-            isolation_to_trace_delay::Union{Distribution, TraceDelay},
+            eligibility::TraceEligibility, probability, isolation_to_trace_delay,
             action::TraceAction;
             depth::Integer = 1
         )
         depth >= 1 ||
             throw(ArgumentError("ContactTracing depth must be at least 1, got $depth"))
         rate = _trace_rate(probability)
-        delay = _trace_delay(isolation_to_trace_delay)
-        return new{typeof(eligibility), typeof(rate), typeof(delay), typeof(action)}(
-            eligibility, rate, delay, action, Int(depth)
+        return new{typeof(eligibility), typeof(rate), typeof(isolation_to_trace_delay), typeof(action)}(
+            eligibility, rate, isolation_to_trace_delay, action, Int(depth)
         )
     end
 end
 
 function ContactTracing(;
-        probability::Float64,
-        isolation_to_trace_delay::Distribution,
+        probability,
+        isolation_to_trace_delay,
         action::Union{TraceAction, Nothing} = nothing,
         eligibility::TraceEligibility = SymptomaticParent(),
         depth::Integer = 1
@@ -916,9 +897,7 @@ function _trace_attempt!(
         ct::ContactTracing, state, infector, ind, rng, base, remaining, not_before, actions
     )
     traces(ct.trace_rate, infector, ind, state, rng) || return nothing
-    trace_delay = draw_trace_delay(
-        ct.isolation_to_trace_delay, infector, ind, state, rng
-    )
+    trace_delay = _draw_trace_delay(ct.isolation_to_trace_delay, infector, rng)
     # A contact cannot be sought before it exists, such as a funeral contact
     # before the funeral, so the delay runs from whichever comes later.
     trace_time = max(base, not_before) + trace_delay
@@ -1141,8 +1120,8 @@ Trace a case back to its own infector, once the case itself meets
 `eligibility`, and act on the infector found this way (quarantine or just
 record it). Where [`ContactTracing`](@ref) reaches forward, to the people a
 case infects, `SourceTracing` reaches backward, to the person who infected it,
-through the same [`TraceEligibility`](@ref), [`TraceRate`](@ref),
-[`TraceDelay`](@ref) and [`TraceAction`](@ref) protocol: `eligibility` and its
+through the same [`TraceEligibility`](@ref), [`TraceRate`](@ref)
+and [`TraceAction`](@ref) protocol: `eligibility` and its
 timing are read off the case found eligible, as they are for
 [`ContactTracing`](@ref), and the `action` is applied to its infector instead
 of to a forward contact.
@@ -1186,7 +1165,7 @@ infected node. `:source_traced_by` is kept separate because it names a later
 one instead.
 """
 struct SourceTracing{
-        E <: TraceEligibility, F <: TraceRate, D <: TraceDelay, A <: TraceAction,
+        E <: TraceEligibility, F <: TraceRate, D, A <: TraceAction,
     } <: _Tracing
     eligibility::E
     trace_rate::F
@@ -1196,14 +1175,12 @@ struct SourceTracing{
     # A plain probability or delay distribution becomes a constant rate or
     # delay, as for `ContactTracing`.
     function SourceTracing(
-            eligibility::TraceEligibility, probability::Union{Real, TraceRate},
-            isolation_to_trace_delay::Union{Distribution, TraceDelay},
+            eligibility::TraceEligibility, probability, isolation_to_trace_delay,
             action::TraceAction
         )
         rate = _trace_rate(probability)
-        delay = _trace_delay(isolation_to_trace_delay)
-        return new{typeof(eligibility), typeof(rate), typeof(delay), typeof(action)}(
-            eligibility, rate, delay, action
+        return new{typeof(eligibility), typeof(rate), typeof(isolation_to_trace_delay), typeof(action)}(
+            eligibility, rate, isolation_to_trace_delay, action
         )
     end
 end
@@ -1211,8 +1188,8 @@ end
 _tracer_owner(::SourceTracing) = :source
 
 function SourceTracing(;
-        probability::Float64,
-        isolation_to_trace_delay::Distribution,
+        probability,
+        isolation_to_trace_delay,
         action::TraceAction,
         eligibility::TraceEligibility = SymptomaticParent()
     )
@@ -1254,7 +1231,7 @@ function trace_contacts!(st::SourceTracing, state, case, contacts, not_before = 
         source.id == case.parent_id || continue
         is_eligible(st.eligibility, case, source, state) || continue
         traces(st.trace_rate, case, source, state, rng) || continue
-        trace_delay = draw_trace_delay(st.isolation_to_trace_delay, case, source, state, rng)
+        trace_delay = _draw_trace_delay(st.isolation_to_trace_delay, case, rng)
         base = trigger_time(st.eligibility, case, source, state)
         nb = not_before === nothing ? -Inf : not_before[i]
         trace_time = max(base, nb) + trace_delay

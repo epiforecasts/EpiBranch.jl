@@ -221,7 +221,6 @@ export OnSymptomOnset, OnLabConfirmation, OnIsolation, TraceEveryone, TraceNobod
 export PreviouslyTraced
 export AnyOf, AllOf, NoneOf
 export TraceRate, ConstantRate
-export TraceDelay, ConstantDelay
 export TraceAction, Quarantine, FlagOnly
 export AbstractVaccination, VaccineEffect, RingVaccination, MassVaccination,
     GroupVaccination

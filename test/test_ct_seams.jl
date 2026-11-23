@@ -125,7 +125,7 @@ end
         @test ct.eligibility isa SymptomaticParent
         @test ct.trace_rate isa ConstantRate
         @test ct.trace_rate.p == 0.5
-        @test ct.isolation_to_trace_delay isa ConstantDelay
+        @test ct.isolation_to_trace_delay isa Distribution
         @test ct.action isa Quarantine
     end
 
@@ -148,13 +148,34 @@ end
         @test any(get(ind.state, :quarantined, false) for ind in individuals(state))
     end
 
+    @testset "Probability and delay take a number, a distribution or a function" begin
+        rng = StableRNG(1)
+        infector = Individual(id = 1)
+        calls = Ref(0)
+        per_case = (r, ind) -> (calls[] += 1; 2.0 * ind.id)
+        ct = ContactTracing(
+            probability = (r, ind) -> 1.0, isolation_to_trace_delay = per_case,
+            action = FlagOnly()
+        )
+        @test EpiBranch.traces(ct.trace_rate, infector, nothing, nothing, rng)
+        @test EpiBranch._draw_trace_delay(ct.isolation_to_trace_delay, infector, rng) == 2.0
+        @test calls[] == 1
+        st = SourceTracing(
+            OnSymptomOnset(), Beta(2, 2), 3, FlagOnly()
+        )
+        @test EpiBranch._draw_trace_delay(st.isolation_to_trace_delay, infector, rng) == 3.0
+        @test 0 <= mean(
+            EpiBranch.traces(st.trace_rate, infector, nothing, nothing, rng) for _ in 1:2000
+        ) <= 1
+    end
+
     @testset "Custom TraceEligibility trait integrates via constructor" begin
         # User-defined eligibility slots in by type. We check the
         # struct accepts the custom trait and exposes it on the
         # intervention without any further hook changes.
         ct = ContactTracing(
             WithinChain(), ConstantRate(0.5),
-            ConstantDelay(Exponential(1.0)), Quarantine(duration = Inf)
+            Exponential(1.0), Quarantine(duration = Inf)
         )
         @test ct.eligibility isa WithinChain
         @test EpiBranch.is_eligible(
@@ -184,7 +205,7 @@ end
     @testset "extension hooks the guides name are public" begin
         if VERSION >= v"1.11"
             for n in (
-                    :keep_active, :traces, :draw_trace_delay, :apply_trace!,
+                    :keep_active, :traces, :apply_trace!,
                     :capacity_key, :capacity_time_key, :held_until,
                     :refused_action, :InterventionWrapper, :draw_offspring,
                     :offspring_law_unchanged, :has_single_type_law, :lazily_populate!,
@@ -288,7 +309,7 @@ end
         ).depth == 3
         @test ContactTracing(
             OnSymptomOnset(), ConstantRate(1.0),
-            ConstantDelay(Exponential(0.5)), Quarantine(duration = Inf); depth = 2
+            Exponential(0.5), Quarantine(duration = Inf); depth = 2
         ).depth == 2
     end
 
@@ -308,7 +329,7 @@ end
         )
         @test_throws ArgumentError ContactTracing(
             OnSymptomOnset(), ConstantRate(1.0),
-            ConstantDelay(Exponential(0.5)), Quarantine(duration = Inf); depth = 0
+            Exponential(0.5), Quarantine(duration = Inf); depth = 0
         )
     end
 
