@@ -202,7 +202,7 @@ function _initialise_observed(
     )
     validate_process_windows(process, progression)
     _check_population(process)
-    obs =_read_observed_cases(cases)
+    obs = _read_observed_cases(cases)
     n = length(obs.inf)
     now_ = now === nothing ? maximum(obs.inf) : Float64(now)
     maximum(obs.inf) <= now_ || throw(
