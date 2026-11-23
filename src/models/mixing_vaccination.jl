@@ -331,7 +331,7 @@ end
 # until it is triggered) and `fired[v]` whether they have been offered;
 # `baseline[v]` is the expected number of cases already counted when the
 # trigger started to be watched for; `log` holds each batch of doses as
-# `(time, doses, group)`, which a budget with `carry_over = false` reads back;
+# `(time, doses, group)`, which a budget with `ExpireUnused` reads back;
 # `group` is the mixing group of a budget per group and `0` for a shared one.
 struct CampaignProgress
     dose_time::Vector{Float64}
@@ -412,14 +412,14 @@ end
 
 # Doses left in the budget for a batch dated `d`, counted as the
 # `CapacityConstrained` wrapper counts them for one more person: those
-# available through the end of the period `d` falls in (with `carry_over`,
+# available through the end of the period `d` falls in (with `CarryOver`,
 # including everything unspent before it), less those already given.
 # `group` is the mixing group of the budget, or `0` for a shared one.
 _budget_left(::Nothing, log, d, group = 0) = Inf
 function _budget_left(cc::CapacityConstrained, log, d, group = 0)
     period_start, period_end = _period_bounds(cc, d)
     mine = ((t, n) for (t, n, g) in log if g == group)
-    if cc.carry_over
+    if _carries_over(cc)
         available = isinf(cc.period) ? _period_budget(cc.budget_per_period, period_start) :
             _cumulative_budget(cc, period_end)
         used = sum((n for (t, n) in mine if t < period_end); init = 0.0)

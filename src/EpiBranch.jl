@@ -229,6 +229,7 @@ export AbstractTrigger, is_triggered!, trigger_can_lapse, required_transitions,
     Infections, ReportedCases, opened_at, After
 export PerGroup, CapacityConstrained, capacity_usage, default_capacity_priority
 export RefusalPolicy, DropRefused, DeferRefused
+export UnusedBudget, CarryOver, ExpireUnused
 export HeldCapacity, held_usage, release_capacity!
 export OnRoutes
 export RouteWindow, window_open, window_close

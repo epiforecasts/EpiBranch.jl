@@ -276,6 +276,9 @@ PerGroup
 CapacityConstrained
 capacity_usage
 default_capacity_priority
+UnusedBudget
+CarryOver
+ExpireUnused
 RefusalPolicy
 DropRefused
 DeferRefused

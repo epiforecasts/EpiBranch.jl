@@ -892,7 +892,7 @@ one per district or treatment centre, needs no method of yours:
 `PerGroup` as `budget_per_period` (or as the `capacity` of `HeldCapacity`)
 splits the budget by the group of each person in the population of the model.
 Each group has its own budget, checked independently, with the same `period`
-and `carry_over`.
+and `unused_budget`.
 
 A model that keeps counts of cases by type or compartments by mixing group has
 no individual to offer an intervention to. It applies an intervention only if

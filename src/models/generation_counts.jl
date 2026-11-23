@@ -277,7 +277,7 @@ with probability `efficacy`, whatever the effect `mode`. The
 `budget_per_period` is shared by the types: the doses go to the first contacts
 made of all the types together. A [`PerGroup`](@ref) budget gives each type the
 doses of its own budget instead. The doses are those of the periods that start
-in the interval; with `carry_over`, doses not yet given stay available and are
+in the interval; with `CarryOver`, doses not yet given stay available and are
 counted in `doses_used` of the state. Several campaigns each dose the first
 contacts made. A dosed person who is not infected is not protected against
 later contacts. The `eligibility` of the campaign is not read.

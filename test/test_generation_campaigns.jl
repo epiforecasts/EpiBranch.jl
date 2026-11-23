@@ -34,7 +34,7 @@ EpiBranch.trigger_time(e::_EligibleAt, infector, state) = e.time
         @test doses(steps, 154.0, 168.0) == 0
 
         # Unused budget carries over into the first interval the window opens in
-        # unless `carry_over = false`.
+        # unless `unused_budget = ExpireUnused()`.
         daily = CapacityConstrained(group(); budget_per_period = 10.0, period = 1.0)
         opened = Scheduled(daily; start_time = 20.0, end_time = 40.0)
         @test doses(opened, 14.0, 28.0) == 28 * 10
@@ -46,7 +46,7 @@ EpiBranch.trigger_time(e::_EligibleAt, infector, state) = e.time
         )
         @test doses(wrapped, 14.0, 28.0) == 28 * 10
         own = CapacityConstrained(
-            group(); budget_per_period = 10.0, period = 1.0, carry_over = false
+            group(); budget_per_period = 10.0, period = 1.0, unused_budget = ExpireUnused()
         )
         @test doses(Scheduled(own; start_time = 20.0), 14.0, 28.0) == 8 * 10
 
@@ -192,9 +192,9 @@ EpiBranch.trigger_time(e::_EligibleAt, infector, state) = e.time
             ModelSpec(discrete(); interventions = [late]), first_part; max_generations = 7
         )
         @test continued.doses_used == whole.doses_used
-        # Without `carry_over` the doses of a period are lost if they are not used.
+        # Without `CarryOver` the doses of a period are lost if they are not used.
         lost = CapacityConstrained(
-            group(); budget_per_period = 1.0e6, period = 14.0, carry_over = false
+            group(); budget_per_period = 1.0e6, period = 14.0, unused_budget = ExpireUnused()
         )
         pool = EpiBranch._campaign(lost, (0.0, Inf), nothing)
         @test EpiBranch._doses_left(pool, pool.budget, 14.0, 28.0, 10^6) == 10^6

@@ -75,8 +75,31 @@ function _check_refusal_policy(::DeferRefused, intervention)
 end
 
 """
+    UnusedBudget
+
+The policy of [`CapacityConstrained`](@ref) for capacity a period leaves unused:
+[`CarryOver`](@ref) or [`ExpireUnused`](@ref).
+"""
+abstract type UnusedBudget end
+
+"""
+    CarryOver()
+
+The default [`UnusedBudget`](@ref): unused capacity is added to later periods.
+"""
+struct CarryOver <: UnusedBudget end
+
+"""
+    ExpireUnused()
+
+An [`UnusedBudget`](@ref) that loses unused capacity: each period has only its
+own allowance.
+"""
+struct ExpireUnused <: UnusedBudget end
+
+"""
     CapacityConstrained(intervention; budget_per_period, period=Inf,
-                        carry_over=true, priority=default_capacity_priority,
+                        unused_budget=CarryOver(), priority=default_capacity_priority,
                         on_refusal=DropRefused())
 
 Limit how many people an intervention can reach, such as a fixed number of
@@ -106,8 +129,9 @@ CapacityConstrained(GroupVaccination(efficacy = 0.9); budget_per_period = doses,
 - `period`: length of a period in days, measured on the date each dose is
   actually given. `Inf` (default) gives a single budget for the whole
   outbreak.
-- `carry_over`: whether unused capacity is added to later periods
-  (default `true`); with `false` each period has its own allowance. With a
+- `unused_budget`: the policy for capacity a period leaves unused, an
+  [`UnusedBudget`](@ref). [`CarryOver`](@ref) (default) adds it to later
+  periods; [`ExpireUnused`](@ref) gives each period its own allowance. With a
   schedule, a later period's own allowance is still read off the schedule
   at its own start, not at the point a run has reached.
 - `priority`: function `(individual, state) -> number` ordering who is served
@@ -134,7 +158,7 @@ label count against it; use different labels for separate budgets.
 By default all groups share one budget, in every model. A [`PerGroup`](@ref)
 `budget_per_period` splits it: each group of the population of the model (a
 district, a treatment centre) gets its own budget with the same `period`,
-`carry_over` and `priority`, tracked separately from the others. Pass the group
+`unused_budget` and `priority`, tracked separately from the others. Pass the group
 name to `capacity_usage` to read the usage of one group.
 
 [`Scheduled`](@ref) and `CapacityConstrained` can be combined in either
@@ -175,17 +199,19 @@ struct CapacityConstrained{I <: AbstractIntervention, F, B} <: _CapacityWrapper
     intervention::I
     budget_per_period::B
     period::Float64
-    carry_over::Bool
+    unused_budget::UnusedBudget
     priority::F
     on_refusal::RefusalPolicy
 end
+
+_carries_over(cc::CapacityConstrained) = cc.unused_budget isa CarryOver
 
 # The budget per period is counted on the clock of the population.
 gates_on_population_clock(::CapacityConstrained) = true
 
 function CapacityConstrained(
         intervention::AbstractIntervention;
-        budget_per_period, period::Real = Inf, carry_over::Bool = true,
+        budget_per_period, period::Real = Inf, unused_budget::UnusedBudget = CarryOver(),
         priority = default_capacity_priority, on_refusal::RefusalPolicy = DropRefused()
     )
     budget = _prepared_budget(budget_per_period)
@@ -198,7 +224,7 @@ function CapacityConstrained(
         ArgumentError("DeferRefused needs a finite period to defer into")
     )
     return CapacityConstrained(
-        intervention, budget, Float64(period), carry_over, priority, on_refusal
+        intervention, budget, Float64(period), unused_budget, priority, on_refusal
     )
 end
 
@@ -303,7 +329,7 @@ _for_resource(::Any, cc::CapacityConstrained, resource) = cc
 function _for_resource(pg::PerGroup, cc::CapacityConstrained, resource)
     budget = _budget_of(pg, resource)
     return CapacityConstrained(
-        cc.intervention, budget, cc.period, cc.carry_over, cc.priority, cc.on_refusal
+        cc.intervention, budget, cc.period, cc.unused_budget, cc.priority, cc.on_refusal
     )
 end
 
@@ -400,7 +426,7 @@ function refused_action(p::DeferRefused, cc::CapacityConstrained, times, action)
     return nothing
 end
 
-# The start and end of the period containing `at`, in the scope `carry_over`
+# The start and end of the period containing `at`, in the scope `unused_budget`
 # implies: `(0.0, Inf)`, a single period for the whole outbreak, when `period`
 # is infinite.
 function _period_bounds(cc::CapacityConstrained, at)
@@ -618,31 +644,34 @@ function _cumulative_table(cc::CapacityConstrained, last_end)
 end
 
 # Doses used and available for the period containing `at`, in the scope
-# `carry_over` implies. Reused by the admission decision, once per candidate
+# `unused_budget` implies. Reused by the admission decision, once per candidate
 # with its own proposed date, and by `capacity_usage`, with the simulation's
 # current clock.
-function _usage_at(cc::CapacityConstrained, times, extra, at, cum = nothing)
+_usage_at(cc::CapacityConstrained, times, extra, at, cum = nothing) =
+    _usage_at(cc.unused_budget, cc, times, extra, at, cum)
+
+function _usage_at(::CarryOver, cc::CapacityConstrained, times, extra, at, cum)
     period_start, period_end = _period_bounds(cc, at)
-    if cc.carry_over
-        available = isinf(cc.period) ? _period_budget(cc.budget_per_period, period_start) :
-            _cumulative_budget(cc, period_end, cum)
-        used = _count_before(times, extra, period_end)
-    else
-        available = _period_budget(cc.budget_per_period, period_start)
-        used = _count_before(times, extra, period_end) -
-            _count_before(times, extra, period_start)
-    end
-    return (used = used, available = available)
+    available = isinf(cc.period) ? _period_budget(cc.budget_per_period, period_start) :
+        _cumulative_budget(cc, period_end, cum)
+    return (used = _count_before(times, extra, period_end), available = available)
+end
+
+function _usage_at(::ExpireUnused, cc::CapacityConstrained, times, extra, at, cum)
+    period_start, period_end = _period_bounds(cc, at)
+    used = _count_before(times, extra, period_end) -
+        _count_before(times, extra, period_start)
+    return (used = used, available = _period_budget(cc.budget_per_period, period_start))
 end
 
 # Whether one more dose at `at` keeps every period within its allowance. With
-# `carry_over` a dose also counts against every later period, and the race
+# `CarryOver` a dose also counts against every later period, and the race
 # admits doses in the order cases settle rather than by date, so a period
 # that later doses already fill must still have room for this one.
 function _fits_budget(cc::CapacityConstrained, times, extra, at)
     usage = _usage_at(cc, times, extra, at)
     usage.used + 1 <= usage.available || return false
-    (cc.carry_over && isfinite(cc.period)) || return true
+    (_carries_over(cc) && isfinite(cc.period)) || return true
     _, own_end = _period_bounds(cc, at)
     last_t = max(at, isempty(times) ? at : times[end], isempty(extra) ? at : maximum(extra))
     cum = _cumulative_table(cc, _period_bounds(cc, last_t)[2])
@@ -712,10 +741,10 @@ end
 
 The number of doses (or other units of capacity) dated by now, and the number
 that could have been given by now, at the end of a simulation or at the point
-`state` has reached. With `carry_over = true` (the default) both count the
+`state` has reached. With [`CarryOver`](@ref) (the default) both count the
 whole outbreak: `available` is `budget_per_period` for every period begun so
 far, each read off its own start when `budget_per_period` is a schedule, and
-`used` counts every dose dated no later than it. With `carry_over = false`
+`used` counts every dose dated no later than it. With [`ExpireUnused`](@ref)
 both refer to the current period only: `available` is `budget_per_period` at
 this period's own start, and `used` counts the doses dated within it,
 including one given in that period by another intervention sharing the same
