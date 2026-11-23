@@ -107,7 +107,7 @@ end
             vcat,
             [imported(simulate(quiet(seasonal); max_time = 20.0, rng = StableRNG(s))) for s in 1:200]
         )
-        # The mean rate is one a day, and none arrive near the trough on day 10.
+        # The mean rate is one a day. Few arrive near the trough on day 10.
         @test isapprox(length(stimes) / 200, 20.0; atol = 1.5)
         @test count(t -> 8 < t < 12, stimes) < count(t -> t < 2 || t > 18, stimes) / 2
     end

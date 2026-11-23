@@ -307,9 +307,10 @@ one; any other model raises an `ArgumentError` when built. A model with a
 `importations` is a vector of times at which further index cases arrive,
 or a rate of arrivals per day: a number, a calendar schedule such as
 [`Steps`](@ref) or [`Seasonal`](@ref) giving the rate on each day, or a
-function of the day returning it. A rate draws the arrivals as a Poisson
-process over the run's `max_time`, which it requires. Imports are added to
-the `n_initial` index cases at time 0. Their `:infection_route` is `:external`. In a multi-type model each import's type is drawn uniformly from
+function of the day returning it. A rate needs `max_time` and draws the
+arrivals as a Poisson process over it. Imports come in addition to the
+`n_initial` index cases at time 0, and their `:infection_route` is
+`:external`. In a multi-type model each import's type is drawn uniformly from
 the types; `index_types` applies only to the index cases at time 0. Only the
 offspring route of `BranchingProcess` reads `importations`; a model with its
 own `initialise_state` does not. [`simulate_by_generation`](@ref) and
