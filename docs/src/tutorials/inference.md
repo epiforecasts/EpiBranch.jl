@@ -559,11 +559,11 @@ block_grad = mean(
 println("d(# surviving)/dp ≈ $(round(block_grad, digits = 1)) (exact: $(-n_contacts))")
 ```
 
-Wiring this into `simulate`'s own short-circuiting risk loop, so a
-`chain_size_distribution` under interventions yields a usable gradient
-for a gradient-based sampler, is follow-up work: the loop decides and
-returns inside the same function that draws, which needs restructuring
-rather than a call-site change like the two above.
+These two patterns do not extend to `simulate` under interventions, and
+gradients of simulated outputs there are out of scope. Whether a transmission
+is blocked decides infection times, which cases exist and what the stopping
+rules see, so no single `propagate` call covers it. For a gradient-based
+sampler, use the likelihood functions with Enzyme or Mooncake instead.
 
 ## Clusters started by more than one case
 
