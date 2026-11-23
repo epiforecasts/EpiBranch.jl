@@ -1406,14 +1406,15 @@ only if their vaccination day plus `delay_to_immunity` comes before it.
 Under [`CapacityConstrained`](@ref), whose `budget_per_period` is the number
 of doses (a [`PerGroup`](@ref) budget gives one type its own), the campaign
 gives its doses to the population instead of to each person on their
-`eligibility_time`, which is not read; a [`Scheduled`](@ref) window sets
-the days. The `dosing` rule decides who receives each dose. A person it
-protects is removed from the susceptibles every later contact is thinned
-against, as an infected person is. On a [`BranchingProcess`](@ref) with a [`Population`](@ref) the doses are given
-as the simulation reaches their days, and no dose is recorded on a person.
-Without a population, or with an unlimited budget, each person is dosed on
-their `eligibility_time`. [`simulate_by_generation`](@ref) applies a budgeted
-`MassVaccination` this way too.
+`eligibility_time`, which is not read. A [`Scheduled`](@ref) window sets
+the days. The `dosing` rule decides who receives each dose. A protected person
+leaves the susceptibles, as an infected person does, and every later contact is
+thinned against those left. On a [`BranchingProcess`](@ref) with a
+[`Population`](@ref) the doses are given as the simulation reaches their days,
+and no dose is recorded on a person. Without a population or with an unlimited
+budget, each person is dosed on their `eligibility_time`.
+[`simulate_by_generation`](@ref) applies a budgeted `MassVaccination` in the
+same way.
 
 # Closed-form offspring distribution
 
