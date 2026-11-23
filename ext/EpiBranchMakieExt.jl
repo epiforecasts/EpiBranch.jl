@@ -80,7 +80,6 @@ function EpiBranch.chain_size_plot(
     return fig
 end
 
-
 function EpiBranch.containment_plot(
         results::AbstractDataFrame, x::Symbol;
         group::Union{Nothing, Symbol} = nothing, y::Symbol = :containment_probability
