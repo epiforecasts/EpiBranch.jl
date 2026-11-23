@@ -107,6 +107,40 @@ end
         end
     end
 
+    @testset "a sensitivity given as a function of the test time reads the load then" begin
+        seen = Float64[]
+        function by_load(threshold)
+            return (rng, ind, t) -> begin
+                push!(seen, t - ind.infection_time)
+                load = EpiBranch.trajectory_value(ind, t - ind.infection_time)
+                return load >= threshold ? 1.0 : 0.0
+            end
+        end
+        # onset at 3 days, isolation delay 1: the load at 4 days is 6.4
+        for (threshold, isolated) in ((6.0, true), (7.0, false))
+            empty!(seen)
+            spec = testing_spec(
+                progression = AbstractClinicalTransition[],
+                interventions = [
+                    Isolation(
+                        delay = 1.0, duration = Inf,
+                        test_sensitivity = by_load(threshold),
+                    ),
+                ]
+            )
+            state = simulate(spec; max_cases = 50, rng = StableRNG(6), n_initial = 20)
+            cases = filter(ind -> is_infected(ind) && !is_asymptomatic(ind), state.individuals)
+            @test !isempty(cases)
+            for ind in cases
+                @test is_test_positive(ind) == isolated
+                @test is_isolated(ind) == isolated
+            end
+            @test all(≈(4.0), seen)
+            asymptomatic = filter(ind -> is_infected(ind) && is_asymptomatic(ind), state.individuals)
+            @test !any(is_test_positive, asymptomatic)
+        end
+    end
+
     @testset "a Testing sensitivity without a Testing step is an error" begin
         testing = Testing(assay = Assay(value = load -> 30.0, detect = 0.0), delay = 0.0)
         @test_throws ArgumentError testing_spec(

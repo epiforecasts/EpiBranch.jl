@@ -388,9 +388,25 @@ function _draw_test_positive(sensitivity, rng, individual)
     return rand(rng) < sample_value(sensitivity, rng, individual)
 end
 
-# A sensitivity given as a step in the progression is read from the case once
-# the progression has resolved, instead of being drawn at creation.
+# A function of the test time `(rng, ind, t)` cannot be drawn until the time is
+# known, so creation leaves it negative and `resolve_individual!` draws it.
+_at_test_time(f) = f isa Function && hasmethod(f, Tuple{Any, Any, Any})
+_draw_test_positive(f::Function, rng, individual) =
+    _at_test_time(f) ? false : rand(rng) < sample_value(f, rng, individual)
+
+# A sensitivity given as a step in the progression, or as a function of the
+# test time, is read from the case once the progression has resolved, instead
+# of being drawn at creation.
 _read_test_positive!(sensitivity, iso, individual, state) = nothing
+function _read_test_positive!(f::Function, iso, individual, state)
+    _at_test_time(f) || return nothing
+    t = _self_isolation_time(iso, individual, state)
+    rng = stream(state.rng, individual.id, (:isolation, :test))
+    individual.state[:test_positive] = isfinite(t) &&
+        is_eligible_for_isolation(iso.eligibility, individual, state) &&
+        rand(rng) < f(rng, individual, t)
+    return nothing
+end
 function resolve_individual!(iso::Isolation, individual, state)
     _read_test_positive!(iso.test_sensitivity, iso, individual, state)
     # An isolation already standing on the individual is a quarantine written by
