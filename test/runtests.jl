@@ -22,8 +22,9 @@ include("testutils/protect_from_exposure.jl")
 # `EPIBRANCH_TEST_GROUP` selects a group; `Pkg.test()` without it runs
 # every file. A new file goes in the group matching its subject: engine
 # (core engine and transitions), population (density dependence, structure,
-# populations, mixing, generation counts, data handling), interventions or
-# inference. Keep the running times of the groups close.
+# populations, mixing, generation counts, data handling), interventions,
+# analytical (closed forms, chain statistics, multitype models) or inference
+# (likelihoods). Keep the running times of the groups close.
 const TEST_GROUPS = (
     engine = [
         "test_types.jl",
@@ -94,7 +95,7 @@ const TEST_GROUPS = (
         "test_per_group.jl",
         "test_plot_recipe.jl",
     ],
-    inference = [
+    analytical = [
         "test_model_spec.jl",
         "test_chains.jl",
         "test_generation_intervals.jl",
@@ -102,6 +103,14 @@ const TEST_GROUPS = (
         "test_n_initial_extinction.jl",
         "test_poisson_mixtures.jl",
         "test_incidence_moments.jl",
+        "test_multitype.jl",
+        "test_multitype_analytical.jl",
+        "test_integration.jl",
+        "test_r_targets.jl",
+        "test_seeding_helpers.jl",
+        "test_examples.jl",
+    ],
+    inference = [
         "test_likelihood_dists.jl",
         "test_tabulated_loglik.jl",
         "test_pairwise_likelihood.jl",
@@ -109,14 +118,8 @@ const TEST_GROUPS = (
         "test_serial_interval.jl",
         "test_vaccine_likelihood.jl",
         "test_likelihood_compatibility.jl",
-        "test_multitype.jl",
-        "test_multitype_analytical.jl",
-        "test_integration.jl",
-        "test_r_targets.jl",
         "test_stochastic_ad.jl",
         "test_pair_kernels.jl",
-        "test_seeding_helpers.jl",
-        "test_examples.jl",
     ],
 )
 
