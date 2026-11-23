@@ -36,7 +36,7 @@ end
 Containment probability against a swept parameter as a Makie `Figure`,
 available after `using Makie` or a backend such as `using CairoMakie`. `results`
 is the output of [`scenario_sweep`](@ref); `x` names a numeric column and `y`
-the column plotted. One line is drawn for each value of the column `group`.
+the column plotted. The plot has one line for each value of the column `group`.
 """
 function containment_plot(args...; kwargs...)
     throw(ArgumentError("containment_plot needs a Makie backend: run `using CairoMakie` (or another Makie backend) first"))
@@ -48,7 +48,7 @@ end
 
 Probability that an outbreak is over at each time, as a Makie `Figure`,
 available after `using Makie` or a backend such as `using CairoMakie`. At each
-time the cases observed so far are passed to
+time the cases observed so far go to
 [`end_of_outbreak_inputs`](@ref) and
 [`end_of_outbreak_probability`](@ref). `by` chooses the time as in
 [`weekly_incidence`](@ref). `times` defaults to 100 points from the first case
