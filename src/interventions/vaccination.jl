@@ -1171,7 +1171,7 @@ test result from [`Isolation`](@ref) for the default `OnLabConfirmation()`.
 
 Unlike [`RingVaccination`](@ref) and [`MassVaccination`](@ref), which act
 only on new contacts as they are made, `GroupVaccination` also checks a case's
-group once its own infection is settled, on every engine: an index case, or
+group once its own infection is settled, on every model: an index case, or
 one whose own trigger (such as lab confirmation) only becomes true after it
 last made a contact, is still reached.
 

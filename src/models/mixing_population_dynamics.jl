@@ -364,7 +364,7 @@ would silently leave it out. The campaign is read from the intervention as it
 is written, and nothing is given twice: `group_key` (which must be one of the
 `mixing_by` keys; doses go to the groups it names), `efficacy` and `mode`,
 `coverage`, `dose_delay`, the window of `Scheduled` and the budget, `period`
-and `carry_over` of `CapacityConstrained`. `efficacy`, `coverage` and
+and `unused_budget` of `CapacityConstrained`. `efficacy`, `coverage` and
 `dose_delay` must be numbers, `delay_to_immunity` must be 0 and `waning`
 `nothing`, and `on_refusal` must be [`DropRefused`](@ref), which the
 compartments do not model otherwise.

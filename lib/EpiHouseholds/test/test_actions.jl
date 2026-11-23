@@ -18,16 +18,16 @@ test_continuous_vaccine_actions(k -> HouseholdProcess([4], k))
         progression = [Transition(:recovered; delay = 10.0, terminal = true)],
         interventions = [iso, ct, v]
     )
-    for carry_over in (false, true),
+    for unused_budget in (ExpireUnused(), CarryOver()),
             wrap in (
                 v -> CapacityConstrained(
                     Scheduled(v; start_after_cases = 2);
-                    budget_per_period = 1.0, period = 1.0, carry_over
+                    budget_per_period = 1.0, period = 1.0, unused_budget
                 ),
                 v -> Scheduled(
                     CapacityConstrained(
                         v; budget_per_period = 1.0,
-                        period = 1.0, carry_over
+                        period = 1.0, unused_budget
                     );
                     start_after_cases = 2
                 ),

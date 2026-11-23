@@ -278,6 +278,9 @@ PerGroup
 CapacityConstrained
 capacity_usage
 default_capacity_priority
+UnusedBudget
+CarryOver
+ExpireUnused
 RefusalPolicy
 DropRefused
 DeferRefused
@@ -934,9 +937,15 @@ EpiBranch.capacity_time_key
 EpiBranch.record_capacity_use!
 EpiBranch.refused_action
 EpiBranch.held_until
-EpiBranch.count_dosing
 EpiBranch.protected_by_doses
-EpiBranch.GroupDosing
+EpiBranch.gives_group_doses
+EpiBranch.dose_group_key
+EpiBranch.dose_efficacy
+EpiBranch.dose_mode
+EpiBranch.dose_coverage
+EpiBranch.dose_delay
+EpiBranch.dose_delay_to_immunity
+EpiBranch.dose_waning
 ```
 
 #### Start triggers

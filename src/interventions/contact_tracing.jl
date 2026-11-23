@@ -1152,7 +1152,7 @@ Same as [`ContactTracing`](@ref): `eligibility` (which cases are traced back,
 default [`SymptomaticParent`](@ref)), `probability` (share of eligible cases
 whose infector is found), `isolation_to_trace_delay` and `action` (required).
 
-# Engine differences
+# Differences between models
 
 On every model the infector is found once the case itself is settled.
 Quarantining it blocks what it has not yet transmitted and leaves any infection

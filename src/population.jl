@@ -32,9 +32,8 @@ for a nonzero `immune`. `groups` names the groups, in the order of `sizes`:
   with sizes that vary between runs, such as an attribute drawn with
   `rand(rng, 1:2)`.
 
-`Population(n)` and `Population(sizes)` return a `SinglePopulation` and a
-`GroupedPopulation`, the types the engines dispatch on. [`NoPopulation`](@ref)
-is the third.
+`Population(n)` returns a `SinglePopulation` and `Population(sizes)` a
+`GroupedPopulation`. [`NoPopulation`](@ref) is the third population type.
 
 # Examples
 ```julia

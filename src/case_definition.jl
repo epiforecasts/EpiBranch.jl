@@ -79,7 +79,7 @@ has_happened(h::CaseHistory, event::Symbol) = isfinite(event_time(h, event))
 
 The classification of the person `history` describes under `definition`: any
 value, usually a `Symbol`, with `missing` for a person who is not (yet) a case
-under the definition. The engine calls it at each time one of the
+under the definition. The simulation calls it at each time one of the
 [`EpiBranch.relevant_events`](@ref) was recorded, in time order, and keeps the
 times at which the answer changes. A function `history -> label` serves as a
 definition without a type of its own.
