@@ -30,8 +30,10 @@ function EpiBranch.epicurve(
     fig = Figure()
     x = _day_numbers(q.date)
     ax = _date_axis(fig, q.date, interval)
-    band!(ax, x, q[!, cols[1]], q[!, cols[5]]; color = (:steelblue, 0.2), label = "95% band")
-    band!(ax, x, q[!, cols[2]], q[!, cols[4]]; color = (:steelblue, 0.4), label = "50% band")
+    outer = round(Int, 100 * (probs[5] - probs[1]))
+    inner = round(Int, 100 * (probs[4] - probs[2]))
+    band!(ax, x, q[!, cols[1]], q[!, cols[5]]; color = (:steelblue, 0.2), label = "$outer% band")
+    band!(ax, x, q[!, cols[2]], q[!, cols[4]]; color = (:steelblue, 0.4), label = "$inner% band")
     lines!(ax, x, q[!, cols[3]]; color = :steelblue, linewidth = 2, label = "Median")
     axislegend(ax; position = :rt)
     return fig
