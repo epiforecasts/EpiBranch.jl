@@ -77,7 +77,7 @@ end
 """
     UnusedBudget
 
-What [`CapacityConstrained`](@ref) does with capacity a period leaves unused:
+The policy of [`CapacityConstrained`](@ref) for capacity a period leaves unused:
 [`CarryOver`](@ref) or [`ExpireUnused`](@ref).
 """
 abstract type UnusedBudget end
@@ -129,7 +129,7 @@ CapacityConstrained(GroupVaccination(efficacy = 0.9); budget_per_period = doses,
 - `period`: length of a period in days, measured on the date each dose is
   actually given. `Inf` (default) gives a single budget for the whole
   outbreak.
-- `unused_budget`: what becomes of capacity a period leaves unused, an
+- `unused_budget`: the policy for capacity a period leaves unused, an
   [`UnusedBudget`](@ref). [`CarryOver`](@ref) (default) adds it to later
   periods; [`ExpireUnused`](@ref) gives each period its own allowance. With a
   schedule, a later period's own allowance is still read off the schedule
