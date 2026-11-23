@@ -165,8 +165,8 @@ end
         )
         @test EpiBranch.sample_value(st.isolation_to_trace_delay, rng, infector) == 3.0
         @test 0 <= mean(
-            EpiBranch.traces(st.trace_rate, infector, nothing, nothing, rng) for _ in 1:2000
-        ) <= 1
+                EpiBranch.traces(st.trace_rate, infector, nothing, nothing, rng) for _ in 1:2000
+            ) <= 1
     end
 
     @testset "Custom TraceEligibility trait integrates via constructor" begin
