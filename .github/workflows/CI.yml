@@ -107,6 +107,25 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: false
 
+  # Codecov posts its status and comment only when this job tells it to
+  # (`manual_trigger` in `codecov.yml`), once every upload is in. It runs after
+  # a failed job too, whose flag Codecov takes from an earlier commit. A run
+  # cancelled by a newer push sends nothing.
+  coverage:
+    needs: [test, epinetwork, epihouseholds]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        with:
+          run_command: send-notifications
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: false
+
   docs:
     needs: [test, epinetwork, epihouseholds]
     runs-on: ubuntu-latest
