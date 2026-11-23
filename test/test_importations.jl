@@ -79,7 +79,7 @@ end
     @testset "A constant rate gives Poisson arrivals within max_time" begin
         counts = [
             length(imported(simulate(quiet(0.5); max_time = 40.0, rng = StableRNG(s))))
-            for s in 1:300
+                for s in 1:300
         ]
         @test isapprox(sum(counts) / 300, 20.0; atol = 0.7)
         state = simulate(quiet(0.5); max_time = 40.0, rng = StableRNG(1))
