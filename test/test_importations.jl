@@ -67,3 +67,13 @@
         @test 60 < n2 < 140
     end
 end
+
+@testset "A count-eligible model with importations runs as individuals" begin
+    gt = DiscreteNonParametric([1.0, 2.0], [0.5, 0.5])
+    plain = BranchingProcess(Poisson(0.0), gt)
+    @test EpiBranch.count_rule(plain) !== nothing
+    model = BranchingProcess(Poisson(0.0), gt; importations = [7.0])
+    @test EpiBranch.count_rule(model) === nothing
+    state = simulate(model; max_time = 20.0, rng = StableRNG(6))
+    @test [i.infection_time for i in individuals(state)] == [0.0, 7.0]
+end
