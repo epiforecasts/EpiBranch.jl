@@ -165,7 +165,9 @@ known cases are quarantined through [`ContactTracing`](@ref).
   isolate them.
 - `test_sensitivity`: probability that an eligible case is detected and
   isolated (default 1). A number, a distribution or a function
-  `(rng, ind) -> ...`, drawn once per case. A [`Testing`](@ref) step in the
+  `(rng, ind) -> ...`, drawn once per case. A function `(rng, ind, t) -> ...`
+  is drawn once the test time `t` (trigger plus `delay`) is known, so it can
+  read the case's within-host load then. A [`Testing`](@ref) step in the
   model's `progression` can be given instead: a case is then detected when its
   own test, taken from its within-host trajectory, is positive. Isolation still
   starts `delay` after the trigger. Analytic effects
