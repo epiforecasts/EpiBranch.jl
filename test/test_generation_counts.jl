@@ -308,6 +308,14 @@ end
         @test isapprox(var(by_case), var(by_generation); rtol = 0.25)
     end
 
+    @testset "a multiplier keeps tracing able to draw before settling" begin
+        model = BranchingProcess(Poisson(2.0), Exponential(2.0); multiplier = Gamma(2.0, 0.5))
+        wrapped = EpiBranch._multiplied(model.infectiousness, model.multiplier)
+        plain = model.infectiousness
+        @test all(EpiBranch._draws_before_settling, plain)
+        @test all(EpiBranch._draws_before_settling, wrapped)
+    end
+
     @testset "a model that does not read the immune refuses them" begin
         @test_throws ArgumentError HomogeneousProcess(
             transmission_rate = 0.4, population = Population(100; immune = 10)
