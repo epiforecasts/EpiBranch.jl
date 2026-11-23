@@ -295,9 +295,8 @@ each type's population, `Population(sizes)`, and depletes each type against
 its own size.
 
 `importations` is a vector of times at which further index cases arrive,
-added to the `n_initial` index cases at time 0. Each imported case is a seed
-of the same race, so capacity limits, case-count triggers and depletion of the
-population apply to it, and its `:infection_route` is `:external`.
+added to the `n_initial` index cases at time 0. Their `:infection_route` is
+`:external`.
 
 The transmission model describes only who infects whom and when. Add the
 natural history, interventions, population characteristics and reporting
@@ -339,8 +338,6 @@ struct BranchingProcess{W <: Tuple, P, L, I} <: TransmissionModel
     importations::I
 end
 
-# The times of the imported index cases, as the `importations` keyword gives
-# them, or none.
 _check_importations(::Nothing) = nothing
 function _check_importations(times::AbstractVector{<:Real})
     all(t -> isfinite(t) && t >= 0, times) || throw(

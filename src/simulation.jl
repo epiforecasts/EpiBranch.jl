@@ -977,9 +977,6 @@ function initialise_state(
         n_types = n_types(model), infection_time = 0, types = sim_opts.index_types
     )
     seed!(state, 1:(sim_opts.n_initial), interventions, transitions)
-    # Imports are created with their own infection times but not seeded: the
-    # race infects each when it reaches that time, so one beyond a stopping rule
-    # or `max_time` stays uninfected.
     for t in _import_times(model)
         ind = only(
             add_individuals!(

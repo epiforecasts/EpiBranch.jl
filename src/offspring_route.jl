@@ -552,15 +552,6 @@ function _simulate_generated(
     )
 end
 
-# Index cases start at time 0, followed by the imports at their own times.
-function _seed_times!(best, n_initial, imports)
-    fill!(best, zero(eltype(best)))
-    for (k, t) in enumerate(imports)
-        best[n_initial + k] = t
-    end
-    return best
-end
-
 function _simulate_offspring(
         model::TransmissionModel, windows, sim_opts::SimOpts, interventions;
         attributes, progression, observation, recorder, rng
@@ -577,7 +568,13 @@ function _simulate_offspring(
     )
     sellke_race!(
         state, tree, rng, sim_opts;
-        seed! = (best, _, _) -> _seed_times!(best, sim_opts.n_initial, _import_times(model)), routes,
+        seed! = (best, _, _) -> begin
+            fill!(best, zero(T))
+            for (k, t) in enumerate(_import_times(model))
+                best[sim_opts.n_initial + k] = t
+            end
+            best
+        end, routes,
         interventions, contacts = (id, state) -> individuals(state)[id].secondary_case_ids,
         risks = transmission_risks(model), recorder
     )
