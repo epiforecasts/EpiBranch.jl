@@ -52,9 +52,10 @@ end
 
 function EpiBranch.chain_size_plot(
         sizes::AbstractVector{<:Integer}, law::DiscreteUnivariateDistribution;
-        max_size::Integer = maximum(sizes)
+        max_size::Union{Nothing, Integer} = nothing
     )
     isempty(sizes) && throw(ArgumentError("chain_size_plot: sizes is empty"))
+    max_size === nothing && (max_size = maximum(sizes))
     grid = 1:max_size
     observed = [count(==(s), sizes) / length(sizes) for s in grid]
     fig = Figure()
