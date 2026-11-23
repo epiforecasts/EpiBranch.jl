@@ -211,6 +211,7 @@ AllCases
 IsolationTrigger
 AfterSymptomOnset
 AfterPositiveTest
+AtTestTime
 ```
 
 ### Contact tracing
