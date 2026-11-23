@@ -49,9 +49,8 @@ HeldCapacity(
   a place frees up; the default [`DropRefused`](@ref) discards it.
 
 A place is held from the date of the admitted action. Each action is checked
-against every stay that overlaps its own, whatever order the engine admits
-actions in, and a varying capacity must hold throughout the new stay, from its
-start to its end. When the capacity falls below the places already held, no stay
+against every stay that overlaps its own, in any admission order, and a
+varying capacity must hold throughout the new stay, from its start to its end. When the capacity falls below the places already held, no stay
 is ended: new admissions are refused until the places held drop below the new
 capacity. [`DeferRefused`](@ref) moves an action to the first moment a place is
 free for its whole stay, which a release or a rise in capacity can bring about. A person holds at most one place.

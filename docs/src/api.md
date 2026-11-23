@@ -124,7 +124,8 @@ a large or finite population. It shares `simulate(model, state;
 max_generations)` with the exact, individual-based simulation.
 
 The state holds the susceptibles of each type, set from the population size
-and the number immune. `PerContactDepletion` removes them one potential contact
+and the number immune. The `immune` of the population and the `multiplier` of the model
+also apply to an individual run. `PerContactDepletion` removes them one potential contact
 at a time, as the individual-based simulation does, but draws the result
 without visiting every contact. With a `Poisson` or `NegBin` offspring law the
 cost of a generation is independent of the number of cases; with another law it
@@ -177,9 +178,11 @@ Recovery
 Testing
 AbstractAssay
 Assay
+DetectionProbability
 within_host
 EpiBranch.trajectory_value
 EpiBranch.measure
+EpiBranch.measure_loglik
 exclusive_probabilities
 is_terminal
 terminal_event
@@ -273,6 +276,9 @@ PerGroup
 CapacityConstrained
 capacity_usage
 default_capacity_priority
+UnusedBudget
+CarryOver
+ExpireUnused
 RefusalPolicy
 DropRefused
 DeferRefused
@@ -927,8 +933,14 @@ EpiBranch.capacity_time_key
 EpiBranch.record_capacity_use!
 EpiBranch.refused_action
 EpiBranch.held_until
-EpiBranch.count_dosing
-EpiBranch.GroupDosing
+EpiBranch.gives_group_doses
+EpiBranch.dose_group_key
+EpiBranch.dose_efficacy
+EpiBranch.dose_mode
+EpiBranch.dose_coverage
+EpiBranch.dose_delay
+EpiBranch.dose_delay_to_immunity
+EpiBranch.dose_waning
 ```
 
 #### Start triggers

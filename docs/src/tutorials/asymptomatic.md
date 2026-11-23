@@ -271,7 +271,7 @@ end
 
 Maximise `loglik` over `θ`, on a grid or with an optimiser.
 
-## Which seam states which link
+## Seams for each link
 
 | Link | Written as |
 |---|---|
@@ -284,7 +284,7 @@ Maximise `loglik` over `θ`, on a grid or with an optimiser.
 | Onset as a hazard on the load | an attribute builder that draws `rand(rng, HazardKernel(t -> k * load(t)))` |
 | Test positivity depends on the load at the test | `test_sensitivity = (rng, ind, t) -> probability` of `Isolation` |
 
-## Who is tested and classified
+## Testing and classification
 
 Whether a case is noticed is a separate statement from whether it has symptoms. [`Isolation`](@ref) isolates symptomatic cases by default, and its eligibility decides who else is picked up. A [`Testing`](@ref) step samples the same trajectory through an [`Assay`](@ref), so a test result follows from the load that drives infectiousness. By default a test is taken a delay after onset, and an asymptomatic case has no onset, so it is not tested. Timing the sample from infection tests every case, whether or not it has symptoms. A `case_definition` on the [`ModelSpec`](@ref) then classifies each case from what has happened to it. [`ClinicalCaseDefinition`](@ref) calls a case confirmed at a positive test, and a symptomatic case with no positive test suspected:
 

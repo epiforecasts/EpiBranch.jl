@@ -255,3 +255,69 @@ end
         end
     end
 end
+
+@testset "Testing likelihood" begin
+    load_at(ind, time) = test_curve(nothing, ind)(time - ind.infection_time)
+    noisy = Assay(
+        value = load -> 40.0 - 3.0 * load,
+        detect = DetectionProbability(load -> 1 / (1 + exp(-(load - 2.0)))),
+        noise = Normal(0.0, 1.5)
+    )
+    delay = Gamma(2.0, 1.0)
+    spec = testing_spec(
+        progression = [Testing(assay = noisy, delay = delay, probability = 0.8)]
+    )
+    state = simulate(spec; max_cases = 100, rng = StableRNG(2), n_initial = 20)
+
+    @testset "matches the probability, delay and assay terms case by case" begin
+        expected = 0.0
+        for ind in individuals(state)
+            is_infected(ind) && !is_asymptomatic(ind) || continue
+            st = ind.state
+            if st[:test_tested]
+                load = load_at(ind, st[:test_time])
+                p = 1 / (1 + exp(-(load - 2.0)))
+                expected += log(0.8) + logpdf(delay, st[:test_time] - st[:onset_time]) +
+                    (st[:test_result] ? log(p) : log1p(-p)) +
+                    logpdf(Normal(0.0, 1.5), st[:test_value] - (40.0 - 3.0 * load))
+            else
+                expected += log(0.2)
+            end
+        end
+        @test any(ind -> ind.state[:test_tested], individuals(state))
+        @test progression_loglik(spec, state) ≈ expected
+    end
+
+    @testset "the reading's density depends on the trajectory" begin
+        ind = first(filter(i -> is_infected(i) && i.state[:test_tested], individuals(state)))
+        step = only(spec.progression)
+        base = EpiBranch.transition_loglik(step, ind)
+        ind.state[:trajectory] = t -> 0.0
+        @test EpiBranch.transition_loglik(step, ind) != base
+    end
+
+    @testset "a limit of detection is exact and a reading without noise must match" begin
+        sharp = Testing(assay = test_assay, delay = 4.0)
+        sharp_spec = testing_spec(progression = [sharp])
+        sharp_state = simulate(sharp_spec; max_cases = 50, rng = StableRNG(3), n_initial = 10)
+        @test isfinite(progression_loglik(sharp_spec, sharp_state))
+        ind = first(filter(i -> is_infected(i) && i.state[:test_tested], individuals(sharp_state)))
+        ind.state[:test_result] = !ind.state[:test_result]
+        @test EpiBranch.transition_loglik(sharp, ind) == -Inf
+        ind.state[:test_result] = !ind.state[:test_result]
+        ind.state[:test_value] += 1.0
+        @test EpiBranch.transition_loglik(sharp, ind) == -Inf
+    end
+
+    @testset "a detect function has no probability to score" begin
+        coin = Assay(value = load -> 30.0, detect = (rng, load) -> rand(rng) < 0.5)
+        coin_spec = testing_spec(progression = [Testing(assay = coin, delay = 4.0)])
+        coin_state = simulate(coin_spec; max_cases = 20, rng = StableRNG(4), n_initial = 5)
+        @test_throws ArgumentError progression_loglik(coin_spec, coin_state)
+    end
+
+    @testset "a test that was not taken adds the not-tested probability only" begin
+        ind = first(filter(i -> is_infected(i) && !i.state[:test_tested] && !is_asymptomatic(i), individuals(state)))
+        @test EpiBranch.transition_loglik(only(spec.progression), ind) ≈ log(0.2)
+    end
+end

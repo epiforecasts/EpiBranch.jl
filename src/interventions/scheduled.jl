@@ -172,7 +172,7 @@ repeated simulations of `simulate(model, n)` (serially, or across threads
 under `parallel = true`): derive what it needs from `state`, or keep working
 values in `state.scratch`, which belongs to the run.
 
-The engine asks the gate about 1.7 times per individual, so a trigger that
+The simulation asks the gate about 1.7 times per individual, so a trigger that
 walks the population on every call makes a run quadratic in the number of
 individuals. Read a running total instead, as [`Infections`](@ref) reads
 `cumulative_cases`.

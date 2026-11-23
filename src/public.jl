@@ -38,7 +38,7 @@ public prevent_symptoms!, symptoms_prevented_time
 
 # Testing: `trajectory_value` reads the within-host trajectory stored by
 # `within_host`. A new `AbstractAssay` defines `measure`.
-public trajectory_value, measure
+public trajectory_value, measure, measure_loglik
 
 # Isolation eligibility: whether an isolation time counts as a detection.
 public records_isolation, isolation_reference_time
@@ -231,8 +231,14 @@ public apply_trace!
 public capacity_key
 public capacity_time_key
 public held_until
-public count_dosing
-public GroupDosing
+public gives_group_doses
+public dose_group_key
+public dose_efficacy
+public dose_mode
+public dose_coverage
+public dose_delay
+public dose_delay_to_immunity
+public dose_waning
 public refused_action
 public InterventionWrapper
 
@@ -247,7 +253,7 @@ public lazily_populate!
 public effect_mode
 public dose_label
 
-# `simulate_by_generation` with a `multiplier`: the mean-scaling rule and the
-# one-step generation total an offspring family can define.
+# A `BranchingProcess` with a `multiplier`, and `simulate_by_generation`: the
+# mean-scaling rule and the one-step generation total an offspring family can define.
 public scale_mean
 public sum_offspring
