@@ -309,7 +309,7 @@ function trace_contacts!(ct::ContactTracing, state, infector, contacts)
     for ind in contacts
         is_eligible(ct.eligibility, infector, ind, state) || continue
         traces(ct.trace_rate, infector, ind, state, rng) || continue
-        trace_delay = draw_trace_delay(ct.isolation_to_trace_delay, infector, ind, state, rng)
+        trace_delay = sample_value(ct.isolation_to_trace_delay, rng, infector)
         trace_time = trigger_time(ct.eligibility, infector, ind, state) + trace_delay
         apply_trace!(ct.action, ind, state, trace_time, rng)
         record_capacity_use!(ct.action, ind, state)

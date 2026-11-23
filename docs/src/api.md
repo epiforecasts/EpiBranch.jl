@@ -235,8 +235,6 @@ AllOf
 NoneOf
 TraceRate
 ConstantRate
-TraceDelay
-ConstantDelay
 TraceAction
 Quarantine
 FlagOnly
@@ -907,7 +905,6 @@ EpiBranch.records_isolation
 EpiBranch.is_eligible
 EpiBranch.trigger_time
 EpiBranch.traces
-EpiBranch.draw_trace_delay
 EpiBranch.apply_trace!
 ```
 

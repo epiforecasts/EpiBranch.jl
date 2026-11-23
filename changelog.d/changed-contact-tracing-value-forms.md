@@ -1,0 +1,1 @@
+`ContactTracing` and `SourceTracing` take `probability` and `isolation_to_trace_delay` as a number, a `Distribution` or an `(rng, case) -> value` function, as other delays and probabilities do. `TraceDelay`, `ConstantDelay` and `draw_trace_delay` are removed: a per-case delay is now such a function, and `ConstantRate` holds any of these forms.

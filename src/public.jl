@@ -219,14 +219,13 @@ public LEAKY_REMOVAL_STRETCHES_KEY
 # Hooks the extending guides ask a package to define for its own
 # intervention, trace rate, delay or action.
 #   - `keep_active` says which targets an intervention still acts on;
-#   - `traces`, `draw_trace_delay` and `apply_trace!` are the methods behind
-#     `TraceRate`, `TraceDelay` and `TraceAction`;
+#   - `traces` and `apply_trace!` are the methods behind `TraceRate` and
+#     `TraceAction`;
 #   - `capacity_key`, `capacity_time_key`, `held_until` and
 #     `refused_action` are what a capacity-limited intervention defines;
 #   - `InterventionWrapper` is the supertype of a wrapper of your own.
 public keep_active
 public traces
-public draw_trace_delay
 public apply_trace!
 public capacity_key
 public capacity_time_key
