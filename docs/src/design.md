@@ -198,7 +198,7 @@ are unchanged, because they act on individual people, not on types.
 
 ## Approximations and the five parts
 
-[`MeanFieldProcess`](@ref), [`LinearNoiseProcess`](@ref), [`MixingMeanFieldProcess`](@ref), [`MixingLinearNoiseProcess`](@ref) and [`HybridProcess`](@ref) are not models in the sense above. They do not simulate individual people, so they have no per-person attributes, no case timeline and no line list. They integrate compartment counts (susceptible, infectious, removed) and return those, with a covariance for the linear-noise variants.
+[`MeanFieldProcess`](@ref), [`LinearNoiseProcess`](@ref), [`MixingMeanFieldProcess`](@ref), [`MixingLinearNoiseProcess`](@ref) and [`HybridProcess`](@ref) are not models in the sense above. They do not simulate individual people, so they have no per-person attributes, no case timeline and no line list. They integrate compartment counts (susceptible, infectious, removed, and for the mixing variants the vaccinated and immune compartments per group) and return those, with a covariance for the linear-noise variants.
 
 The five parts map onto them as follows:
 
