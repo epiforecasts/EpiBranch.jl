@@ -504,15 +504,10 @@ function _deplete_sources!(s, ::OffspringCountRule, sources, inflow, by_class)
     end
     kept = _deplete!(s.rng, PerContactDepletion(), vec(sum(contacts; dims = 1)), s.susceptibles, s.sizes)
     for i in 1:nt
-        remaining, pool = kept[i], sum(@view contacts[:, i])
+        taken = _rand_multivariate_hypergeometric(s.rng, @view(contacts[:, i]), kept[i])
         for (n, (lag, w, j, k, _)) in enumerate(sources)
-            remaining == 0 && break
-            x = contacts[n, i]
-            take = x == 0 ? 0 : rand(s.rng, Hypergeometric(x, pool - x, remaining))
-            pool -= x
-            remaining -= take
-            inflow[lag, w, j, k, i] = take
-            by_class[i, _next_class(g, k)] += take
+            inflow[lag, w, j, k, i] = taken[n]
+            by_class[i, _next_class(g, k)] += taken[n]
         end
     end
     return s
