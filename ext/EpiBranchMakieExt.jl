@@ -56,6 +56,7 @@ function EpiBranch.chain_size_plot(
     )
     isempty(sizes) && throw(ArgumentError("chain_size_plot: sizes is empty"))
     max_size === nothing && (max_size = maximum(sizes))
+    max_size >= 1 || throw(ArgumentError("chain_size_plot: max_size must be at least 1"))
     grid = 1:max_size
     observed = [count(==(s), sizes) / length(sizes) for s in grid]
     fig = Figure()
@@ -64,6 +65,7 @@ function EpiBranch.chain_size_plot(
         yscale = Makie.log10
     )
     seen = findall(>(0), observed)
+    isempty(seen) && throw(ArgumentError("chain_size_plot: no sizes lie within 1:max_size"))
     barplot!(
         ax, grid[seen], observed[seen];
         color = (:steelblue, 0.6), label = "Simulated", fillto = minimum(observed[seen]) / 10

@@ -36,5 +36,7 @@ using Makie
         @test sum(heights) ≈ sum(s <= maximum(sizes) for s in sizes) / 500
         @test chain_size_plot(sizes, law; max_size = 5) isa Makie.Figure
         @test_throws ArgumentError chain_size_plot(Int[], law)
+        @test_throws ArgumentError chain_size_plot([5, 6, 7], law; max_size = 3)
+        @test_throws ArgumentError chain_size_plot(sizes, law; max_size = 0)
     end
 end
