@@ -313,6 +313,8 @@ of the cases observed so far with
 [`state_from_cases`](@ref) and continue it with
 `simulate(model, state; max_time)`.
 
+With RecipesBase loaded, as it is by Plots.jl, `plot(state)` draws the transmission tree of a [`SimulationState`](@ref): infection time on the horizontal axis, one row per case, and a line from each case to their infector.
+
 ```@docs
 simulate
 state_from_cases
