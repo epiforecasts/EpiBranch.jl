@@ -5,7 +5,7 @@ using Dates: Date, Day
 using Distributions: DiscreteUnivariateDistribution, pdf
 using Makie: Makie, Figure, Axis, band!, lines!, barplot!, scatter!, axislegend
 
-# Bands do not take dates, so dates are plotted as day numbers.
+# Bands cannot take dates, so dates are plotted as day numbers.
 _day_numbers(dates) = Float64.((dates .- first(dates)) ./ Day(1))
 
 function _date_axis(fig, dates, interval)

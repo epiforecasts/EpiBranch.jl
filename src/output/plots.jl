@@ -7,7 +7,7 @@
 
 Epidemic curve of simulated outbreaks as a Makie `Figure`, available after
 `using Makie` or a backend such as `using CairoMakie`. Cases are counted with
-[`incidence`](@ref), whose keywords it takes. For a vector of outbreaks it
+[`incidence`](@ref), and the keywords of `incidence` are accepted. For a vector of outbreaks it
 shows the median with 50% and 95% bands from [`summarise`](@ref); `probs` is
 the five probabilities (lower 95%, lower 50%, median, upper 50%, upper 95%).
 A single outbreak is drawn as bars.
