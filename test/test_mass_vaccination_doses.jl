@@ -39,7 +39,7 @@ end
     @testset "simulate_by_generation takes the protected out of the susceptibles" begin
         model = BranchingProcess(Poisson(4.0); population = Population(100_000))
         campaign = budget(
-            mass(), Steps([14.0, 28.0], [0.0, 50_000.0, 0.0]); period = 14.0, carry_over = false
+            mass(), Steps([14.0, 28.0], [0.0, 50_000.0, 0.0]); period = 14.0, unused_budget = ExpireUnused()
         )
         spec = ModelSpec(model; interventions = [campaign])
         start(i) = EpiBranch.GenerationCounts(
@@ -144,7 +144,7 @@ end
         # than the noise.
         n = 2_000
         campaign = Scheduled(
-            budget(mass(), 200.0; period = 4.0, carry_over = false);
+            budget(mass(), 200.0; period = 4.0, unused_budget = ExpireUnused());
             start_time = 12.0, end_time = 40.0
         )
         timed = BranchingProcess(Poisson(2.0), Gamma(2.0, 2.0); population = Population(n))
@@ -182,7 +182,7 @@ end
     @testset "a ledger answers by the time asked, in any order" begin
         model = BranchingProcess(Poisson(2.0), Gamma(2.0, 2.0); population = Population(1_000))
         campaign = Scheduled(
-            budget(mass(), 300.0; period = 5.0, carry_over = false);
+            budget(mass(), 300.0; period = 5.0, unused_budget = ExpireUnused());
             start_time = 10.0, end_time = 30.0
         )
         state = simulate(
