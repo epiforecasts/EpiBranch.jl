@@ -902,9 +902,9 @@ methods of its own type: `EpiBranch.dose_group_key` (the groups it doses) and
 `EpiBranch.dose_coverage`, `EpiBranch.dose_delay`,
 `EpiBranch.dose_delay_to_immunity` and `EpiBranch.dose_waning`, which default to
 a leaky dose given in full at the trigger, with no delay to immunity and no
-waning. The default, `false`, makes every such model refuse the intervention,
-and [`simulate`](@ref) on a model with it run as an individual simulation; see
-[Interventions with budgets and schedules](@ref).
+waning. With the default, `false`, every such model refuses the intervention,
+and [`simulate`](@ref) on a model containing it runs an individual simulation;
+see [Interventions with budgets and schedules](@ref).
 
 Recorded protection follows its effect date even when the delivery schedule is
 no longer active. Vaccination declares this with
