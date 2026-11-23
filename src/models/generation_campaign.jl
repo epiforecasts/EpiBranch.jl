@@ -102,7 +102,7 @@ function _by_type(c::_Campaign, pg::PerGroup, population)
 end
 
 # The doses a campaign gives to each type between `t0` and `t1`. With
-# `carry_over` (or a single budget, `period = Inf`) unused doses of earlier
+# `CarryOver` (or a single budget, `period = Inf`) unused doses of earlier
 # periods are given as soon as the window opens, so the doses given by a time
 # are the cumulative budget of the periods begun by then, none before the
 # window opens. Without it, each period's own budget is given in the period.
@@ -112,7 +112,7 @@ function _interval_doses(c::_Campaign, t0::Real, t1::Real, cc = c.budget)
     a = max(t0, s)
     b = min(t1, e)
     b > a || return 0
-    if cc.carry_over || isinf(cc.period)
+    if _carries_over(cc) || isinf(cc.period)
         before = a <= s ? 0.0 : _doses_by(cc, a)
         return max(0, floor(Int, _doses_by(cc, b)) - floor(Int, before))
     end
@@ -158,10 +158,10 @@ _doses_of(c::_Campaign, cc::CapacityConstrained, t0, t1, used) =
 _doses_of(c::_Campaign, budgets::AbstractVector, t0, t1, used) =
     [_doses_left(c, b, t0, t1, u) for (b, u) in zip(budgets, used)]
 
-# With `carry_over` (or a single budget) the doses not yet given, up to the end
+# With `CarryOver` (or a single budget) the doses not yet given, up to the end
 # of the interval; without it, only those of the interval.
 function _doses_left(c::_Campaign, cc::CapacityConstrained, t0, t1, used)
-    (cc.carry_over || isinf(cc.period)) || return _interval_doses(c, t0, t1, cc)
+    (_carries_over(cc) || isinf(cc.period)) || return _interval_doses(c, t0, t1, cc)
     s, e = c.window
     b = min(t1, e)
     return b > s ? max(0, floor(Int, _doses_by(cc, b)) - used) : 0
