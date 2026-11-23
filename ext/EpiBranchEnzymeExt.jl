@@ -23,7 +23,7 @@ function _refuse_simulation()
     )
 end
 
-for f in (EpiBranch._simulated_chain_size_loglik, EpiBranch._simulated_chain_length_loglik)
+for f in (EpiBranch._simulated_chain_length_loglik,)
     @eval begin
         function EnzymeRules.augmented_primal(
                 config::EnzymeRules.RevConfig, ::Const{typeof($f)}, ::Type, args::Annotation...

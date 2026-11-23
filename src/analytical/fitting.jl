@@ -407,7 +407,8 @@ function _chain_size_model_loglik(
     )
 end
 
-function _simulated_chain_size_loglik(
+# Separate function so the Enzyme extension can give it a rule.
+@noinline function _simulated_chain_size_loglik(
         data, process, ivs, attrs, prog, obs, rec,
         max_cases, max_generations, max_time, stopping_rules, n_sim, rng, prob_concluded
     )
