@@ -165,6 +165,11 @@ end
     enzyme = AutoEnzyme(; mode = Enzyme.Reverse)
     enzyme_activity = AutoEnzyme(; mode = Enzyme.set_runtime_activity(Enzyme.Reverse))
 
+    # On Julia 1.10 Enzyme reports the constant symbol lookups in the
+    # closed-form checks as stored into a differentiable value, so the bare
+    # model needs runtime activity there; later versions do not.
+    enzyme_bare = VERSION >= v"1.11" ? enzyme : enzyme_activity
+
     function check(f, x, backends)
         g_forward = DifferentiationInterface.gradient(f, AutoForwardDiff(), x)
         for backend in backends
@@ -190,12 +195,12 @@ end
         (R -> logpdf(chain_length_distribution(BranchingProcess(Poisson(R[1]))), 2), [0.5]),
     ]
     for (f, x) in bare_model
-        check(f, x, (mooncake, enzyme))
+        check(f, x, (mooncake, enzyme_bare))
     end
     @test only(
         check(
             R -> summed(chain_size_distribution(BranchingProcess(Poisson(R[1])))),
-            [0.4], (mooncake, enzyme)
+            [0.4], (mooncake, enzyme_bare)
         )
     ) ≈ 8.5
 
