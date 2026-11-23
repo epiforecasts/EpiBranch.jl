@@ -16,11 +16,14 @@ end
 
 include("testutils/sim_analytical_consistency.jl")
 include("testutils/progression.jl")
+include("testutils/protect_from_exposure.jl")
 
 # CI runs one job per group to keep each job well within its timeout.
 # `EPIBRANCH_TEST_GROUP` selects a group; `Pkg.test()` without it runs
-# every file. A new file goes in the group matching its subject. Keep the
-# running times of the groups close.
+# every file. A new file goes in the group matching its subject: engine
+# (core engine and transitions), population (density dependence, structure,
+# populations, mixing, generation counts, data handling), interventions or
+# inference. Keep the running times of the groups close.
 const TEST_GROUPS = (
     engine = [
         "test_types.jl",
@@ -36,6 +39,11 @@ const TEST_GROUPS = (
         "test_infectiousness.jl",
         "test_renewal_offspring.jl",
         "test_count_simulation.jl",
+        "test_engine_support.jl",
+        "test_event_queue.jl",
+        "test_route_windows.jl",
+    ],
+    population = [
         "test_density_dependent.jl",
         "test_structure_driven.jl",
         "test_reinfection.jl",
@@ -52,12 +60,9 @@ const TEST_GROUPS = (
         "test_hybrid.jl",
         "test_generation_counts.jl",
         "test_generation_counts_population.jl",
-        "test_engine_support.jl",
         "test_linelist.jl",
         "test_data_from_tables.jl",
         "test_incidence.jl",
-        "test_event_queue.jl",
-        "test_route_windows.jl",
     ],
     interventions = [
         "test_quality.jl",

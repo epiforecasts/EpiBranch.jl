@@ -396,27 +396,26 @@ function _chain_size_model_loglik(
     # failing falls through to simulation.
     if isempty(ivs) && has_single_type_law(process) && offspring_law_unchanged(process) &&
             offspring_law_unchanged(attrs) && all(offspring_law_unchanged, prog)
-        offspring = single_type_offspring(process)
-        if isempty(prog) && _has_exact_chain_size(offspring)
-            return _chain_size_loglik(
-                observe(chain_size_distribution(offspring), obs), data; prob_concluded
-            )
-        end
-        folded = _exact_reported_chain_size(offspring, prog, obs, attrs)
+        folded = _exact_reported_chain_size(single_type_offspring(process), prog, obs, attrs)
         if folded !== nothing
             return _chain_size_loglik(observe(folded, obs), data; prob_concluded)
         end
     end
-    opts = (; max_cases, max_generations, max_time, stopping_rules, n_sim, rng, prob_concluded)
-    return _simulated_chain_size_loglik(data, process, ivs, attrs, prog, obs, rec, opts)
+    return _simulated_chain_size_loglik(
+        data, process, ivs, attrs, prog, obs, rec,
+        max_cases, max_generations, max_time, stopping_rules, n_sim, rng, prob_concluded
+    )
 end
 
-# Fallback when there is no closed form. Clusters are simulated in batches
-# grouped by seed count, one batch of `n_sim` runs per distinct value in
-# `data.seeds`. A k-seed cluster is then compared with simulated clusters that
-# also start from k index cases.
-function _simulated_chain_size_loglik(data, process, ivs, attrs, prog, obs, rec, opts)
-    (; max_cases, max_generations, max_time, stopping_rules, n_sim, rng, prob_concluded) = opts
+# Separate function so the Enzyme extension can give it a rule.
+@noinline function _simulated_chain_size_loglik(
+        data, process, ivs, attrs, prog, obs, rec,
+        max_cases, max_generations, max_time, stopping_rules, n_sim, rng, prob_concluded
+    )
+    # No closed form: simulate clusters grouped by seed count, one batch of
+    # `n_sim` runs per distinct value in `data.seeds`, so a k-seed cluster is
+    # compared against simulated clusters that also start from k index cases
+    # rather than against single-seed ones.
     total = 0.0
     for k in sort(unique(data.seeds))
         group = findall(==(k), data.seeds)
