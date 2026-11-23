@@ -1,0 +1,1 @@
+The `simulate_by_generation` documentation now says that doses a window has not yet used, from `carry_over` or a single budget, still go to contacts of later generations after the window closes, as in the individual-based simulation.
