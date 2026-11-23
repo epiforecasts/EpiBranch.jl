@@ -21,7 +21,7 @@ The repository holds the core package at the root and a satellite package per
 contact structure under `lib/` (`EpiNetwork`, `EpiHouseholds`), each with its
 own `Project.toml` and test environment. A new transmission structure goes
 there; the seams it extends stay in core. Each satellite pins
-`EpiBranch = "=X.Y.Z"`, and the three packages are released together with the
+`EpiBranch = "=X.Y.Z"`. The three packages are released together with the
 same version until 1.0.
 
 ## Design
