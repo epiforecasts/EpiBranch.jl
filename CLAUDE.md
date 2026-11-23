@@ -20,10 +20,9 @@ interventions.
 The repository holds the core package at the root and a satellite package per
 contact structure under `lib/` (`EpiNetwork`, `EpiHouseholds`), each with its
 own `Project.toml` and test environment. A new transmission structure goes
-there; the seams it extends stay in core. The satellites import private core
-names, so each pins `EpiBranch = "=X.Y.Z"` to the core version it was tested
-against, and the three packages are released together with the same version
-until 1.0. A core release changes the pin in both `Project.toml` files.
+there; the seams it extends stay in core. Each satellite pins
+`EpiBranch = "=X.Y.Z"`, and the three packages are released together with the
+same version until 1.0.
 
 ## Design
 
