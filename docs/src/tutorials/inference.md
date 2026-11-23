@@ -559,8 +559,9 @@ block_grad = mean(
 println("d(# surviving)/dp ≈ $(round(block_grad, digits = 1)) (exact: $(-n_contacts))")
 ```
 
-Gradients of simulated outputs under interventions are out of scope. For a
-gradient-based sampler, use the likelihood functions with Enzyme or Mooncake.
+This section does not cover gradients of simulated outputs under interventions.
+For a gradient-based sampler, use the likelihood functions with Enzyme or
+Mooncake.
 
 ## Clusters started by more than one case
 
