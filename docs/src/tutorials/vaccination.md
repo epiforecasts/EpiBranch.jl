@@ -750,10 +750,10 @@ rv_stockpile = CapacityConstrained(rv; budget_per_period = 200.0)
 nothing # hide
 ```
 
-With a finite `period`, `carry_over = true` (the default) adds a day's unused
-allowance to the next day's; `carry_over = false` discards it, so only that
-day's own `budget_per_period` is ever available. With `carry_over = true`
-admissions can bunch: a quiet spell builds an allowance that a later day
+With a finite `period`, `unused_budget = CarryOver()` (the default) adds a
+day's unused allowance to the next day's; `unused_budget = ExpireUnused()`
+discards it, so only that day's own `budget_per_period` is ever available. With
+`CarryOver()` admissions can bunch: a quiet spell builds an allowance that a later day
 spends at once, well above `budget_per_period` in a day.
 
 To give each group its own budget, such as separate dose series for the under 5s and the over 5s, pass a [`PerGroup`](@ref) as `budget_per_period`. Its groups are those of the [`Population`](@ref) of the model. See [Interventions with budgets and schedules](@ref) for how every model reads it.

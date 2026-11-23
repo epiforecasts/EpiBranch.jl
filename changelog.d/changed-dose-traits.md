@@ -1,0 +1,1 @@
+`EpiBranch.count_dosing` and `EpiBranch.GroupDosing` are replaced by one trait per fact: `EpiBranch.gives_group_doses` opts an intervention in, and `EpiBranch.dose_group_key`, `dose_efficacy`, `dose_mode`, `dose_coverage`, `dose_delay`, `dose_delay_to_immunity` and `dose_waning` give its dose. `GroupVaccination` defines them.

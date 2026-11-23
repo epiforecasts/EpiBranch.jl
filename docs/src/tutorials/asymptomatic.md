@@ -183,7 +183,95 @@ onset_follows = ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0)); attr
 compare(onset_follows)
 ```
 
-## Which seam states which link
+## Onset as a hazard on the load
+
+Onset can instead be a random time with a hazard proportional to the load: a higher load brings symptoms sooner, with no fixed threshold. A [`HazardKernel`](@ref) draws that time. A case whose hazard never produces an onset before `upper` gets `Inf` and is asymptomatic:
+
+```@example asymptomatic
+function hazard_onset(rng, ind)
+    load = draw_trajectory(rng).load
+    ind.state[:trajectory] = load
+    onset = rand(rng, HazardKernel(t -> 0.15 * load(t); upper = 60.0))
+    ind.state[:asymptomatic] = !isfinite(onset)
+    ind.state[:incubation_period] = isfinite(onset) ? onset : 0.0
+    return nothing
+end
+nothing # hide
+```
+
+## Test positivity from the load at the test
+
+[`Isolation`](@ref) draws whether a case tests positive once its onset and isolation delay are known. A `test_sensitivity` written `AtTestTime((rng, ind, t) -> probability)` is evaluated then, with `t` the time the case is tested (the trigger plus `delay`, on the simulation clock). It can read the load at that time through the case's trajectory. Detection then follows the same draw as infectiousness and onset:
+
+```@example asymptomatic
+detect = AtTestTime((rng, ind, t) -> min(1.0, EpiBranch.trajectory_value(ind, t - ind.infection_time) / 1.5))
+tested = ModelSpec(
+    BranchingProcess(from_trajectory);
+    attributes = hazard_onset,
+    interventions = [Isolation(delay = 2.0, duration = Inf, test_sensitivity = detect)],
+)
+states = simulate(tested, 100; max_generations = 3, max_cases = 2000, rng = StableRNG(3))
+symptomatic = [ind for state in states for ind in state.individuals
+               if EpiBranch.is_infected(ind) && !is_asymptomatic(ind)]
+(
+    mean_onset = mean(onset_time(ind) - ind.infection_time for ind in symptomatic),
+    share_positive = mean(EpiBranch.is_test_positive, symptomatic),
+)
+```
+
+A function with two arguments `(rng, ind)` is still drawn once when the case is created. The closed-form [`EpiBranch.analytic_offspring_effect`](@ref) accepts neither kind of function.
+
+## Calibrating a trajectory to an incubation period and a serial interval
+
+The incubation period fixes the time the load takes to reach the onset rule, here the peak time times the threshold over the peak. The serial interval adds the time from onset to transmission and separates the peak time from the threshold. Neither fixes the scale of the transmission hazard, which the reproduction number sets, or the units of the load. Parameters that enter only through such a combination need a prior or a fixed value.
+
+Write the trajectory model as a function of a parameter vector. Each candidate simulates the model, reads the realised incubation periods and [`realised_serial_intervals`](@ref), and scores the observed values against them. Observed serial intervals are whole-day and censored, so score them as [`serial_interval`](@ref) does, with `double_interval_censored` applied to a distribution fitted to the simulated intervals. The simulated intervals replace the convolution that `serial_interval` builds from independent delays. A fixed random seed per candidate keeps the objective smooth:
+
+```julia
+using EpiBranch, Distributions, CensoredDistributions, StableRNGs
+
+# θ = (peak_time, threshold); the load rises to its peak and then clears
+function trajectory_model(θ)
+    peak_time, threshold = θ
+    function trajectory(rng, ind)
+        peak = rand(rng, LogNormal(0.5, 0.3))
+        clearance = rand(rng, Gamma(8.0, 0.1))
+        time = peak_time * rand(rng, LogNormal(0.0, 0.2))
+        load = t -> t < time ? peak * t / time : peak * exp(-clearance * (t - time))
+        ind.state[:trajectory] = load
+        ind.state[:incubation_period] = time * threshold / peak
+        ind.state[:asymptomatic] = peak <= threshold
+        return nothing
+    end
+    infectiousness = Infectiousness(
+        Poisson(2.0);
+        kernel = ind -> HazardKernel(t -> 0.3 * EpiBranch.trajectory_value(ind, t); upper = 60.0),
+    )
+    return ModelSpec(BranchingProcess(infectiousness); attributes = trajectory)
+end
+
+function simulated_intervals(θ; seed = 1)
+    states = simulate(
+        trajectory_model(θ), 200; max_generations = 4, max_cases = 2000, rng = StableRNG(seed)
+    )
+    incubation = [onset_time(ind) - ind.infection_time for state in states
+                  for ind in state.individuals if !isnan(onset_time(ind))]
+    return incubation, realised_serial_intervals(states)
+end
+
+# incubation_obs: observed incubation periods; serial_obs: observed whole-day serial intervals
+function loglik(θ, incubation_obs, serial_obs)
+    incubation, serial = simulated_intervals(θ)
+    length(serial) < 50 && return -Inf
+    censored = double_interval_censored(fit(Normal, serial); interval = 1)
+    return sum(logpdf.(fit(LogNormal, incubation), incubation_obs)) +
+           sum(logpdf.(censored, serial_obs))
+end
+```
+
+Maximise `loglik` over `θ`, on a grid or with an optimiser.
+
+## Seams for each link
 
 | Link | Written as |
 |---|---|
@@ -193,8 +281,10 @@ compare(onset_follows)
 | Asymptomatic infection is shorter | the `delay` of a `Transition`, `(rng, ind) -> delay`, with `until` on the window |
 | Onset linked to infectiousness, no trajectory | `incubation_linked_generation_time`, or any `ind -> Distribution` as the generation time; `incubation_period` of `clinical_presentation` can be `(rng, ind) -> value` to give asymptomatic cases their own |
 | Trajectory drives onset, infectiousness or both | `within_host` to store the trajectory, an attribute builder that also sets `:asymptomatic` and `:incubation_period` where symptoms follow it, and a `HazardKernel` that reads it with `trajectory_value` |
+| Onset as a hazard on the load | an attribute builder that draws `rand(rng, HazardKernel(t -> k * load(t)))` |
+| Test positivity depends on the load at the test | `test_sensitivity = AtTestTime((rng, ind, t) -> probability)` of `Isolation` |
 
-## Who is tested and classified
+## Testing and classification
 
 Whether a case is noticed is a separate statement from whether it has symptoms. [`Isolation`](@ref) isolates symptomatic cases by default, and its eligibility decides who else is picked up. A [`Testing`](@ref) step samples the same trajectory through an [`Assay`](@ref), so a test result follows from the load that drives infectiousness. By default a test is taken a delay after onset, and an asymptomatic case has no onset, so it is not tested. Timing the sample from infection tests every case, whether or not it has symptoms. A `case_definition` on the [`ModelSpec`](@ref) then classifies each case from what has happened to it. [`ClinicalCaseDefinition`](@ref) calls a case confirmed at a positive test, and a symptomatic case with no positive test suspected:
 

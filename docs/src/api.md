@@ -211,6 +211,7 @@ AllCases
 IsolationTrigger
 AfterSymptomOnset
 AfterPositiveTest
+AtTestTime
 ```
 
 ### Contact tracing
@@ -276,6 +277,9 @@ PerGroup
 CapacityConstrained
 capacity_usage
 default_capacity_priority
+UnusedBudget
+CarryOver
+ExpireUnused
 RefusalPolicy
 DropRefused
 DeferRefused
@@ -432,6 +436,15 @@ weekly_incidence
 incidence
 summarise
 scenario_sweep
+```
+
+## Plots
+
+Figures of simulation output. They are methods of a package extension, loaded with `using Makie` or a backend such as `using CairoMakie`.
+
+```@docs
+epicurve
+chain_size_plot
 ```
 
 ## Closed-form results
@@ -930,8 +943,14 @@ EpiBranch.capacity_time_key
 EpiBranch.record_capacity_use!
 EpiBranch.refused_action
 EpiBranch.held_until
-EpiBranch.count_dosing
-EpiBranch.GroupDosing
+EpiBranch.gives_group_doses
+EpiBranch.dose_group_key
+EpiBranch.dose_efficacy
+EpiBranch.dose_mode
+EpiBranch.dose_coverage
+EpiBranch.dose_delay
+EpiBranch.dose_delay_to_immunity
+EpiBranch.dose_waning
 ```
 
 #### Start triggers

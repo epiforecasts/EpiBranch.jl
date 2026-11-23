@@ -37,7 +37,7 @@ Mixing given as contacts per person per day, as a contact survey gives it:
 makes per day, whatever the size of group `i`. Contacts per person are the
 same in a larger population, so a person's rate of contact with each member
 of group `i` falls as `contacts[j, i] / N_i`. See [`Mixing`](@ref) for what
-each engine derives from it.
+each model derives from it.
 
 `groups` gives each group's value of the `mixing_by` attributes of a
 [`MixingProcess`](@ref), one tuple per group, and `labels` names the types of
@@ -69,7 +69,7 @@ end
 Mixing given as a contact rate per pair of people: `rates[j, i]` is the rate
 per day at which one group-`j` person contacts one given group-`i` person, so
 they meet more often in a larger group. See [`Mixing`](@ref) for what each
-engine derives from it. A branching process needs the group sizes for it even
+model derives from it. A branching process needs the group sizes for it even
 without depletion, because the number of people one case contacts is the rate
 times the size of the group.
 

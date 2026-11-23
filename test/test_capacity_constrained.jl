@@ -86,9 +86,9 @@ end
         @test count(is_vaccinated, contacts) == 3
     end
 
-    @testset "Budget replenishes with carry_over = true" begin
+    @testset "Budget replenishes with unused_budget = CarryOver()" begin
         rv = RingVaccination(efficacy = 0.9)
-        cc = CapacityConstrained(rv; budget_per_period = 2.0, period = 5.0, carry_over = true)
+        cc = CapacityConstrained(rv; budget_per_period = 2.0, period = 5.0, unused_budget = CarryOver())
         state = empty_state()
 
         # First period: 1 dose used out of an allowance of 2, 1 left unused.
@@ -107,9 +107,9 @@ end
         @test count(is_vaccinated, second) == 3
     end
 
-    @testset "Unused budget is lost with carry_over = false" begin
+    @testset "Unused budget is lost with unused_budget = ExpireUnused()" begin
         rv = RingVaccination(efficacy = 0.9)
-        cc = CapacityConstrained(rv; budget_per_period = 2.0, period = 5.0, carry_over = false)
+        cc = CapacityConstrained(rv; budget_per_period = 2.0, period = 5.0, unused_budget = ExpireUnused())
         state = empty_state()
 
         first = [_traced_contact(rv, 1, 1.0)]
@@ -299,7 +299,7 @@ end
 
     @testset "A repeat trace of a quarantined contact is not charged again" begin
         ct = ContactTracing(TraceEveryone(), 1.0, Dirac(0.0), Quarantine(duration = Inf))
-        cc = CapacityConstrained(ct; budget_per_period = 1.0, period = 7.0, carry_over = false)
+        cc = CapacityConstrained(ct; budget_per_period = 1.0, period = 7.0, unused_budget = ExpireUnused())
         state = empty_state()
         infector = Individual(id = 1)
         set_isolated!(infector, 0.0; release_time = Inf)
@@ -417,7 +417,7 @@ end
         rv = RingVaccination(efficacy = 0.9)
         cc = CapacityConstrained(
             rv; budget_per_period = 1.0, period = 1.0,
-            carry_over = false
+            unused_budget = ExpireUnused()
         )
         state = empty_state()
 
@@ -441,7 +441,7 @@ end
         rv = RingVaccination(efficacy = 0.9)
         cc = CapacityConstrained(
             rv; budget_per_period = 1.0, period = 1.0,
-            carry_over = false
+            unused_budget = ExpireUnused()
         )
         state = empty_state()
 
@@ -465,7 +465,7 @@ end
         rv = RingVaccination(efficacy = 0.9)
         cc = CapacityConstrained(
             rv; budget_per_period = 2.5, period = 1.0,
-            carry_over = false
+            unused_budget = ExpireUnused()
         )
         state = empty_state()
 
@@ -527,7 +527,7 @@ end
         # earlier (`may_revise`); the running count must move it too, or
         # the old day stays charged and the new one is not.
         rv = RingVaccination(efficacy = 0.9)
-        cc = CapacityConstrained(rv; budget_per_period = 1.0, period = 1.0, carry_over = false)
+        cc = CapacityConstrained(rv; budget_per_period = 1.0, period = 1.0, unused_budget = ExpireUnused())
         state = empty_state()
         revised = _traced_contact(rv, 1, 5.0)
         append!(individuals(state), [revised])
@@ -788,7 +788,7 @@ end
         rv = RingVaccination(efficacy = 0.9)
         doses = Steps([2.0], [1.0, 3.0])
         cc = CapacityConstrained(
-            rv; budget_per_period = doses, period = 1.0, carry_over = false
+            rv; budget_per_period = doses, period = 1.0, unused_budget = ExpireUnused()
         )
         state = empty_state()
 
@@ -812,7 +812,7 @@ end
         @test capacity_usage(cc, state).available == 3.0
     end
 
-    @testset "A schedule for budget_per_period accumulates with carry_over = true" begin
+    @testset "A schedule for budget_per_period accumulates with unused_budget = CarryOver()" begin
         rv = RingVaccination(efficacy = 0.9)
         doses = Steps([1.0, 2.0], [0.0, 1.0, 3.0])
         cc = CapacityConstrained(rv; budget_per_period = doses, period = 1.0)
@@ -906,9 +906,9 @@ end
         @test calls[] == 5
     end
 
-    @testset "capacity_usage is scoped to the period with carry_over = false" begin
+    @testset "capacity_usage is scoped to the period with unused_budget = ExpireUnused()" begin
         rv = RingVaccination(efficacy = 0.9)
-        cc = CapacityConstrained(rv; budget_per_period = 2.0, period = 5.0, carry_over = false)
+        cc = CapacityConstrained(rv; budget_per_period = 2.0, period = 5.0, unused_budget = ExpireUnused())
         state = empty_state()
 
         first = [_traced_contact(rv, 1, 1.0)]
@@ -931,11 +931,11 @@ end
         @test capacity_usage(cc, state).used == 1
     end
 
-    @testset "carry_over = false binds across calls in the same period" begin
+    @testset "unused_budget = ExpireUnused() binds across calls in the same period" begin
         rv = RingVaccination(efficacy = 0.9)
         cc = CapacityConstrained(
             rv; budget_per_period = 1.0, period = 5.0,
-            carry_over = false
+            unused_budget = ExpireUnused()
         )
         state = empty_state()
 
@@ -1072,7 +1072,7 @@ end
     rv = CapacityConstrained(
         RingVaccination(efficacy = 0.9); budget_per_period = 5.0, period = 1.0
     )
-    @test rv.carry_over
+    @test rv.unused_budget isa CarryOver
     over = 0
     for seed in 1:20
         s = simulate(
