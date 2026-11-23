@@ -26,10 +26,7 @@ function scale_distribution(d::Distribution, ::Real)
     )
 end
 
-# Number of the `k` marked items among `draws` taken without replacement from
-# `k` marked and `m` unmarked ones. Inverts the distribution outwards from its
-# mode, so the cost grows with its standard deviation rather than with `draws`
-# as `rand(Hypergeometric(k, m, draws))` does.
+# Draw from Hypergeometric(k, m, draws) by inverting outwards from the mode.
 function _rand_hypergeometric(rng::AbstractRNG, k::Int, m::Int, draws::Int)
     lo, hi = max(0, draws - m), min(draws, k)
     lo == hi && return lo
@@ -56,8 +53,7 @@ function _rand_hypergeometric(rng::AbstractRNG, k::Int, m::Int, draws::Int)
     return mode
 end
 
-# Split `total` items drawn without replacement from groups of `sizes` items
-# between the groups (the multivariate hypergeometric distribution).
+# Draw a multivariate hypergeometric split of `total` between groups of `sizes`.
 function _rand_multivariate_hypergeometric(rng::AbstractRNG, sizes, total::Int)
     drawn = zeros(Int, length(sizes))
     pool = sum(sizes)
