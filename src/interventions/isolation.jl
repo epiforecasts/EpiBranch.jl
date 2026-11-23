@@ -132,8 +132,8 @@ required_fields(t::AfterPositiveTest) = [Symbol(t.name, :_time), Symbol(t.name, 
 
 Mark a `test_sensitivity` of [`Isolation`](@ref) as drawn at the test time.
 `f` is a function `(rng, ind, t) -> probability`, called once the case's test
-time `t` (the trigger plus `delay`, on the simulation clock) is known, so it
-can read the within-host load of the case then. A plain function
+time `t` (the trigger plus `delay`, on the simulation clock) is known. It
+can read the within-host load of the case at that time. A plain function
 `(rng, ind) -> ...`, a number or a distribution is still drawn when the case is
 created. A case with no finite test time, or that is not eligible, stays
 negative. The analytic effect of the isolation refuses it.
@@ -411,8 +411,8 @@ function _draw_test_positive(sensitivity, rng, individual)
     return rand(rng) < sample_value(sensitivity, rng, individual)
 end
 
-# A sensitivity that waits for the test time is marked by its type, so a plain
-# function of any arity keeps being drawn at creation.
+# `AtTestTime` marks a sensitivity that waits for the test time. A plain
+# function of any arity is still drawn at creation.
 _draw_test_positive(::AtTestTime, rng, individual) = false
 
 # Progression-step and test-time sensitivities are read once the progression

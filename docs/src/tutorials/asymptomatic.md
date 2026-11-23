@@ -201,7 +201,7 @@ nothing # hide
 
 ## Test positivity from the load at the test
 
-[`Isolation`](@ref) draws whether a case tests positive once its onset and isolation delay are known. A `test_sensitivity` written `AtTestTime((rng, ind, t) -> probability)` is evaluated then, with `t` the time the case is tested (the trigger plus `delay`, on the simulation clock). It can read the load at that time through the case's trajectory, Detection then follows the same draw as infectiousness and onset:
+[`Isolation`](@ref) draws whether a case tests positive once its onset and isolation delay are known. A `test_sensitivity` written `AtTestTime((rng, ind, t) -> probability)` is evaluated then, with `t` the time the case is tested (the trigger plus `delay`, on the simulation clock). It can read the load at that time through the case's trajectory. Detection then follows the same draw as infectiousness and onset:
 
 ```@example asymptomatic
 detect = AtTestTime((rng, ind, t) -> min(1.0, EpiBranch.trajectory_value(ind, t - ind.infection_time) / 1.5))
