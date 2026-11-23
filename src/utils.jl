@@ -30,7 +30,7 @@ end
 function _rand_hypergeometric(rng::AbstractRNG, k::Int, m::Int, draws::Int)
     lo, hi = max(0, draws - m), min(draws, k)
     lo == hi && return lo
-    mode = clamp(((draws + 1) * (k + 1)) ÷ (k + m + 2), lo, hi)
+    mode = clamp(floor(Int, Float64(draws + 1) * (k + 1) / (k + m + 2)), lo, hi)
     u = rand(rng)
     up = down = pmf = pdf(Hypergeometric(k, m, draws), mode)
     u -= pmf
@@ -38,13 +38,13 @@ function _rand_hypergeometric(rng::AbstractRNG, k::Int, m::Int, draws::Int)
     x_up = x_down = mode
     while x_up < hi || x_down > lo
         if x_up < hi
-            up *= (k - x_up) * (draws - x_up) / ((x_up + 1) * (m - draws + x_up + 1))
+            up *= (k - x_up) / (x_up + 1) * ((draws - x_up) / (m - draws + x_up + 1))
             x_up += 1
             u -= up
             u <= 0 && return x_up
         end
         if x_down > lo
-            down *= x_down * (m - draws + x_down) / ((k - x_down + 1) * (draws - x_down + 1))
+            down *= x_down / (k - x_down + 1) * ((m - draws + x_down) / (draws - x_down + 1))
             x_down -= 1
             u -= down
             u <= 0 && return x_down

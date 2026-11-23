@@ -374,5 +374,10 @@ end
     expected = total .* sizes ./ sum(sizes)
     sd = sqrt.(expected .* (1 .- sizes ./ sum(sizes)) .* (sum(sizes) - total) / (sum(sizes) - 1))
     @test all(abs.(mean(split) .- expected) .< 4 .* sd ./ sqrt(200))
+    # Products of the counts exceed `typemax(Int)` here.
+    big = [4 * 10^10, 6 * 10^10]
+    bsplit = [EpiBranch._rand_multivariate_hypergeometric(rng, big, 5 * 10^10) for _ in 1:20]
+    @test all(==(5 * 10^10), sum.(bsplit))
+    @test all(abs.(mean(bsplit) .- [2.0e10, 3.0e10]) .< 1.0e6)
     @test EpiBranch._rand_multivariate_hypergeometric(rng, [0, 4, 0], 3) == [0, 3, 0]
 end
