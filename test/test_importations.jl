@@ -29,11 +29,14 @@
     end
 
     @testset "Imports share capacity limits and the population" begin
+        # Only the import has offspring; it arrives once the index case has
+        # used up a population of two, so none of them can infect anyone.
         model = BranchingProcess(
-            Poisson(0.0), Exponential(5.0); importations = times, population_size = 2
+            (rng, ind) -> ind.infection_time > 0 ? 10 : 0, Exponential(5.0);
+            importations = [1.0], population_size = 2
         )
         state = simulate(model; rng = StableRNG(3))
-        @test state.cumulative_cases <= 4
+        @test state.cumulative_cases == 2
         capped = simulate(
             BranchingProcess(Poisson(0.0), Exponential(5.0); importations = times);
             max_cases = 2, rng = StableRNG(3)
