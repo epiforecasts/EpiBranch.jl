@@ -302,6 +302,11 @@ Doses left unused by earlier generations, from `carry_over` or a single
 budget, still go to contacts of later generations after the window has
 closed.
 
+The individual-based simulation dates contacts, holds those made before a
+window opens and doses them in order as the budget accrues. A count has no
+contact times, so the doses of an interval are given in one step between
+generations. With a binding budget the dosed contacts can differ.
+
 # Examples
 
 ```julia

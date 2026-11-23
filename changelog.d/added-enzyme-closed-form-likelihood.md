@@ -1,0 +1,1 @@
+The closed-form `loglikelihood(ChainSizes(...), ModelSpec(...))` and `chain_size_distribution(::ModelSpec)` for a spec with no `progression` now differentiate under reverse-mode Enzyme once Enzyme is loaded.
