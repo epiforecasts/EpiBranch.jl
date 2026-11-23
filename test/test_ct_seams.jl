@@ -158,12 +158,12 @@ end
             action = FlagOnly()
         )
         @test EpiBranch.traces(ct.trace_rate, infector, nothing, nothing, rng)
-        @test EpiBranch._draw_trace_delay(ct.isolation_to_trace_delay, infector, rng) == 2.0
+        @test EpiBranch.sample_value(ct.isolation_to_trace_delay, rng, infector) == 2.0
         @test calls[] == 1
         st = SourceTracing(
             OnSymptomOnset(), Beta(2, 2), 3, FlagOnly()
         )
-        @test EpiBranch._draw_trace_delay(st.isolation_to_trace_delay, infector, rng) == 3.0
+        @test EpiBranch.sample_value(st.isolation_to_trace_delay, rng, infector) == 3.0
         @test 0 <= mean(
             EpiBranch.traces(st.trace_rate, infector, nothing, nothing, rng) for _ in 1:2000
         ) <= 1

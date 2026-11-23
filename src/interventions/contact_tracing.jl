@@ -338,8 +338,7 @@ Whether this eligible contact is successfully traced (randomly, using `rng`).
 traces(::TraceRate, infector, contact, state, rng) = false
 
 """Each eligible contact is traced with probability `p`: a number, a
-`Distribution` or a function of `(rng, infector)`, read with
-[`sample_value`](@ref)."""
+`Distribution` or a function of `(rng, infector)`."""
 struct ConstantRate{P} <: TraceRate
     p::P
 end
@@ -546,10 +545,6 @@ abstract type _Tracing <: AbstractIntervention end
 _trace_rate(probability) = ConstantRate(probability)
 _trace_rate(rate::TraceRate) = rate
 
-# Days from the start of tracing to the contact being reached, drawn once per
-# attempt as a per-case value, as the delays of other interventions are.
-_draw_trace_delay(delay, infector, rng) = sample_value(delay, rng, infector)
-
 """
     ContactTracing(eligibility, probability, isolation_to_trace_delay, action;
                    depth = 1)
@@ -655,8 +650,7 @@ struct ContactTracing{
     depth::Int
 
     # Every construction path ends here, so the ring radius is validated once
-    # and `depth < 1` is rejected rather than silently behaving as depth 1. A
-    # plain probability or delay distribution becomes a constant rate or delay.
+    # and `depth < 1` is rejected rather than silently behaving as depth 1.
     function ContactTracing(
             eligibility::TraceEligibility, probability, isolation_to_trace_delay,
             action::TraceAction;
@@ -897,7 +891,7 @@ function _trace_attempt!(
         ct::ContactTracing, state, infector, ind, rng, base, remaining, not_before, actions
     )
     traces(ct.trace_rate, infector, ind, state, rng) || return nothing
-    trace_delay = _draw_trace_delay(ct.isolation_to_trace_delay, infector, rng)
+    trace_delay = sample_value(ct.isolation_to_trace_delay, rng, infector)
     # A contact cannot be sought before it exists, such as a funeral contact
     # before the funeral, so the delay runs from whichever comes later.
     trace_time = max(base, not_before) + trace_delay
@@ -1172,8 +1166,6 @@ struct SourceTracing{
     isolation_to_trace_delay::D
     action::A
 
-    # A plain probability or delay distribution becomes a constant rate or
-    # delay, as for `ContactTracing`.
     function SourceTracing(
             eligibility::TraceEligibility, probability, isolation_to_trace_delay,
             action::TraceAction
@@ -1231,7 +1223,7 @@ function trace_contacts!(st::SourceTracing, state, case, contacts, not_before = 
         source.id == case.parent_id || continue
         is_eligible(st.eligibility, case, source, state) || continue
         traces(st.trace_rate, case, source, state, rng) || continue
-        trace_delay = _draw_trace_delay(st.isolation_to_trace_delay, case, rng)
+        trace_delay = sample_value(st.isolation_to_trace_delay, rng, case)
         base = trigger_time(st.eligibility, case, source, state)
         nb = not_before === nothing ? -Inf : not_before[i]
         trace_time = max(base, nb) + trace_delay
