@@ -63,6 +63,7 @@ const TEST_GROUPS = (
         "test_linelist.jl",
         "test_data_from_tables.jl",
         "test_incidence.jl",
+        "test_plots.jl",
     ],
     interventions = [
         "test_quality.jl",
