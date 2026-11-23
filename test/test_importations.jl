@@ -1,0 +1,54 @@
+@testset "BranchingProcess importations" begin
+    times = [3.0, 10.0, 25.0]
+
+    @testset "Imports start at their own times, as external seeds" begin
+        # Offspring of zero: only the index case and the imports are infected.
+        model = BranchingProcess(Poisson(0.0), Exponential(5.0); importations = times)
+        state = simulate(model; rng = StableRNG(1))
+        inds = individuals(state)
+        @test length(inds) == 4
+        @test [i.infection_time for i in inds] == [0.0, times...]
+        @test all(i -> i.state[:index], inds)
+        @test [get(i.state, :infection_route, nothing) for i in inds] ==
+            [nothing, :external, :external, :external]
+        @test state.cumulative_cases == 4
+    end
+
+    @testset "Imports add to n_initial" begin
+        model = BranchingProcess(Poisson(0.0), Exponential(5.0); importations = times)
+        state = simulate(model; n_initial = 2, rng = StableRNG(1))
+        @test [i.infection_time for i in individuals(state)] == [0.0, 0.0, times...]
+    end
+
+    @testset "Offspring of an import come after it" begin
+        model = BranchingProcess(Poisson(2.0), Exponential(5.0); importations = [50.0])
+        state = simulate(model; max_cases = 200, rng = StableRNG(2))
+        imported = filter(i -> get(i.state, :infection_route, nothing) === :external, individuals(state))
+        @test length(imported) == 1
+        @test all(i -> i.infection_time >= 50.0, individuals(state)[imported[1].secondary_case_ids])
+    end
+
+    @testset "Imports share capacity limits and the population" begin
+        model = BranchingProcess(
+            Poisson(0.0), Exponential(5.0); importations = times, population_size = 2
+        )
+        state = simulate(model; rng = StableRNG(3))
+        @test state.cumulative_cases <= 4
+        capped = simulate(
+            BranchingProcess(Poisson(0.0), Exponential(5.0); importations = times);
+            max_cases = 2, rng = StableRNG(3)
+        )
+        @test capped.cumulative_cases == 2
+    end
+
+    @testset "An import after max_time stays uninfected" begin
+        model = BranchingProcess(Poisson(0.0), Exponential(5.0); importations = times)
+        state = simulate(model; max_time = 12.0, rng = StableRNG(4))
+        @test count(is_infected, individuals(state)) == 3
+    end
+
+    @testset "Invalid importations are refused" begin
+        @test_throws ArgumentError BranchingProcess(Poisson(1.0); importations = [-1.0])
+        @test_throws ArgumentError BranchingProcess(Poisson(1.0); importations = 0.1)
+    end
+end

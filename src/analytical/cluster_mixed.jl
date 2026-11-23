@@ -130,7 +130,7 @@ function BranchingProcess(
     )
     return BranchingProcess(
         (Infectiousness(offspring; kernel = gt),),
-        _branching_population(population, population_size, 1), 1, NoTypeLabels()
+        _branching_population(population, population_size, 1), 1, NoTypeLabels(), nothing
     )
 end
 
@@ -140,7 +140,7 @@ function BranchingProcess(
     )
     return BranchingProcess(
         (Infectiousness(offspring),),
-        _branching_population(population, population_size, 1), 1, NoTypeLabels()
+        _branching_population(population, population_size, 1), 1, NoTypeLabels(), nothing
     )
 end
 
