@@ -475,6 +475,8 @@ sweep.mean_delay = [only(i).delay.θ for i in sweep.interventions]
 sort(sweep[:, [:R, :mean_delay, :containment_probability]], [:R, :mean_delay])
 ```
 
+The six rows are the two offspring distributions crossed with the three delays. The `R` and `mean_delay` columns are read back from the offspring distribution and isolation of each scenario. The table is sorted by R and then by delay. Containment is higher with R = 1.5 than with R = 3, and falls in both cases as isolation is delayed.
+
 With a Makie backend loaded, [`containment_plot`](@ref) draws the containment probability against one column, with a line for each value of another.
 
 ```@example interventions
@@ -482,8 +484,6 @@ using CairoMakie
 
 containment_plot(sweep, :mean_delay; group = :R)
 ```
-
-The six rows are the two offspring distributions crossed with the three delays. The `R` and `mean_delay` columns are read back from the offspring distribution and isolation of each scenario. The table is sorted by R and then by delay. Containment is higher with R = 1.5 than with R = 3, and falls in both cases as isolation is delayed.
 
 ### Containment by a chosen week
 
