@@ -401,6 +401,17 @@ function _chain_size_model_loglik(
             return _chain_size_loglik(observe(folded, obs), data; prob_concluded)
         end
     end
+    return _simulated_chain_size_loglik(
+        data, process, ivs, attrs, prog, obs, rec,
+        max_cases, max_generations, max_time, stopping_rules, n_sim, rng, prob_concluded
+    )
+end
+
+# Separate function so the Enzyme extension can give it a rule.
+@noinline function _simulated_chain_size_loglik(
+        data, process, ivs, attrs, prog, obs, rec,
+        max_cases, max_generations, max_time, stopping_rules, n_sim, rng, prob_concluded
+    )
     # No closed form: simulate clusters grouped by seed count, one batch of
     # `n_sim` runs per distinct value in `data.seeds`, so a k-seed cluster is
     # compared against simulated clusters that also start from k index cases

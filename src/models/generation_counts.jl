@@ -306,6 +306,11 @@ campaign decides how many susceptibles of each type they protect, and those leav
 `susceptibles` before the contacts of the generation are thinned. The campaign's
 `eligibility_time` is not read.
 
+The individual-based simulation dates contacts, holds those made before a
+window opens and doses them in order as the budget accrues. A count has no
+contact times, so the doses of an interval are given in one step between
+generations. With a binding budget the dosed contacts can differ.
+
 # Examples
 
 ```julia

@@ -1,0 +1,1 @@
+With `EnzymeCore` loaded, `loglikelihood(ChainSizes(...), spec)` can be differentiated under reverse-mode Enzyme for a `ModelSpec` with a `Reporting` step, provided the likelihood has a closed form. A likelihood that falls back to simulation now throws an `ArgumentError` under Enzyme instead of failing to compile.

@@ -353,3 +353,31 @@ EpiBranch.trigger_time(e::_EligibleAt, infector, state) = e.time
         )
     end
 end
+
+@testset "multivariate hypergeometric split" begin
+    using Statistics
+    rng = StableRNG(7)
+    # Matches the exact pmf of the univariate case, including a skewed one.
+    for (k, m, n) in [(5, 7, 4), (3, 40, 30), (40, 3, 30), (6, 6, 12)]
+        d = Hypergeometric(k, m, n)
+        draws = [EpiBranch._rand_hypergeometric(rng, k, m, n) for _ in 1:100_000]
+        for x in support(d)
+            @test isapprox(count(==(x), draws) / 1.0e5, pdf(d, x); atol = 0.01)
+        end
+    end
+    # Means and the total are right at sizes where `Hypergeometric` takes seconds.
+    sizes = [3 * 10^8, 5 * 10^8, 2 * 10^8]
+    total = 4 * 10^8
+    split = [EpiBranch._rand_multivariate_hypergeometric(rng, sizes, total) for _ in 1:200]
+    @test all(==(total), sum.(split))
+    @test all(all(split[j] .<= sizes) for j in eachindex(split))
+    expected = total .* sizes ./ sum(sizes)
+    sd = sqrt.(expected .* (1 .- sizes ./ sum(sizes)) .* (sum(sizes) - total) / (sum(sizes) - 1))
+    @test all(abs.(mean(split) .- expected) .< 4 .* sd ./ sqrt(200))
+    # Products of the counts exceed `typemax(Int)` here.
+    big = [4 * 10^10, 6 * 10^10]
+    bsplit = [EpiBranch._rand_multivariate_hypergeometric(rng, big, 5 * 10^10) for _ in 1:20]
+    @test all(==(5 * 10^10), sum.(bsplit))
+    @test all(abs.(mean(bsplit) .- [2.0e10, 3.0e10]) .< 1.0e6)
+    @test EpiBranch._rand_multivariate_hypergeometric(rng, [0, 4, 0], 3) == [0, 3, 0]
+end

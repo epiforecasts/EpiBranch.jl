@@ -281,20 +281,7 @@ end
 function _extend_dosed!(rng::AbstractRNG, given, contacts, total)
     extra = min(total, sum(contacts)) - sum(given)
     extra <= 0 && return given
-    rest = contacts .- given
-    pool = sum(rest)
-    for i in eachindex(rest)
-        pool -= rest[i]
-        x = if i == lastindex(rest) || pool == 0
-            extra
-        elseif rest[i] == 0
-            0
-        else
-            rand(rng, Hypergeometric(rest[i], pool, extra))
-        end
-        given[i] += x
-        extra -= x
-    end
+    given .+= _rand_multivariate_hypergeometric(rng, contacts .- given, extra)
     return given
 end
 
