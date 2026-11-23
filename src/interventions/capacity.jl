@@ -79,7 +79,7 @@ end
                         carry_over=true, priority=default_capacity_priority,
                         on_refusal=DropRefused())
 
-Limit an intervention's reach, such as a fixed number of
+Limit the reach of an intervention, such as a fixed number of
 vaccine doses per day: `budget_per_period` people every `period` days.
 
 # Examples
