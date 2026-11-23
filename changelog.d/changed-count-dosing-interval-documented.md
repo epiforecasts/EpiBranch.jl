@@ -1,1 +1,1 @@
-The documentation of `simulate_by_generation` now says how its campaign doses differ from the individual-based simulation.
+The documentation of `simulate_by_generation` now describes how its campaign dosing differs from the individual-based simulation.
