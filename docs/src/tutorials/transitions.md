@@ -23,7 +23,7 @@ default:
 - [`Hospitalisation`](@ref): a proportion of cases are admitted after a delay.
 - [`Death`](@ref): a case dies after a delay, with a given probability.
 - [`Recovery`](@ref): every symptomatic case gets a recovery time.
-- [`Testing`](@ref): a sample is taken a delay after an event, and the case's own within-host trajectory ([`within_host`](@ref)) at that time goes through an [`Assay`](@ref) to give a reading (a Ct value, say) and a result. Each test has a `name` (`:test` by default), so a case can have several, such as a PCR test and a serology test.
+- [`Testing`](@ref): a sample is taken a delay after an event, and the case's own within-host trajectory ([`within_host`](@ref)) at that time goes through an [`Assay`](@ref) to give a reading (a Ct value, say) and a result. Each test has a `name` (`:test` by default), so a case can have several, such as a PCR test and a serology test. [`progression_loglik`](@ref) scores a test: the chance and timing of the sample, the probability of the result and, when the [`Assay`](@ref) has a `noise` distribution, the density of the reading. A result needs a limit of detection or a [`DetectionProbability`](@ref) to be scored.
 
 ```julia
 curve(rng, ind) = t -> t < 5 ? 8t / 5 : 8exp(-0.4 * (t - 5))   # log10 copies per mL

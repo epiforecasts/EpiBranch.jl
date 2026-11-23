@@ -177,9 +177,11 @@ Recovery
 Testing
 AbstractAssay
 Assay
+DetectionProbability
 within_host
 EpiBranch.trajectory_value
 EpiBranch.measure
+EpiBranch.measure_loglik
 exclusive_probabilities
 is_terminal
 terminal_event

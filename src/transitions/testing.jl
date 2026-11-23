@@ -73,7 +73,7 @@ Draws from `rng` only if the assay is stochastic.
 function measure end
 
 """
-    Assay(; value, detect)
+    Assay(; value, detect, noise = nothing)
 
 An assay that maps the value in a sample to a reading and to a result.
 
@@ -83,9 +83,18 @@ An assay that maps the value in a sample to a reading and to a result.
 - `detect`: when the sample is positive. A number is a limit of detection: the
   result is positive when the value reaches it. A function
   `(rng, value) -> Bool` gives a result that can be probabilistic, for example a
-  detection probability that rises with the value.
+  detection probability that rises with the value. Use
+  [`DetectionProbability`](@ref) for a probabilistic result that
+  [`progression_loglik`](@ref) can score; a plain function has no probability
+  to evaluate.
+- `noise`: `nothing` for a reading that is exactly `value(v)`, or a
+  `Distribution` of the measurement error added to it. The likelihood scores a
+  recorded reading by the density of that error, so it is needed to use
+  observed Ct values for inference; without it a reading either matches the
+  trajectory exactly or is impossible.
 
-Neither has a default, as both depend on the assay and the pathogen tested for.
+`value` and `detect` have no default, as both depend on the assay and the
+pathogen tested for.
 
 # Examples
 
@@ -94,18 +103,80 @@ Neither has a default, as both depend on the assay and the pathogen tested for.
 Assay(value = load -> 40.0 - 3.3 * load, detect = 2.0)
 ```
 """
-struct Assay{V, D} <: AbstractAssay
+struct Assay{V, D, N} <: AbstractAssay
     value::V
     detect::D
+    noise::N
 end
-Assay(; value, detect) = Assay(value, detect)
+Assay(; value, detect, noise = nothing) = Assay(value, detect, noise)
+
+"""
+    DetectionProbability(probability)
+
+A `detect` rule for [`Assay`](@ref): a sample with value `v` is positive with
+probability `probability(v)`. Unlike a plain `(rng, value) -> Bool` function,
+[`progression_loglik`](@ref) can score the result it gives.
+"""
+struct DetectionProbability{F}
+    probability::F
+end
+(d::DetectionProbability)(rng, value) = rand(rng) < d.probability(value)
 
 _detected(limit::Real, rng, value) = value >= limit
 _detected(rule, rng, value) = rule(rng, value)::Bool
 
+_reading(::Nothing, rng, base) = base
+_reading(noise::Distribution, rng, base) = base + rand(rng, noise)
+
 function measure(a::Assay, rng, value)
-    return (float(a.value(value)), _detected(a.detect, rng, value))
+    base = float(a.value(value))
+    return (_reading(a.noise, rng, base), _detected(a.detect, rng, value))
 end
+
+"""
+    measure_loglik(assay::AbstractAssay, value, reading, positive) -> Float64
+
+The log-probability of the result `positive` and the log-density of `reading`
+for a sample at trajectory value `value`: the reverse of
+[`measure`](@ref), used by [`transition_loglik`](@ref EpiBranch.transition_loglik)
+for [`Testing`](@ref). A `NaN` reading carries no density. Define it for a new
+`AbstractAssay` to use it with [`progression_loglik`](@ref).
+"""
+function measure_loglik(a::Assay, value, reading, positive)
+    return _detect_loglik(a.detect, value, positive) +
+        _reading_loglik(a.noise, float(a.value(value)), reading)
+end
+
+function measure_loglik(a::AbstractAssay, value, reading, positive)
+    throw(
+        ArgumentError(
+            "$(nameof(typeof(a))) needs a method for `EpiBranch.measure_loglik` " *
+                "to be used with `progression_loglik`"
+        )
+    )
+end
+
+function _detect_loglik(limit::Real, value, positive)
+    return (value >= limit) == positive ? 0.0 : -Inf
+end
+function _detect_loglik(d::DetectionProbability, value, positive)
+    p = d.probability(value)
+    return positive ? log(p) : log1p(-p)
+end
+function _detect_loglik(rule, value, positive)
+    throw(
+        ArgumentError(
+            "a `detect` function has no probability to evaluate; " *
+                "`progression_loglik` needs a limit of detection or a " *
+                "`DetectionProbability`"
+        )
+    )
+end
+
+# A sample too low to give a reading records `NaN`, which carries no density.
+_reading_loglik(noise, base, reading) = isnan(reading) ? 0.0 : _reading_density(noise, base, reading)
+_reading_density(::Nothing, base, reading) = isapprox(base, reading) ? 0.0 : -Inf
+_reading_density(noise::Distribution, base, reading) = logpdf(noise, reading - base)
 
 """
     Testing(; assay, delay, from = :onset_time, probability = 1.0,
@@ -240,4 +311,21 @@ function _read_test_positive!(t::Testing, iso, individual, state)
         st[k.tested]::Bool &&
         st[k.result]::Bool
     return nothing
+end
+
+# The probability and timing of the sample, then the result and reading it gave
+# given the case's trajectory at the sampling time.
+function transition_loglik(
+        t::Testing, individual::Individual; followup_end = Inf, truncated = false
+    )
+    k = _test_keys(t)
+    ll, occurred = _event_loglik(
+        t, individual, k.tested, k.time, nothing; followup_end, truncated
+    )
+    occurred || return ll
+    st = individual.state
+    value = trajectory_value(
+        individual, st[k.time] - individual.infection_time; key = t.key
+    )
+    return ll + measure_loglik(t.assay, value, st[k.value], st[k.result]::Bool)
 end

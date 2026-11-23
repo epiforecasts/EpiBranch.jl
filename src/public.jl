@@ -38,7 +38,7 @@ public prevent_symptoms!, symptoms_prevented_time
 
 # Testing: `trajectory_value` reads the within-host trajectory stored by
 # `within_host`. A new `AbstractAssay` defines `measure`.
-public trajectory_value, measure
+public trajectory_value, measure, measure_loglik
 
 # Isolation eligibility: whether an isolation time counts as a detection.
 public records_isolation, isolation_reference_time
