@@ -17,7 +17,6 @@ using Makie
         fig = epicurve(states)
         @test fig isa Makie.Figure
         ax = only(filter(b -> b isa Makie.Axis, fig.content))
-        # Two bands and the median line.
         @test length(ax.scene.plots) == 3
 
         @test epicurve(states[1]; interval = 1) isa Makie.Figure
@@ -32,7 +31,6 @@ using Makie
         fig = chain_size_plot(sizes, law)
         @test fig isa Makie.Figure
         ax = only(filter(b -> b isa Makie.Axis, fig.content))
-        # The bars are the observed proportions and the points the exact law.
         bars = only(filter(p -> p isa Makie.BarPlot, ax.scene.plots))
         heights = [p[2] for p in bars[1][]]
         @test sum(heights) ≈ sum(s <= maximum(sizes) for s in sizes) / 500

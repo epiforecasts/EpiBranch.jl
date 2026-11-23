@@ -230,7 +230,7 @@ The same works for [`contacts`](@ref).
 
 ### Epidemic curve
 
-With a Makie backend loaded, [`epicurve`](@ref) plots the weekly cases of many runs as a median with 50% and 95% bands. Runs with a different start or an early end are counted as zero in the weeks they miss. It also takes a single run, which it draws as bars.
+With a Makie backend loaded, [`epicurve`](@ref) plots the weekly cases of many runs as a median with 50% and 95% bands. It also takes a single run, drawn as bars.
 
 ```@example linelist
 using CairoMakie

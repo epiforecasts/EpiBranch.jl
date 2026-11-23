@@ -60,7 +60,7 @@ d_nb = chain_size_distribution(NegBin(0.8, 0.5))
 println("NegBin(R = 0.8, k = 0.5), P(size = 1): $(round(pdf(d_nb, 1), digits=4))")
 ```
 
-With a Makie backend loaded, [`chain_size_plot`](@ref) checks simulated chain sizes against the exact law. The proportions are on a log axis, so the bars follow the heavy right tail of the law.
+With a Makie backend loaded, [`chain_size_plot`](@ref) checks simulated chain sizes against the exact law.
 
 ```@example chains
 using CairoMakie

@@ -1,15 +1,11 @@
 module EpiBranchMakieExt
 
-# Figures for simulation output. The functions are declared in
-# `src/output/plots.jl`; each returns a `Makie.Figure`.
-
 using EpiBranch: EpiBranch, SimulationState, incidence, summarise
 using Dates: Date, Day
 using Distributions: DiscreteUnivariateDistribution, pdf
 using Makie: Makie, Figure, Axis, band!, lines!, barplot!, scatter!, axislegend
 
-# Makie places dates on an axis only through its own date conversion, which
-# bands do not take, so dates are plotted as day numbers and labelled as dates.
+# Bands do not take dates, so dates are plotted as day numbers.
 _day_numbers(dates) = Float64.((dates .- first(dates)) ./ Day(1))
 
 function _date_axis(fig, dates, interval)
@@ -66,7 +62,6 @@ function EpiBranch.chain_size_plot(
         fig[1, 1]; xlabel = "Chain size", ylabel = "Proportion of chains",
         yscale = Makie.log10
     )
-    # A log axis cannot show the sizes that never occurred.
     seen = findall(>(0), observed)
     barplot!(
         ax, grid[seen], observed[seen];
