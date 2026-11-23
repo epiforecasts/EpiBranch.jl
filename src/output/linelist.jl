@@ -252,7 +252,7 @@ of a person it creates, not of one who already existed. The models of a
 fixed population (`HomogeneousProcess`, `MixingProcess`, `NetworkProcess`,
 `RoutedNetwork`, `HouseholdProcess`) record only who infected whom by
 default, so every row has `infected = true`: a household member or network
-neighbour who was exposed but not infected does not appear. Attach an
+neighbour exposed but uninfected does not appear. Attach an
 [`ExposedContactRecorder`](@ref) as the `ModelSpec`'s `recorder` to have such
 a pair listed too, with `infected = false`.
 

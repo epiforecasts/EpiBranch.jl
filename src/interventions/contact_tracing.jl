@@ -48,7 +48,7 @@ function is_eligible(::OnLabConfirmation, infector, contact, state)
     return get(infector.state, :test_positive, false)
 end
 
-"""Trace contacts of cases that have been isolated, starting from isolation."""
+"""Trace contacts of isolated cases, starting from isolation."""
 struct OnIsolation <: TraceEligibility end
 is_eligible(::OnIsolation, infector, contact, state) = is_isolated(infector)
 

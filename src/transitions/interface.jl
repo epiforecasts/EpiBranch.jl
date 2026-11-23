@@ -16,7 +16,7 @@ step, such as loss to follow-up, needs the methods below.
 
 Once a case has reached its outcome, an event one of the other steps recorded
 for a later time is reset to "did not happen", since nothing more happens to a
-case that has died or recovered.
+dead or recovered case.
 
 # For extension authors
 

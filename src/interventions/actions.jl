@@ -86,7 +86,7 @@ end
     action_draw!(sample, individual, key)
 
 Draw `sample()` once for this person and action `key`, and return the same
-value whenever the action is proposed again, so a person who was turned down
+value whenever the action is proposed again, so a person turned down
 (for example by a coverage draw) stays turned down. Use different keys for
 different visits or doses. The stored draws do not appear in the line list.
 """

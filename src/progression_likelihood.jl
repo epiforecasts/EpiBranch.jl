@@ -19,7 +19,7 @@ included unless onset is itself a step of the progression.
 
 `individuals` is a vector of [`Individual`](@ref) or a [`SimulationState`](@ref)
 from [`simulate`](@ref), or a hand-built equivalent holding the times each
-progression step records. People who were exposed but never infected add
+progression step records. People exposed but never infected add
 nothing. The result is the sum over cases and steps of
 [`transition_loglik`](@ref EpiBranch.transition_loglik).
 

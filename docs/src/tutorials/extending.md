@@ -239,7 +239,7 @@ high_share(group) = count(ind -> ind.state[:risk_group] == :high, group) / lengt
 (all_contacts = high_share(people), infected = high_share(filter(is_infected, people)))
 ```
 
-The output keeps contacts who were exposed but not infected. About a fifth of
+The output keeps exposed but uninfected contacts. About a fifth of
 all contacts are high-risk, but because they are more susceptible they make up a
 larger share of those infected (0.2 × 0.8 / (0.2 × 0.8 + 0.8 × 0.3) = 0.4,
 ignoring the index cases). The list is applied in order, so a later entry can

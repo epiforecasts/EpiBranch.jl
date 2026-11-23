@@ -243,7 +243,7 @@ results = simulate(model, 200; max_cases = 500, rng = rng)
 println("Containment: $(round(containment_probability(results).proportion, digits=3))")
 ```
 
-Isolation raises the proportion of outbreaks that are contained above the
+Isolation raises the proportion of contained outbreaks above the
 extinction probabilities without control.
 
 For control that differs by type, give the delay as a function of the random
