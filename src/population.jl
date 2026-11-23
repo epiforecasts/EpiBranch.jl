@@ -173,7 +173,8 @@ function _closed_population(population, population_size)
     pop isa NoPopulation && throw(
         ArgumentError("a population is needed: give `population` or `population_size`")
     )
-    return _reject_immune(pop, "this model")
+    _reject_immune(pop, "this model")
+    return pop
 end
 
 _single_population(p::SinglePopulation, ::AbstractString) = p
