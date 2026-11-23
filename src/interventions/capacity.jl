@@ -79,7 +79,7 @@ end
                         carry_over=true, priority=default_capacity_priority,
                         on_refusal=DropRefused())
 
-Limit how many people an intervention can reach, such as a fixed number of
+Limit an intervention's reach, such as a fixed number of
 vaccine doses per day: `budget_per_period` people every `period` days.
 
 # Examples
@@ -119,7 +119,7 @@ CapacityConstrained(GroupVaccination(efficacy = 0.9); budget_per_period = doses,
   [`DeferRefused`](@ref) books it into the first later period with room.
   Deferral needs a finite `period` and an intervention that proposes actions.
 
-Each case's actions are offered together, in the order the engine settles
+Each case's actions are offered together, in the order the simulation settles
 cases, and each is checked against the budget of the period its own proposed
 date falls in, whatever day the case itself was settled on. Under the default
 policy, people turned away use no capacity and are not queued, though they may
