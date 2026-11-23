@@ -70,7 +70,7 @@ first(ll, 5)
 between 50 and 200 cases (both ends included), and `max_cases` stops an outbreak
 that keeps growing. Conditioning on size mimics an observed outbreak of known
 size, but the outbreaks you get are a selected subset: their R and timing are
-not representative of all outbreaks the model produces. `reference_date` is the
+not representative of all simulated outbreaks. `reference_date` is the
 calendar date of time 0, from which all dates are counted.
 
 A column appears only if the simulation recorded that information. Drop the
@@ -227,6 +227,17 @@ all_cases = vcat(linelist.(states)...; cols = :union, source = :sim_id)
 ```
 
 The same works for [`contacts`](@ref).
+
+### Epidemic curve
+
+With a Makie backend loaded, [`epicurve`](@ref) plots the weekly cases of many runs as a median with 50% and 95% bands. It also takes a single run, drawn as bars.
+
+```@example linelist
+using CairoMakie
+
+states = simulate(model, 200; max_time = 84.0, rng = StableRNG(1))
+epicurve(states)
+```
 
 ## Contacts table
 

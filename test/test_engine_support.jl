@@ -226,11 +226,30 @@ end
     end
 
     @testset "only an intervention that describes its doses is applied to counts" begin
-        @test EpiBranch.count_dosing(_support_gv(_SUPPORT_ENGINES.individual)) isa
-            EpiBranch.GroupDosing
-        @test EpiBranch.count_dosing(RingVaccination(efficacy = 0.9)) === nothing
-        @test EpiBranch.count_dosing(Isolation(delay = 1.0, duration = 7.0)) ===
-            nothing
+        gv = _support_gv(_SUPPORT_ENGINES.individual)
+        @test EpiBranch.gives_group_doses(gv)
+        @test EpiBranch._group_dosing(gv) isa EpiBranch.GroupDosing
+        @test !EpiBranch.gives_group_doses(RingVaccination(efficacy = 0.9))
+        @test !EpiBranch.gives_group_doses(Isolation(delay = 1.0, duration = 7.0))
+        @test EpiBranch._group_dosing(Isolation(delay = 1.0, duration = 7.0)) === nothing
+    end
+
+    @testset "an intervention of one's own is applied to counts through the dose traits" begin
+        struct _SupportPrEP <: AbstractIntervention
+            key::Symbol
+        end
+        EpiBranch.gives_group_doses(::_SupportPrEP) = true
+        EpiBranch.dose_group_key(p::_SupportPrEP) = p.key
+        EpiBranch.dose_efficacy(::_SupportPrEP) = 0.6
+        dosing = EpiBranch._group_dosing(_SupportPrEP(:type))
+        @test dosing.group_key === :type
+        @test dosing.efficacy == 0.6
+        @test dosing.mode isa LeakyMode
+        @test dosing.coverage == 1.0
+        @test dosing.dose_delay == 0.0
+        cc = CapacityConstrained(_SupportPrEP(:type); budget_per_period = 50.0)
+        campaign = EpiBranch._campaign(cc, (0.0, Inf), nothing)
+        @test campaign.efficacy == 0.6
     end
 
     @testset "a shared budget is one pool in every model" begin

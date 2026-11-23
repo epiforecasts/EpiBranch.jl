@@ -64,13 +64,13 @@ end
             v -> Scheduled(
                 CapacityConstrained(
                     v; budget_per_period = 1.0, period = 1.0,
-                    carry_over = false
+                    unused_budget = ExpireUnused()
                 );
                 start_time = 10.0, end_time = 12.0
             ),
             v -> CapacityConstrained(
                 Scheduled(v; start_time = 10.0, end_time = 12.0);
-                budget_per_period = 1.0, period = 1.0, carry_over = false
+                budget_per_period = 1.0, period = 1.0, unused_budget = ExpireUnused()
             ),
         )
         state = newstate()

@@ -194,6 +194,12 @@ function _initialise_observed(
             "starting from observed cases is not supported for a multi-type process"
         )
     )
+    process.multiplier === nothing || throw(
+        ArgumentError(
+            "starting from observed cases does not apply a per-generation " *
+                "`multiplier`: build the process without one"
+        )
+    )
     validate_process_windows(process, progression)
     _check_population(process)
     obs = _read_observed_cases(cases)

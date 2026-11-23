@@ -1,0 +1,1 @@
+`CapacityConstrained` takes `unused_budget`, an `UnusedBudget` (`CarryOver()`, the default, or `ExpireUnused()`), in place of the `carry_over::Bool` keyword and field. Use `unused_budget = ExpireUnused()` for `carry_over = false`.

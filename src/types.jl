@@ -534,10 +534,10 @@ named as the Extending EpiBranch guide describes. The simulation never reads
 `scratch`. `GroupVaccination` keeps its list of each group's members there.
 `continuation` is the unfinished race [`simulate`](@ref)'s continuation
 method resumes, `nothing` once the run has reached extinction or stopped for
-some other reason; nothing outside the simulation engine reads or writes it.
+some other reason; only the simulation reads or writes it.
 `lazy` is set by [`EpiBranch.lazily_populate!`](@ref) for a model with
 a population created as the race reaches it, `nothing` for one built
-upfront; nothing outside the simulation engine reads or writes it either.
+upfront; only the simulation reads or writes it either.
 """
 mutable struct SimulationState{T <: Real, R <: AbstractRNG, P, A} <: AbstractSimulationState
     individuals::Union{Vector{Individual{T}}, _SharedPeople{T}}

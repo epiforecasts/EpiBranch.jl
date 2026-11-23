@@ -281,9 +281,9 @@ function _warn_hook_mistakes(T::Type)
                 "the package's own default for $(nameof(f))" :
                 "$(_hook_type_name(standin))'s method"
             @warn "$(_hook_type_name(unreachable)) has a method of its own for " *
-                "$(nameof(f)), but at no number of arguments the engine calls " *
-                "it with, so that method is never reached: the engine uses " *
-                "$(instead) instead. The engine calls: " *
+                "$(nameof(f)), but at no number of arguments the simulation calls " *
+                "it with, so that method is never reached: the simulation uses " *
+                "$(instead) instead. The simulation calls: " *
                 "$(join(sigs, ", "))." intervention = T
             continue
         end
@@ -294,7 +294,7 @@ function _warn_hook_mistakes(T::Type)
         found += 1
         @warn "$(stray_module) defines a method of $(nameof(f)) for " *
             "$(_hook_type_name(shadowed)), but on its own function of that " *
-            "name rather than the package's, so the engine never calls it. " *
+            "name rather than the package's, so the simulation never calls it. " *
             "Write it as `EpiBranch.$(nameof(f))(...)`." intervention = T
     end
     return found

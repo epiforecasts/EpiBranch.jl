@@ -57,7 +57,7 @@ terminal_target(::AbstractClinicalTransition) = nothing
     produced_states(transition::AbstractClinicalTransition) -> Tuple{Vararg{Symbol}}
 
 The states this step can move a case into, known before any case is
-simulated, such as `(:infectious,)`. The engine reads it to find where an
+simulated, such as `(:infectious,)`. The simulation reads it to find where an
 infectious window opens (`infectious_from`), to warn about a window whose
 `from` no step produces, and to see whether a progression can make a host
 susceptible again (`:susceptible_again`, which lets the host be infected once
@@ -114,7 +114,7 @@ Reset `transition`'s own event to "did not occur" if the time it recorded
 falls after `individual`'s `:outcome_time`: once a case has died or
 recovered, nothing else can happen to it. Default: no-op.
 
-Called once the simulation engine has resolved every transition for an
+Called once the simulation has resolved every transition for an
 individual, for every transition with `is_terminal(transition) == false`,
 right after `:outcome`/`:outcome_time` are set — a terminal transition's own
 candidate is exactly what decided the outcome (or lost to an earlier one),

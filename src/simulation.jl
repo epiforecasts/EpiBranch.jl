@@ -801,7 +801,7 @@ outbreak reaches rather than to the size of the population. Every slot in
 `individuals(state)` starts out pointing to one placeholder, shared by every
 slot and never mutated: it reads as never infected (`is_infected` false),
 untouched by any intervention, with susceptibility and infectiousness at
-their neutral value of 1. The engine replaces it with a real person, drawing
+their neutral value of 1. The simulation replaces it with a real person, drawing
 their population characteristics from the per-person streams [`stream`](@ref)
 gives every other draw, the first time it proposes that node an infection or
 an intervention reaches it; `setup` and `interventions` are applied then,
@@ -1018,14 +1018,19 @@ function susceptible_fraction(
         state::SimulationState{<:Any, <:Any, SinglePopulation},
         extra_infected::Int = 0
     )
-    return _fraction(state.population.size, state.cumulative_cases + extra_infected)
+    return _fraction(
+        state.population.size, state.population.immune + state.cumulative_cases + extra_infected
+    )
 end
 
 function susceptible_fraction(
         state::SimulationState{<:Any, <:Any, <:GroupedPopulation},
         extra_infected::Int = 0
     )
-    return _fraction(sum(state.population.sizes), state.cumulative_cases + extra_infected)
+    return _fraction(
+        sum(state.population.sizes),
+        sum(state.population.immune) + state.cumulative_cases + extra_infected
+    )
 end
 
 function susceptible_fraction(
@@ -1039,7 +1044,9 @@ function _group_fraction(::Any, state, ind, extra_infected)
 end
 function _group_fraction(population::GroupedPopulation, state, ind, extra_infected)
     g = individual_type(ind)
-    return _fraction(population.sizes[g], state.group_cases[g] + extra_infected)
+    return _fraction(
+        population.sizes[g], population.immune[g] + state.group_cases[g] + extra_infected
+    )
 end
 
 function _fraction(size::Int, infected::Int)

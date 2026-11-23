@@ -196,6 +196,19 @@ between types from a contact matrix and the form of the distribution from the
 offspring distribution. Each contact is given a type. Interventions and output
 are unchanged, because they act on individual people, not on types.
 
+## Approximations and the five parts
+
+[`MeanFieldProcess`](@ref), [`LinearNoiseProcess`](@ref), [`MixingMeanFieldProcess`](@ref), [`MixingLinearNoiseProcess`](@ref) and [`HybridProcess`](@ref) are not models in the sense above. They do not simulate individual people and have no per-person attributes, no case timeline and no line list. They integrate compartment counts (susceptible, infectious, removed, and for the mixing variants the vaccinated and immune compartments per group) and return those, with a covariance for the linear-noise variants.
+
+The five parts map onto them as follows:
+
+- transmission and population: `MeanFieldProcess` and `LinearNoiseProcess` take the population size and a `transmission_rate` directly. The mixing variants read the contact rates and the groups from a [`ModelSpec`](@ref) built on a `MixingProcess`;
+- disease: the disease part collapses to a single `removal_rate`, the rate at which infectious people leave the infectious compartment. Latent periods, onset, severity and treatment are not represented;
+- interventions: the only intervention they represent is a [`GroupVaccination`](@ref) campaign in the `ModelSpec` of the mixing variants, which moves people between compartments. The mixing variants refuse any other intervention. The scalar variants take none;
+- observation: there is none. The output is the compartment trajectory.
+
+`HybridProcess` joins the two. It runs an exact `ModelSpec` while the outbreak is small and hands over to an approximation once the number of currently infectious people reaches a threshold, keeping the compartment counts at the switch. The constructor checks that the two share the population size. For the scalar pairing it also checks that the transmission and removal rates match. For the mixing pairing it checks only the groups, so a `removal_rate` that differs from the progression of the exact model is not caught; checking it is up to the user. Up to the switch the exact model supplies all five parts. Afterwards only the reduced form above applies.
+
 ## Host timeline and transmission-route windows
 
 !!! note "Planned"

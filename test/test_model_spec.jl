@@ -594,7 +594,7 @@ EpiBranch.interventions(m::_ProcessWithInterventions) = m.interventions
         # rather than every hook being listed.
         @test_logs (
             :warn,
-            r"BlockWrongArity has a method of its own for competing_risk, but at no number of arguments the engine calls it with, so that method is never reached: the engine uses the package's own default for competing_risk instead",
+            r"BlockWrongArity has a method of its own for competing_risk, but at no number of arguments the simulation calls it with, so that method is never reached: the simulation uses the package's own default for competing_risk instead",
         ) match_mode = :any ModelSpec(bp; interventions = [BlockWrongArity()])
         # Unqualified: the method belongs to a different function entirely,
         # which is found in the module the intervention was written in.
@@ -662,7 +662,7 @@ EpiBranch.interventions(m::_ProcessWithInterventions) = m.interventions
         # child's block never applies, and the warning names the child.
         @test_logs (
             :warn,
-            r"_FamilyShort has a method of its own for competing_risk, but at no number of arguments the engine calls it with, so that method is never reached: the engine uses _Family's method instead",
+            r"_FamilyShort has a method of its own for competing_risk, but at no number of arguments the simulation calls it with, so that method is never reached: the simulation uses _Family's method instead",
         ) match_mode = :any ModelSpec(bp; interventions = [_FamilyShort()])
         # The same family the other way round is fine: the child's own method
         # is the one a four-argument call reaches.
@@ -699,13 +699,13 @@ EpiBranch.interventions(m::_ProcessWithInterventions) = m.interventions
         # warning names the one dispatch picks.
         @test_logs (
             :warn,
-            r"_RankKid has a method of its own for competing_risk.*the engine uses _RankFam's method instead",
+            r"_RankKid has a method of its own for competing_risk.*the simulation uses _RankFam's method instead",
         ) match_mode = :any ModelSpec(bp; interventions = [_RankKid()])
         # A parametric family keeps its parameters in the warning, so the
         # dead method and the standing-in one can be told apart.
         @test_logs (
             :warn,
-            r"_ParamIv\{Float64\} has a method of its own for competing_risk.*the engine uses _ParamIv's method instead",
+            r"_ParamIv\{Float64\} has a method of its own for competing_risk.*the simulation uses _ParamIv's method instead",
         ) match_mode = :any ModelSpec(bp; interventions = [_ParamIv(2.0)])
         # The inert message names the instantiation that reaches nothing,
         # since the family does have a method of its own.
