@@ -231,8 +231,14 @@ public apply_trace!
 public capacity_key
 public capacity_time_key
 public held_until
-public count_dosing
-public GroupDosing
+public gives_group_doses
+public dose_group_key
+public dose_efficacy
+public dose_mode
+public dose_coverage
+public dose_delay
+public dose_delay_to_immunity
+public dose_waning
 public refused_action
 public InterventionWrapper
 

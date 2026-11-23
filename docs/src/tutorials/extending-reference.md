@@ -896,11 +896,15 @@ and `carry_over`.
 
 A model that keeps counts of cases by type or compartments by mixing group has
 no individual to offer an intervention to. It applies an intervention only if
-`EpiBranch.count_dosing(iv)` returns an `EpiBranch.GroupDosing`: the `group_key`
-of the groups it doses, and the `efficacy`, `mode`, `coverage`, `dose_delay`,
-`delay_to_immunity` and `waning` of its dose. The default, `nothing`, makes
-every such model raise an error that points to `simulate` on a model of
-individuals; see [Interventions with budgets and schedules](@ref).
+`EpiBranch.gives_group_doses(iv)` is `true`, and the facts of its dose are
+methods of its own type: `EpiBranch.dose_group_key` (the groups it doses) and
+`EpiBranch.dose_efficacy`, which have no default, and `EpiBranch.dose_mode`,
+`EpiBranch.dose_coverage`, `EpiBranch.dose_delay`,
+`EpiBranch.dose_delay_to_immunity` and `EpiBranch.dose_waning`, which default to
+a leaky dose given in full at the trigger, with no delay to immunity and no
+waning. The default, `false`, makes every such model refuse the intervention,
+and [`simulate`](@ref) on a model with it run as an individual simulation; see
+[Interventions with budgets and schedules](@ref).
 
 Recorded protection follows its effect date even when the delivery schedule is
 no longer active. Vaccination declares this with
@@ -1078,7 +1082,7 @@ before.
 | A condition that starts a schedule | A type `<: AbstractTrigger` with `is_triggered!`; `trigger_can_lapse` and `required_transitions` if the defaults do not fit | Each time the schedule is checked |
 | A capacity limit | `CapacityConstrained(iv; budget_per_period = ...)`, with `capacity_key` and `capacity_time_key` for `iv` (or for its `TraceAction`, for `ContactTracing`) | When actions are admitted, once per case; or, for an effect `iv` writes directly in `resolve_individual!`, right after that hook runs |
 | A capacity limit per group of the population, such as a district or centre | Nothing: `CapacityConstrained(iv; budget_per_period = PerGroup(...))` finds each person's group | When actions are admitted, once per case |
-| The effect of an intervention on counts of cases or compartments | `EpiBranch.count_dosing(iv)`, returning an `EpiBranch.GroupDosing` | When a model of counts or compartments reads the specification |
+| The effect of an intervention on counts of cases or compartments | `EpiBranch.gives_group_doses(iv)` and the `EpiBranch.dose_*` facts of its dose | When a model of counts or compartments reads the specification |
 | An exact effect on the offspring distribution | `analytic_offspring_effect` for an intervention | Closed-form results on a `ModelSpec` |
 | A model, attribute or progression transition that leaves the single-type offspring law exactly as drawn | `EpiBranch.offspring_law_unchanged` | The chain-size likelihood's analytical path |
 | A progression transition that reports cases with a fixed probability, and the time it reports from | `EpiBranch.reporting_probability`, `EpiBranch.reporting_from` | The chain-size closed forms and `end_of_outbreak_probability`, which thin by it |
