@@ -42,6 +42,7 @@ const TEST_GROUPS = (
         "test_engine_support.jl",
         "test_event_queue.jl",
         "test_route_windows.jl",
+        "test_ad.jl",
     ],
     population = [
         "test_density_dependent.jl",
@@ -109,7 +110,6 @@ const TEST_GROUPS = (
         "test_multitype_analytical.jl",
         "test_integration.jl",
         "test_r_targets.jl",
-        "test_ad.jl",
         "test_stochastic_ad.jl",
         "test_pair_kernels.jl",
         "test_seeding_helpers.jl",
