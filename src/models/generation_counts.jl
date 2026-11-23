@@ -298,6 +298,11 @@ later contacts. The `eligibility` of the campaign is not read.
 Doses are dated by the interval, not the day: every contact of generation
 `g + 1` can use any dose of the interval.
 
+The individual-based simulation dates contacts, holds those made before a
+window opens and doses them in order as the budget accrues. A count has no
+contact times, so the doses of an interval are given in one step between
+generations. With a binding budget the dosed contacts can differ.
+
 # Examples
 
 ```julia
