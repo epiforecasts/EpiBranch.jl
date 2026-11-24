@@ -127,7 +127,7 @@ function _give_period!(l::_MassLedger, state, t0, t1, dated)
     l.next += 1
     d = _doses_of(c, c.budget, t0, t1, l.used)
     by_type = d isa Int ? _split_by_size(state.rng, d, l.sizes) : d
-    cases = _cases_by_group(state.population, state)
+    cases = _cases_by_group(state.population, state, dated)
     protected = copy(l.history[end])
     for g in eachindex(by_type)
         susceptibles = max(l.sizes[g] - cases[g] - protected[g], 0)
@@ -141,8 +141,15 @@ function _give_period!(l::_MassLedger, state, t0, t1, dated)
     return nothing
 end
 
-_cases_by_group(::SinglePopulation, state) = [state.cumulative_cases]
-_cases_by_group(::GroupedPopulation, state) = state.group_cases
+# The cases infected by `t`, so that a period's doses do not depend on which
+# exposures the race happened to check first.
+function _cases_by_group(p, state, t)
+    cases = zeros(Int, length(_group_sizes(p)))
+    for ind in individuals(state)
+        is_infected(ind) && ind.infection_time <= t && (cases[_ledger_group(p, ind)] += 1)
+    end
+    return cases
+end
 
 function protected_share(l::_MassLedger, state, group, t)
     _advance!(l, state, t)
