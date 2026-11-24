@@ -248,7 +248,7 @@ infector's count. Select the rows of one cluster, for example by `chain_id`,
 before calling it to get the inputs for that cluster.
 
 For a `SimulationState`, `at` is a time in days from simulation day 0 and `by`
-chooses the time as in [`weekly_incidence`](@ref): a [`TransitionCount`](@ref), or a function of the case.
+selects the time as in [`weekly_incidence`](@ref), either a [`TransitionCount`](@ref) or a function of the case.
 
 # Examples
 

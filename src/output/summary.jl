@@ -339,10 +339,10 @@ surveillance system would plot. Returns a DataFrame with columns `week` (the
 date of the Monday starting each week, counted from `reference_date` as
 simulation day 0) and `cases`. Weeks with no cases are left out.
 
-`by` chooses which date places a case in a week. The default is symptom
+`by` selects the date used to place a case in a week. The default is symptom
 onset, or infection time for a case without an onset time. A
-[`TransitionCount`](@ref) places a case by the time it reached that state, and
-a case that never did is left out:
+[`TransitionCount`](@ref) places a case at the time it reached that state, and
+a case that never reached it is left out:
 
 - `TransitionCount(:infection)`: infection time.
 - `TransitionCount(:reporting)`: reporting time, set by [`Reporting`](@ref).
@@ -445,7 +445,7 @@ the same rows and line up.
 - `interval`: the bin width in days, `1` for daily counts and `7` for weekly. With
   a multiple of 7 the bins start on a Monday, as in [`weekly_incidence`](@ref);
   otherwise they start at `reference_date`, simulation day 0.
-- `by`: which date places a case in a bin, as in [`weekly_incidence`](@ref), for
+- `by`: the date used to place a case in a bin, as in [`weekly_incidence`](@ref), for
   example `TransitionCount(:infection)`.
 - `range`: a tuple of dates `(first, last)`. The bins are those containing these
   two dates. Cases outside them are not counted. By default the bins run
