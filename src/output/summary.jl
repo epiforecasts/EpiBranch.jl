@@ -340,16 +340,12 @@ date of the Monday starting each week, counted from `reference_date` as
 simulation day 0) and `cases`. Weeks with no cases are left out.
 
 `by` chooses which date places a case in a week. The default is symptom
-onset, as on a surveillance epidemic curve, with a case that has no onset time
-(for example an asymptomatic case from `clinical_presentation`) placed by its
-infection time. A [`TransitionCount`](@ref) places a case by the time it
-reached that state, and a case that never did is left out:
+onset, or infection time for a case without an onset time. A
+[`TransitionCount`](@ref) places a case by the time it reached that state, and
+a case that never did is left out:
 
-- `TransitionCount(:infection)`: infection time. This is not observed in real
-  surveillance, and the curve comes out earlier by roughly one incubation
-  period.
+- `TransitionCount(:infection)`: infection time.
 - `TransitionCount(:reporting)`: reporting time, set by [`Reporting`](@ref).
-  Cases never reported are left out.
 - `TransitionCount(:admission)`, or any other recorded state.
 
 A function of the case, `ind -> time`, is also accepted.
@@ -609,15 +605,11 @@ end
 _quantile_name(p::Real) =
     Symbol("q", replace(replace(string(round(100 * p; digits = 6)), r"\.0$" => ""), "." => "_"))
 
-# Onset, or the infection time for a case without a recorded onset.
 function _onset_or_infection(ind)
     v = get(ind.state, :onset_time, NaN)
     return v isa Real && !isnan(v) ? float(v) : ind.infection_time
 end
 
-# The time `by` reads off a case: a `TransitionCount` reads the time the case
-# reached its state, with no fallback (a case without it is not observed), and
-# a function is called on the case.
 _case_time(by::TransitionCount, ind) = _state_time(ind, by.at)
 _case_time(by, ind) = float(by(ind))
 
