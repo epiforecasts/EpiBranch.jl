@@ -37,7 +37,7 @@ EpiBranch.infectious_removal_time(f::FixedRemoval, ::Individual) = f.time
             ct = ContactTracing(TraceEveryone(), 1.0, Dirac(0.0), q)
             narrowed = OnRoutes(ct, (:community,))
             household = RouteWindow(
-                :household; kernel = nothing, until = (EpiBranch.INTERVENTION_REMOVAL,)
+                :household; kernel = nothing, removed_by_interventions = true
             )
             @test EpiBranch.risk_applies(iso, household)
             @test !EpiBranch.risk_applies(narrowed, household)
@@ -92,7 +92,7 @@ EpiBranch.infectious_removal_time(f::FixedRemoval, ::Individual) = f.time
                 (
                     RouteWindow(
                         name; kernel = Dirac(10.0),
-                        until = (:recovered, EpiBranch.INTERVENTION_REMOVAL)
+                        until = (:recovered,), removed_by_interventions = true
                     ), edge(to),
                 )
                     for (name, to) in ((:community, 2), (:household, 3))

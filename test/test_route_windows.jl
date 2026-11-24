@@ -12,7 +12,7 @@ function EpiBranch.competing_risk(b::BlockFrom, parent, contact, state)
 end
 # Its block stands in for taking the infector out of circulation.
 function EpiBranch.risk_applies(::BlockFrom, route)
-    return route !== nothing && EpiBranch.INTERVENTION_REMOVAL in route.until
+    return EpiBranch.removed_by_interventions(route)
 end
 
 # Blocks every transmission into one named contact: a protection that belongs to
@@ -153,6 +153,14 @@ EpiBranch.records_contacts(::AlwaysRecord, parent, contact, state, t) = true
         @test occursin("from=nothing", repr(d))
         @test d.until == ()
         @test d.reach == [[2], [1]]
+
+        # a route is not removed by interventions unless it says so
+        @test !EpiBranch.removed_by_interventions(w)
+        @test !occursin("removed_by_interventions", repr(w))
+        r = RouteWindow(:community; kernel = Exponential(1.0), removed_by_interventions = true)
+        @test EpiBranch.removed_by_interventions(r)
+        @test occursin("removed_by_interventions=true", repr(r))
+        @test !EpiBranch.removed_by_interventions(nothing)
     end
 
     @testset "traceability is a validated probability" begin
@@ -175,7 +183,7 @@ EpiBranch.records_contacts(::AlwaysRecord, parent, contact, state, t) = true
         @test_throws ArgumentError RouteWindow(:a; kernel = nothing, traceable = NaN)
         # the positional form validates too, so no construction path skips it
         @test_throws ArgumentError RouteWindow(
-            :a, nothing, (), nothing, :a,
+            :a, nothing, (), nothing, :a, false,
             :infection, 2.0
         )
     end
@@ -212,7 +220,7 @@ EpiBranch.records_contacts(::AlwaysRecord, parent, contact, state, t) = true
         @test window_close(ind, RouteWindow(:c; kernel = nothing)) == Inf
     end
 
-    @testset "isolation reaches a window only through INTERVENTION_REMOVAL" begin
+    @testset "isolation reaches a window only through removed_by_interventions" begin
         ind = Individual(id = 1)
         set_isolated!(ind, 4.0; release_time = Inf)
         @test is_isolated(ind)
@@ -228,9 +236,9 @@ EpiBranch.records_contacts(::AlwaysRecord, parent, contact, state, t) = true
         @test isolation_time(ind) == Inf
     end
 
-    @testset "INTERVENTION_REMOVAL is opt-in per route" begin
-        # Two routes differing only in whether they list the intervention
-        # removal. This is the whole mechanism behind a control measure cutting
+    @testset "removed_by_interventions is opt-in per route" begin
+        # Two routes differing only in whether the interventions
+        # remove them. This is the whole mechanism behind a control measure cutting
         # one route and leaving another: the household route survives isolation,
         # the community route does not.
         iso = Isolation(delay = Exponential(1.0), duration = Inf)
@@ -242,7 +250,7 @@ EpiBranch.records_contacts(::AlwaysRecord, parent, contact, state, t) = true
         household = RouteWindow(:household; until = (:recovered,), kernel = nothing)
         community = RouteWindow(
             :community;
-            until = (:recovered, EpiBranch.INTERVENTION_REMOVAL), kernel = nothing
+            until = (:recovered,), removed_by_interventions = true, kernel = nothing
         )
 
         @test EpiBranch._route_close(ind, household, (iso,)) == 10.0   # not cut
@@ -270,7 +278,6 @@ EpiBranch.records_contacts(::AlwaysRecord, parent, contact, state, t) = true
         # node 3 on a household route, each contact 5 days after infection. It
         # recovers at 10 and, with onset at 1 and immediate isolation, isolates
         # at 1.
-        REM = EpiBranch.INTERVENTION_REMOVAL
         prog = [
             Transition(
                 :recovered; from = :infection, delay = 10.0,
@@ -295,7 +302,7 @@ EpiBranch.records_contacts(::AlwaysRecord, parent, contact, state, t) = true
             !get(individuals(st)[to].state, :infected, false) ?
             ((to, Dirac(5.0)),) : ()
 
-        community = RouteWindow(:community; until = (:recovered, REM), kernel = Dirac(5.0))
+        community = RouteWindow(:community; until = (:recovered,), removed_by_interventions = true, kernel = Dirac(5.0))
         household = RouteWindow(:household; until = (:recovered,), kernel = Dirac(5.0))
         routes = ((community, edge(2)), (household, edge(3)))
         isolate = [Isolation(delay = Dirac(0.0), duration = Inf)]
@@ -316,12 +323,11 @@ EpiBranch.records_contacts(::AlwaysRecord, parent, contact, state, t) = true
     end
 
     @testset "OnRoutes narrows an intervention to only the named routes" begin
-        # Both routes list INTERVENTION_REMOVAL here, so a bare isolation
+        # Both routes are removed by interventions here, so a bare isolation
         # closes both before either contact, due at 5. Wrapping it in
         # `OnRoutes` leaves every route it does not name running, the same
         # outcome the household route above gets by never opting in, but
         # chosen by the intervention instead of the window.
-        REM = EpiBranch.INTERVENTION_REMOVAL
         prog = sir(10.0)
         onsets = clinical_presentation(
             incubation_period = Dirac(1.0), prob_asymptomatic = 0.0
@@ -338,11 +344,11 @@ EpiBranch.records_contacts(::AlwaysRecord, parent, contact, state, t) = true
                 ((to, Dirac(5.0)),) : ()
             routes = (
                 (
-                    RouteWindow(:community; until = (:recovered, REM), kernel = Dirac(5.0)),
+                    RouteWindow(:community; until = (:recovered,), removed_by_interventions = true, kernel = Dirac(5.0)),
                     edge(2),
                 ),
                 (
-                    RouteWindow(:household; until = (:recovered, REM), kernel = Dirac(5.0)),
+                    RouteWindow(:household; until = (:recovered,), removed_by_interventions = true, kernel = Dirac(5.0)),
                     edge(3),
                 ),
             )
@@ -382,7 +388,6 @@ EpiBranch.records_contacts(::AlwaysRecord, parent, contact, state, t) = true
         # too late to stop the contact at 5.5. Tracing node 1's contacts at its
         # isolation (time 1) quarantines node 2 before it is infected, which
         # closes node 2's community window and spares node 3.
-        REM = EpiBranch.INTERVENTION_REMOVAL
         prog = [
             Transition(:onset; from = :infection, delay = 1.0),
             Transition(:recovered; from = :infection, delay = 20.0, terminal = true),
@@ -405,7 +410,7 @@ EpiBranch.records_contacts(::AlwaysRecord, parent, contact, state, t) = true
                     edge(1, 2, 5.0),
                 ),
                 (
-                    RouteWindow(:community; until = (:recovered, REM), kernel = Dirac(0.5)),
+                    RouteWindow(:community; until = (:recovered,), removed_by_interventions = true, kernel = Dirac(0.5)),
                     edge(2, 3, 0.5),
                 ),
             )
@@ -673,7 +678,6 @@ EpiBranch.records_contacts(::AlwaysRecord, parent, contact, state, t) = true
         # 3 on a household route, each at 5. An intervention whose block stands in
         # for removing node 1 takes out the community contact; the household
         # route never opted into intervention removal, so it runs on.
-        REM = EpiBranch.INTERVENTION_REMOVAL
         prog = sir(10.0)
         function infected_after(interventions)
             rng = StableRNG(1)
@@ -687,7 +691,7 @@ EpiBranch.records_contacts(::AlwaysRecord, parent, contact, state, t) = true
                 ((to, Dirac(5.0)),) : ()
             routes = (
                 (
-                    RouteWindow(:community; until = (:recovered, REM), kernel = Dirac(5.0)),
+                    RouteWindow(:community; until = (:recovered,), removed_by_interventions = true, kernel = Dirac(5.0)),
                     edge(2),
                 ),
                 (
@@ -721,13 +725,13 @@ EpiBranch.records_contacts(::AlwaysRecord, parent, contact, state, t) = true
             ]
         ) == [true, false, true]
         @test !EpiBranch.risk_applies(ProtectOnRoute(:household), nothing)
-        # Isolation and quarantine follow the route's removal listing; a vaccine,
+        # Isolation and quarantine follow whether the route is removed by interventions; a vaccine,
         # including its effect on onward transmission, does not.
         for route in (
                 nothing, RouteWindow(:household; until = (:recovered,), kernel = Dirac(1.0)),
-                RouteWindow(:community; until = (REM,), kernel = Dirac(1.0)),
+                RouteWindow(:community; removed_by_interventions = true, kernel = Dirac(1.0)),
             )
-            removes = route !== nothing && REM in route.until
+            removes = EpiBranch.removed_by_interventions(route)
             @test EpiBranch.risk_applies(Isolation(delay = Dirac(1.0), duration = Inf), route) ==
                 removes
             @test EpiBranch.risk_applies(

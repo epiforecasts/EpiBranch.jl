@@ -102,7 +102,8 @@ community route cut short by isolation, a funeral route. A
 
 ```julia
 RouteWindow(name; from = nothing, until = (), kernel, reach = name,
-            contacts_from = :infection, traceable = 1.0)
+            removed_by_interventions = false, contacts_from = :infection,
+            traceable = 1.0)
 ```
 
 - `from` is the state at which the route's infectiousness begins. `:infection`
@@ -113,6 +114,8 @@ RouteWindow(name; from = nothing, until = (), kernel, reach = name,
 - `until` names the states that end the route, which closes at the earliest of
   their times. **A state listed by one route and not another ends only the
   first.** This is how a control measure cuts one route and leaves another.
+- `removed_by_interventions` makes the route one that isolation and
+  quarantine end; see below.
 - `kernel` is the route's contact-interval distribution, measured from when the
   route opens.
 - `reach` says whom the route reaches; the model turns it into the route's
@@ -155,19 +158,19 @@ simulation's random number generator, and runs are reproducible.
 Other states that end a route come from the natural history, but removal by an
 intervention cannot be read from a single recorded value: complete isolation
 takes a case out of transmission, while leaky isolation only reduces it, which
-a window cannot express. A route that isolation and quarantine should end lists
-[`EpiBranch.INTERVENTION_REMOVAL`](@ref) in its `until`, and the removal time
+a window cannot express. A route that isolation and quarantine should end is built with
+[`removed_by_interventions = true`](@ref EpiBranch.removed_by_interventions), and the removal time
 then comes from each intervention's `infectious_removal_time`. `:isolated` in
 an `until` refers to a `Transition(:isolated, ...)` in the natural history
 instead.
 
-Self-isolation is then two routes that differ in one entry (a sketch;
+Self-isolation is then two routes that differ in one keyword (a sketch;
 `community_adjacency` and `household_adjacency` are lists of who is in contact
 with whom):
 
 ```julia
 community = RouteWindow(:community;
-    until = (:recovered, EpiBranch.INTERVENTION_REMOVAL),
+    until = (:recovered,), removed_by_interventions = true,
     kernel = Exponential(12.0), reach = community_adjacency)
 household = RouteWindow(:household; until = (:recovered,),
     kernel = Weibull(1.5, 3.0), reach = household_adjacency)

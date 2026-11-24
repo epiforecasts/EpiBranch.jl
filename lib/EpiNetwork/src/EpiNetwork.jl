@@ -30,7 +30,7 @@ import EpiBranch: _removal_gaps, _host_stretches, _gapped_cumhazard, _removed_at
     _host_leaky_stretches, _leak_log_at,
     validate_infection_likelihood, susceptibility_components, _scaled_cumhazard,
     _scaled_loghazard, _mixtures_partype, _layer_host, _is_minus_inf,
-    _weighted_logsumexp, INTERVENTION_REMOVAL, followup_end, contact_structure,
+    _weighted_logsumexp, removed_by_interventions, followup_end, contact_structure,
     _fast_loghazard, cumhazard, loghazard, logsumexp
 
 export NetworkProcess, RoutedNetwork

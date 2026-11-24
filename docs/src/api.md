@@ -295,7 +295,7 @@ its own start, end and timing during a case's course of infection.
 RouteWindow
 window_open
 window_close
-EpiBranch.INTERVENTION_REMOVAL
+EpiBranch.removed_by_interventions
 OnRoutes
 ```
 

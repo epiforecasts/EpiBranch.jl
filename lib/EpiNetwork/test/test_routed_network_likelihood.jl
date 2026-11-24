@@ -162,15 +162,14 @@ end
     @testset "a lapsing isolation gated to the community route leaves the household route alone" begin
         # `Isolation(duration = 7.0)` releases rather than permanently removing,
         # so the window stays open and the stretch is read from `host_times`;
-        # since only the community route lists `INTERVENTION_REMOVAL`, the
+        # since only the community route is removed by interventions, the
         # household route's exposure must be unaffected by it.
         true_household, true_community = 3.0, 6.0
         hh, comm = _routed_adjacency(300, 4)
-        REM = EpiBranch.INTERVENTION_REMOVAL
         windows = [
             RouteWindow(:household; until = (:recovered,), kernel = Exponential(true_household), reach = hh),
             RouteWindow(
-                :community; until = (:recovered, REM),
+                :community; until = (:recovered,), removed_by_interventions = true,
                 kernel = Exponential(true_community), reach = comm
             ),
         ]
@@ -191,7 +190,7 @@ end
         @test any(!ismissing, data.host_times[EpiBranch.REMOVAL_STRETCHES_KEY])
         # a lapsing isolation never permanently closes a window; the stretch it
         # records takes the exposure out instead, so both routes close at the
-        # same recovery time, whichever lists `INTERVENTION_REMOVAL`
+        # same recovery time, whichever is removed by interventions
         infected = findall(!isnan, data.infection_time)
         @test data.removal_time[1][infected] == data.infection_time[infected] .+ 10.0
         @test data.removal_time[2][infected] == data.infection_time[infected] .+ 10.0
@@ -200,7 +199,7 @@ end
             [
                 RouteWindow(:household; until = (:recovered,), kernel = Exponential(exp(θ[1])), reach = hh),
                 RouteWindow(
-                    :community; until = (:recovered, REM),
+                    :community; until = (:recovered,), removed_by_interventions = true,
                     kernel = Exponential(exp(θ[2])), reach = comm
                 ),
             ],
@@ -214,12 +213,11 @@ end
     @testset "a leaky isolation thins the gated route's hazard in the likelihood" begin
         true_household, true_community = 3.0, 6.0
         hh, comm = _routed_adjacency(300, 4)
-        REM = EpiBranch.INTERVENTION_REMOVAL
         LEAKY = EpiBranch.LEAKY_REMOVAL_STRETCHES_KEY
-        mkwindows(θ, comm_until) = [
+        mkwindows(θ, comm_removed) = [
             RouteWindow(:household; until = (:recovered,), kernel = Exponential(exp(θ[1])), reach = hh),
             RouteWindow(
-                :community; until = comm_until,
+                :community; until = (:recovered,), removed_by_interventions = comm_removed,
                 kernel = Exponential(exp(θ[2])), reach = comm
             ),
         ]
@@ -233,7 +231,7 @@ end
         )
         θ = [log(true_household), log(true_community)]
         m = ModelSpec(
-            RoutedNetwork(mkwindows(θ, (:recovered, REM))); progression = _sir(10.0),
+            RoutedNetwork(mkwindows(θ, true)); progression = _sir(10.0),
             interventions = [iso], attributes = clinical
         )
         state = simulate(m; n_initial = 5, rng = StableRNG(4))
@@ -248,15 +246,15 @@ end
             host_times = Base.structdiff(data.host_times, NamedTuple{(LEAKY,)}((nothing,)))
         )
         @test !haskey(stripped.host_times, LEAKY)
-        ll_leaky = pairwise_surv_loglik(mkwindows(θ, (:recovered, REM)), data)
-        @test ll_leaky != pairwise_surv_loglik(mkwindows(θ, (:recovered, REM)), stripped)
+        ll_leaky = pairwise_surv_loglik(mkwindows(θ, true), data)
+        @test ll_leaky != pairwise_surv_loglik(mkwindows(θ, true), stripped)
         @test loglikelihood(data, m) == ll_leaky
 
-        # a route that does not list INTERVENTION_REMOVAL ignores the leak
-        @test pairwise_surv_loglik(mkwindows(θ, (:recovered,)), data) ==
-            pairwise_surv_loglik(mkwindows(θ, (:recovered,)), stripped)
+        # a route that is not removed by interventions ignores the leak
+        @test pairwise_surv_loglik(mkwindows(θ, false), data) ==
+            pairwise_surv_loglik(mkwindows(θ, false), stripped)
 
-        g(φ) = pairwise_surv_loglik(mkwindows(φ, (:recovered, REM)), data)
+        g(φ) = pairwise_surv_loglik(mkwindows(φ, true), data)
         θhat, se = _newton_mle_joint(g, θ)
         @test all(abs.(θhat - θ) .< 3 .* se)
     end
@@ -519,14 +517,13 @@ end
         @testset "a vaccinated host still gets a gated route and an external hazard" begin
             # A vaccinated host's mixture goes through `_routed_modifier_loglik`
             # for every route and the external hazard alike. A route gated to
-            # `INTERVENTION_REMOVAL` and a non-zero `external_hazard` must both
+            # removal by interventions and a non-zero `external_hazard` must both
             # reach the survival and event terms in that function, which an
             # unvaccinated host's plain sum goes through with no modifier.
-            REM = EpiBranch.INTERVENTION_REMOVAL
             windows3 = [
                 RouteWindow(:household; until = (:recovered,), kernel = Exponential(3.0), reach = hh),
                 RouteWindow(
-                    :community; until = (:recovered, REM),
+                    :community; until = (:recovered,), removed_by_interventions = true,
                     kernel = Exponential(10.0), reach = comm
                 ),
             ]
@@ -606,11 +603,10 @@ end
         # that of the mixture, or its `T(-Inf)`/`T(l)` conversions throw once
         # the external hazard is a `Dual` from being differentiated.
         hh, comm = _routed_adjacency(30, 4)
-        REM = EpiBranch.INTERVENTION_REMOVAL
         ws = [
             RouteWindow(:household; until = (:recovered,), kernel = Exponential(3.0), reach = hh),
             RouteWindow(
-                :community; until = (:recovered, REM),
+                :community; until = (:recovered,), removed_by_interventions = true,
                 kernel = Exponential(10.0), reach = comm
             ),
         ]
