@@ -28,3 +28,18 @@ proportion of `sizes` at each size from 1 to `max_size`, and points show
 function chain_size_plot(args...; kwargs...)
     throw(ArgumentError("chain_size_plot needs a Makie backend: run `using CairoMakie` (or another Makie backend) first"))
 end
+
+"""
+    containment_plot(results::AbstractDataFrame, x::Symbol; group=nothing)
+
+Containment probability against a swept parameter as a Makie `Figure`,
+available after `using Makie` or a backend such as `using CairoMakie`.
+`results` is a table from [`scenario_sweep`](@ref) with a `containment_probability`
+column, and `x` is the name of a numeric column in it, such as a parameter
+added to the table or a column of the row method. With `group`, the name of
+another column, one line is drawn for each of its values. Points are joined in
+order of `x`.
+"""
+function containment_plot(args...; kwargs...)
+    throw(ArgumentError("containment_plot needs a Makie backend: run `using CairoMakie` (or another Makie backend) first"))
+end

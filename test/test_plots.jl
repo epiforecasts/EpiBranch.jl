@@ -43,4 +43,27 @@ using Makie
         @test_throws ArgumentError chain_size_plot([5, 6, 7], law; max_size = 3)
         @test_throws ArgumentError chain_size_plot(sizes, law; max_size = 0)
     end
+
+    @testset "containment_plot" begin
+        @test_throws ArgumentError containment_plot(1, :x)
+        sweep = DataFrame(
+            delay = [5.0, 1.0, 5.0, 1.0], R = [1.5, 1.5, 3.0, 3.0],
+            containment_probability = [0.6, 0.9, 0.1, 0.4]
+        )
+        fig = containment_plot(sweep[1:2, :], :delay)
+        ax = only(filter(b -> b isa Makie.Axis, fig.content))
+        line = only(filter(p -> p isa Makie.ScatterLines, ax.scene.plots))
+        @test collect.(line[1][]) == [[1.0, 0.9], [5.0, 0.6]]
+        grouped = containment_plot(sweep, :delay; group = :R)
+        ax = only(filter(b -> b isa Makie.Axis, grouped.content))
+        lines = filter(p -> p isa Makie.ScatterLines, ax.scene.plots)
+        @test length(lines) == 2
+        @test [collect.(p[1][]) for p in lines] == [
+            [[1.0, 0.9], [5.0, 0.6]], [[1.0, 0.4], [5.0, 0.1]],
+        ]
+        @test_throws ArgumentError containment_plot(sweep, :missing)
+        @test_throws ArgumentError containment_plot(sweep, :delay; group = :missing)
+        @test_throws ArgumentError containment_plot(sweep[1:0, :], :delay)
+        @test_throws ArgumentError containment_plot(DataFrame(x = ["a"], containment_probability = [1.0]), :x)
+    end
 end

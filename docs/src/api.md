@@ -445,6 +445,7 @@ Figures of simulation output. They are methods of a package extension, loaded wi
 ```@docs
 epicurve
 chain_size_plot
+containment_plot
 ```
 
 ## Closed-form results

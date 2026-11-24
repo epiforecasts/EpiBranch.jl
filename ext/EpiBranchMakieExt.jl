@@ -1,9 +1,10 @@
 module EpiBranchMakieExt
 
 using EpiBranch: EpiBranch, SimulationState, incidence, summarise
+using DataFrames: AbstractDataFrame, groupby
 using Dates: Date, Day
 using Distributions: DiscreteUnivariateDistribution, pdf
-using Makie: Makie, Figure, Axis, band!, lines!, barplot!, scatter!, axislegend
+using Makie: Makie, Figure, Axis, band!, lines!, barplot!, scatter!, scatterlines!, axislegend
 
 # Bands cannot take dates, so dates are plotted as day numbers.
 _day_numbers(dates) = Float64.((dates .- first(dates)) ./ Day(1))
@@ -74,6 +75,36 @@ function EpiBranch.chain_size_plot(
     )
     scatter!(ax, collect(grid), pdf.(law, grid); color = :black, label = "Exact")
     axislegend(ax; position = :rt)
+    return fig
+end
+
+function EpiBranch.containment_plot(
+        results::AbstractDataFrame, x::Symbol; group::Union{Nothing, Symbol} = nothing
+    )
+    for col in (x, :containment_probability, group)
+        col === nothing || col in propertynames(results) ||
+            throw(ArgumentError("containment_plot: results has no column $col"))
+    end
+    isempty(results) && throw(ArgumentError("containment_plot: results is empty"))
+    eltype(results[!, x]) <: Real ||
+        throw(ArgumentError("containment_plot: column $x is not numeric"))
+    fig = Figure()
+    ax = Axis(
+        fig[1, 1]; xlabel = string(x), ylabel = "Containment probability",
+        limits = (nothing, (0, 1))
+    )
+    if group === nothing
+        sorted = sort(results, x)
+        scatterlines!(ax, sorted[!, x], sorted.containment_probability; color = :steelblue)
+    else
+        for (key, part) in pairs(groupby(results, group; sort = true))
+            sorted = sort(part, x)
+            scatterlines!(
+                ax, sorted[!, x], sorted.containment_probability; label = string(key[1])
+            )
+        end
+        axislegend(ax, string(group); position = :rt)
+    end
     return fig
 end
 
