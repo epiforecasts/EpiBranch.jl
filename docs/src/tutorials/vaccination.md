@@ -549,12 +549,12 @@ A [`PerGroup`](@ref) budget gives one type of a model with several types its own
 This applies to a [`BranchingProcess`](@ref) with a [`Population`](@ref) and to [`simulate_by_generation`](@ref); there the doses of a generation are given at the start of its interval.
 
 ```julia
-model = BranchingProcess(Poisson(4.0); population = Population(100_000))
+model = BranchingProcess(Poisson(4.0); population = Population(100_000; immune = 10_000))
 campaign = CapacityConstrained(MassVaccination(efficacy = 0.9, eligibility_time = 0.0);
     budget_per_period = Steps([14.0, 28.0], [0.0, 50_000.0, 0.0]), period = 14.0,
-    carry_over = false)
+    unused_budget = ExpireUnused())
 state = simulate_by_generation(ModelSpec(model; interventions = [campaign]);
-    n_initial = 100, max_generations = 4, generation_length = 14.0, immune = 10_000)
+    n_initial = 100, max_generations = 4, generation_length = 14.0)
 ```
 
 ## Multi-dose schedules
