@@ -7,7 +7,7 @@ possible infector, so a model with household and community contact and
 self-isolation at home can now be fitted as well as simulated. A lapsing
 removal, such as an `Isolation` with a finite `duration`, is taken out of a
 route's exposure only where that route is built with
-`removed_by_interventions = true`, matching what the simulation does.
+`removed_by_interventions = true`, matching the simulation.
 
 A route kernel that is a `PairKernel` is not yet represented in this
 likelihood and raises a clear error rather than a silently wrong answer.
