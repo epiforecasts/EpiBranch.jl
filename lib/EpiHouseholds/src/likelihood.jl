@@ -116,28 +116,6 @@ function household_infections(
 end
 
 """
-    EarliestInfected()
-
-Condition each household on whichever member has the earliest
-`infection_time` (on a tie, the lowest person number). This is worked out from
-`data` on every call, so the conditioned member can change as imputed
-infection times change.
-
-This covers an index case that was not the first infected, but it still takes
-only one member per household as given. Co-primary cases infected from outside
-at about the same time are assumed to come from household transmission unless the model
-has a community hazard. Recruitment that depends on detection, symptoms or
-secondary cases biases the estimate unless the likelihood is conditioned on it.
-"""
-struct EarliestInfected <: EpiBranch.ConditionOn end
-
-function EpiBranch.condition_mask(::EarliestInfected, data::HouseholdInfections)
-    return _earliest_infected(
-        data.household_of, data.infection_time, .!isnan.(data.infection_time)
-    )
-end
-
-"""
     loglikelihood(data::HouseholdInfections, model::HouseholdProcess;
                   condition_on = RecruitedIndex(), susceptibility = nothing,
                   layout = nothing) -> Float64
@@ -154,9 +132,8 @@ vaccination in the model is evaluated from the immunity times
 
 The pair layout is rebuilt on every call unless `layout` supplies one. In a
 fitting loop, build it once with [`compile_household_pairs`](@ref) and pass it
-as `layout`, with the `external` and `condition_on` settings the model's
-`external_hazard` implies; `condition_on` is then ignored. A layout is fixed to
-the data it was built from. Rebuild it when the set of infected members
+as `layout`, together with the `external_hazard` of the model; `condition_on` is then
+ignored. A layout is fixed to the data it was built from. Rebuild it when the set of infected members
 changes, and at every evaluation with `condition_on = EarliestInfected()`.
 """
 function Distributions.loglikelihood(
@@ -166,8 +143,7 @@ function Distributions.loglikelihood(
     )
     if layout === nothing
         layout = compile_household_pairs(
-            data; external = _ext_active(model.external_hazard),
-            condition_on = EpiBranch._condition_rule(model.external_hazard, condition_on)
+            data; external_hazard = model.external_hazard, condition_on
         )
     end
     return pairwise_surv_loglik(
@@ -200,8 +176,8 @@ from households. Build it with [`compile_household_pairs`](@ref).
 const HouseholdPairsLayout = ContactPairsLayout
 
 """
-    compile_household_pairs(household_of, is_index, infected; external=false, condition_on)
-    compile_household_pairs(data::HouseholdInfections; external=false, condition_on)
+    compile_household_pairs(household_of, is_index, infected; external_hazard=0.0)
+    compile_household_pairs(data::HouseholdInfections; external_hazard=0.0, condition_on=RecruitedIndex())
 
 List once who could have infected whom in a household population, where
 household members are each other's possible infectors; this is
@@ -210,11 +186,11 @@ there. Evaluate the result with
 `pairwise_surv_loglik(kernel, data, layout; external_hazard)`.
 
 `condition_on` is a [`ConditionOn`](@ref) rule saying how to condition on the
-index case: which member of each household the likelihood takes as given. The
-default is [`ExplainIndex`](@ref) with `external = true`, so that every
-infection is explained, and [`RecruitedIndex`](@ref) without. `RecruitedIndex()`
-conditions on the recruited index case, `data.is_index`, fixed when the data
-are read. [`EarliestInfected`](@ref) conditions on the household
+index case: which member of each household the likelihood takes as given,
+when the `external_hazard` does not explain index cases (when it does, every
+infection is explained and the rule has no effect). [`RecruitedIndex`](@ref),
+the default, conditions on the recruited index case, `data.is_index`, fixed
+when the data are read. [`EarliestInfected`](@ref) conditions on the household
 member with the earliest `infection_time` in `data`, worked out on every call.
 Use it when the recruited index case need not be the first member infected,
 which is expected in real recruited households; otherwise an imputed infection
@@ -227,37 +203,14 @@ function compile_household_pairs(
         household_of::AbstractVector{<:Integer},
         is_index::AbstractVector{Bool},
         infected::AbstractVector{Bool};
-        external::Bool = false,
-        condition_on::ConditionOn = external ? ExplainIndex() : RecruitedIndex()
+        external_hazard = 0.0
     )
-    return compile_contact_pairs(household_of, is_index, infected; external, condition_on)
+    return compile_contact_pairs(household_of, is_index, infected; external_hazard)
 end
 
 function compile_household_pairs(
-        d::HouseholdInfections; external::Bool = false,
-        condition_on::ConditionOn = external ? ExplainIndex() : RecruitedIndex()
+        d::HouseholdInfections; external_hazard = 0.0,
+        condition_on::ConditionOn = RecruitedIndex()
     )
-    return compile_contact_pairs(d; external, condition_on)
-end
-
-# The earliest-infected member of each household named in `household_of`,
-# among the hosts `infected` marks, as an `is_index`-shaped mask: `true` for
-# each household's earliest case, `false` elsewhere (including households with
-# no infected member). Ties keep the lowest host id.
-function _earliest_infected(household_of, infection_time, infected::AbstractVector{Bool})
-    n = length(household_of)
-    earliest_time = Dict{Int, eltype(infection_time)}()
-    earliest_host = Dict{Int, Int}()
-    for i in 1:n
-        infected[i] || continue
-        h = household_of[i]
-        t = infection_time[i]
-        if !haskey(earliest_time, h) || t < earliest_time[h]
-            earliest_time[h] = t
-            earliest_host[h] = i
-        end
-    end
-    is_earliest = falses(n)
-    is_earliest[collect(values(earliest_host))] .= true
-    return is_earliest
+    return compile_contact_pairs(d; external_hazard, condition_on)
 end

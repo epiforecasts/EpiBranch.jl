@@ -114,7 +114,7 @@ public NoGenerationTime
 
 # An `InfectionLayer` subtype names who could have infected whom, which lets the
 # pairwise likelihood enumerate its (susceptible, possible infector) pairs.
-public contact_structure, followup_end
+public contact_structure, followup_end, condition_mask
 # A subtype holding per-host times under a name of its own overrides this
 # rather than have the likelihood read a fixed field name off it.
 public host_times

@@ -707,7 +707,7 @@ model = ModelSpec(
     progression = [Transition(:recovered; from = :infection, delay = 5.0, terminal = true)]
 )
 data = household_infections(simulate(model; rng = StableRNG(1)), model)
-layout = compile_household_pairs(data; external = true)
+layout = compile_household_pairs(data; external_hazard = 0.1)
 loglik(θ) = pairwise_surv_loglik(
     Exponential(exp(θ[1])), data, layout; external_hazard = hazard(θ)
 )

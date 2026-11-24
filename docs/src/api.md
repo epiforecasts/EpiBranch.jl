@@ -666,8 +666,7 @@ InfectionLayer
 compile_contact_pairs
 ConditionOn
 RecruitedIndex
-ExplainIndex
-EpiBranch.condition_mask
+EarliestInfected
 EpiBranch.seeded_hosts
 ContactPairsLayout
 MassActionHazard
@@ -689,7 +688,6 @@ household_infections
 HouseholdInfections
 HouseholdPairsLayout
 compile_household_pairs
-EarliestInfected
 HouseholdFinalStatuses
 ```
 
@@ -1034,6 +1032,7 @@ EpiBranch.PairwiseReduction
 EpiBranch.ngroups
 EpiBranch.group
 EpiBranch.pairwise_reduce
+EpiBranch.condition_mask
 ```
 
 ### Internal functions

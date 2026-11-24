@@ -73,7 +73,7 @@
             progression = sir
         )
         data = household_infections(simulate(model; rng = StableRNG(11)), model)
-        layout = compile_household_pairs(data; external = true)
+        layout = compile_household_pairs(data; external_hazard = 0.1)
         per_arm = [
             pairwise_surv_loglik_by_component(
                 Exponential(3.0), data, layout; external_hazard = a
@@ -120,7 +120,7 @@
             progression = sir
         )
         data = household_infections(simulate(model; rng = StableRNG(17)), model)
-        layout = compile_household_pairs(data; external = true)
+        layout = compile_household_pairs(data; external_hazard = 0.1)
         g(θ) = pairwise_surv_loglik(
             Exponential(exp(θ[1])), data, layout; external_hazard = hazard(θ)
         )
@@ -206,7 +206,7 @@ end
                 progression = sir
             )
             data = household_infections(simulate(model; rng = StableRNG(13)), model)
-            layout = compile_household_pairs(data; external = true)
+            layout = compile_household_pairs(data; external_hazard = 0.1)
             per_schedule = [
                 pairwise_surv_loglik_by_component(
                     Exponential(3.0), data, layout; external_hazard = s
@@ -227,7 +227,7 @@ end
         # cases, conditioned on; 1 is infectious over (0, 3] and 2 is never
         # infected, exposed to both the household kernel and the wider
         # community's mass action. compile_household_pairs must build a layout
-        # with condition_on = RecruitedIndex() for this source, because it has nothing
+        # with explain_index = false for this source, because it has nothing
         # infectious before the first case to explain one, or loglikelihood
         # throws on every call.
         β, N = 0.6, 3

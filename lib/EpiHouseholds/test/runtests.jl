@@ -24,7 +24,7 @@ end
 
 # A `ConditionOn` with no `condition_mask` method, to check the seam is
 # reached by dispatch rather than by a branch.
-struct _MaskLessRule <: ConditionOn end
+struct _MaskLessRule <: EpiHouseholds.ConditionOn end
 
 @testset "EpiHouseholds.jl" begin
     @testset "loglikelihood accepts a precompiled layout" begin
@@ -40,7 +40,7 @@ struct _MaskLessRule <: ConditionOn end
             loglikelihood(data, spec.process)
         # A supplied layout is used as given: one that does not match the
         # external hazard of the model is rejected.
-        other = compile_household_pairs(data; external = true)
+        other = compile_household_pairs(data; external_hazard = 0.1)
         @test_throws ArgumentError loglikelihood(data, spec.process; layout = other)
         loglikelihood(data, spec; layout)
         @test (@allocated loglikelihood(data, spec; layout)) <
@@ -531,7 +531,7 @@ struct _MaskLessRule <: ConditionOn end
         @test count(data.is_index) >= 1
         @test isfinite(loglikelihood(data, m))          # dispatched form with external
 
-        layout = compile_household_pairs(data; external = true)
+        layout = compile_household_pairs(data; external_hazard = 0.1)
         ll(s) = pairwise_surv_loglik(Exponential(s), data, layout; external_hazard = 0.05)
         grid = 1.5:0.5:5.0
         @test abs(grid[argmax([ll(s) for s in grid])] - true_scale) <= 1.5
@@ -556,7 +556,7 @@ struct _MaskLessRule <: ConditionOn end
         data = household_infections(state, m)
         @test isfinite(loglikelihood(data, m))
 
-        layout = compile_household_pairs(data; external = true)
+        layout = compile_household_pairs(data; external_hazard = 0.1)
         @test loglikelihood(data, m) ≈
             pairwise_surv_loglik(Exponential(3.0), data, layout; external_hazard = rates)
 
@@ -588,7 +588,7 @@ struct _MaskLessRule <: ConditionOn end
         inf = filter(!isnan, data.infection_time)
         @test count(>(Tobs), inf) > length(inf) / 2
 
-        layout = compile_household_pairs(data; external = true)
+        layout = compile_household_pairs(data; external_hazard = 0.1)
         @test loglikelihood(data, m) ≈
             pairwise_surv_loglik(Exponential(10.0), data, layout; external_hazard = 0.1)
         g(θ) = pairwise_surv_loglik(
@@ -633,7 +633,7 @@ struct _MaskLessRule <: ConditionOn end
         v = loglikelihood(ongoing, m)
         @test isfinite(v)
         @test v ≈ loglikelihood(read, m)
-        layout = compile_household_pairs(ongoing; external = true)
+        layout = compile_household_pairs(ongoing; external_hazard = 0.1)
         g(θ) = pairwise_surv_loglik(
             Exponential(exp(θ[1])), ongoing, layout;
             external_hazard = exp(θ[2])
@@ -737,7 +737,7 @@ struct _MaskLessRule <: ConditionOn end
         )
         state = simulate(m; rng = StableRNG(102))
         data = household_infections(state, m)
-        layout = compile_household_pairs(data; external = true)
+        layout = compile_household_pairs(data; external_hazard = 0.1)
 
         @test layout.external
         for s in 1.5:0.5:5.0
@@ -890,7 +890,7 @@ struct _MaskLessRule <: ConditionOn end
             progression = _sir(6.0)
         )
         de = household_infections(simulate(me; rng = StableRNG(106)), me)
-        le = compile_household_pairs(de; external = true)
+        le = compile_household_pairs(de; external_hazard = 0.1)
         e_fast(logβ) = pairwise_surv_loglik(
             Exponential(1 / exp(logβ)), de, le;
             external_hazard = 0.05
@@ -966,18 +966,14 @@ struct _MaskLessRule <: ConditionOn end
             data; condition_on = _MaskLessRule()
         )
 
-        # with a community hazard the default explains every host, and the
-        # conditioned member of each household is explicit otherwise
-        ext_default = compile_household_pairs(data; external = true)
-        ext_explain = compile_household_pairs(
-            data; external = true, condition_on = ExplainIndex()
-        )
-        @test ext_default.sus == ext_explain.sus
-        @test ext_default.infector == ext_explain.infector
+        # a community hazard already explains every host, so which host
+        # `condition_on` names makes no difference to the layout
+        ext_index = compile_household_pairs(data; external_hazard = 0.1, condition_on = RecruitedIndex())
         ext_earliest = compile_household_pairs(
-            data; external = true, condition_on = EarliestInfected()
+            data; external_hazard = 0.1, condition_on = EarliestInfected()
         )
-        @test length(ext_earliest) < length(ext_default)
+        @test ext_index.sus == ext_earliest.sus
+        @test ext_index.infector == ext_earliest.infector
 
         # a household with a single case has no household-mate to condition
         # against either way, and both modes evaluate it the same
@@ -1020,8 +1016,8 @@ struct _MaskLessRule <: ConditionOn end
             progression = _sir(6.0)
         )
         data = household_infections(simulate(m; rng = StableRNG(105)), m)
-        ext_layout = compile_household_pairs(data; external = true)
-        int_layout = compile_household_pairs(data; external = false)
+        ext_layout = compile_household_pairs(data; external_hazard = 0.1)
+        int_layout = compile_household_pairs(data; external_hazard = 0.0)
         @test_throws ArgumentError pairwise_surv_loglik(
             Exponential(3.0), data,
             ext_layout
@@ -1048,7 +1044,7 @@ struct _MaskLessRule <: ConditionOn end
             sim.infectious_time, sim.removal_time, sim.is_index; obs_end = 20.0
         )
         @test count(==(0.0), filter(!isnan, d.infection_time)) == 300
-        ld = compile_household_pairs(d; external = true)
+        ld = compile_household_pairs(d; external_hazard = 0.1)
         for α in (0.001, 0.01, 0.1, 1.0)
             @test pairwise_surv_loglik(Exponential(3.0), d, ld; external_hazard = α) ≈
                 pairwise_surv_loglik(Exponential(3.0), d; external_hazard = α)
@@ -1078,7 +1074,7 @@ struct _MaskLessRule <: ConditionOn end
                 progression = latent, interventions, attributes = clinical
             )
             d = household_infections(simulate(m; rng = StableRNG(seed)), m)
-            layout = compile_household_pairs(d; external = ext > 0)
+            layout = compile_household_pairs(d; external_hazard = ext)
             @test isfinite(loglikelihood(d, m))
             @test isfinite(
                 pairwise_surv_loglik(Weibull(1.5, 4.0), d, layout; external_hazard = ext)
@@ -1149,7 +1145,7 @@ struct _MaskLessRule <: ConditionOn end
             progression = _sir(6.0)
         )
         de = household_infections(simulate(me; rng = StableRNG(106)), me)
-        le = compile_household_pairs(de; external = true)
+        le = compile_household_pairs(de; external_hazard = 0.1)
         e_fast(θ) = pairwise_surv_loglik(
             Exponential(1 / exp(θ[1])), de, le;
             external_hazard = 0.05

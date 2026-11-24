@@ -1048,60 +1048,65 @@ end
 """
     ConditionOn
 
-How the pairwise likelihood conditions on the index case: which people are
-taken as given rather than explained by transmission or by a community hazard.
-[`RecruitedIndex`](@ref) and [`ExplainIndex`](@ref) are supplied in EpiBranch,
-and `EpiHouseholds` adds `EarliestInfected`. A rule of your own needs one
-[`condition_mask`](@ref EpiBranch.condition_mask) method.
+How the likelihood conditions on the index case: which people are taken as
+given rather than explained by transmission within the contact structure, where
+the community hazard does not explain them. [`RecruitedIndex`](@ref) and
+[`EarliestInfected`](@ref) are the two supplied; a rule of your own needs only
+a [`condition_mask`](@ref EpiBranch.condition_mask) method.
 """
 abstract type ConditionOn end
 
 """
     RecruitedIndex()
 
-Condition on the people marked as index cases (`is_index`, or `data.is_index`),
-as recorded. Only they are taken as given. Co-primary cases infected from
-outside at about the same time are assumed to come from transmission within the
-contact structure unless the model has a community hazard. Recruitment that
-depends on the index case's detection, symptoms or secondary cases makes the
-sample unrepresentative, and the estimate is then biased unless the likelihood
-is conditioned on that recruitment, which this rule does not do.
+Condition on the recruited index cases, `data.is_index`, as recorded.
+
+Only those people are taken as given. Co-primary cases infected from outside at
+about the same time are assumed to come from transmission within the contact
+structure unless the model has a community hazard.
 """
 struct RecruitedIndex <: ConditionOn end
 
 """
-    ExplainIndex()
+    EarliestInfected()
 
-Condition on nobody: every infection, index cases included, is explained, so
-each index case gets a row for infection from outside. This needs a community
-hazard. [`compile_contact_pairs`](@ref) uses it when `external = true`.
+Condition on whichever person in each connected part of the contact structure
+(each household, for households) has the earliest `infection_time`, and on the
+lowest person number on a tie. The choice is recomputed from `data` on every call.
+Only one person per group is taken as given.
 """
-struct ExplainIndex <: ConditionOn end
+struct EarliestInfected <: ConditionOn end
 
 """
-    condition_mask(rule::ConditionOn, is_index::AbstractVector{Bool}) -> AbstractVector{Bool}
     condition_mask(rule::ConditionOn, data::InfectionLayer) -> AbstractVector{Bool}
 
-Which people `rule` conditions on: a vector with one entry per person, `true`
-for each person taken as given. A rule needs one method, on `data` when it reads
-more than `data.is_index`. For `data` the default passes `data.is_index` to the
-method taking `is_index`.
+Which people `rule` conditions on: a vector shaped like `data.is_index`, `true`
+for each conditioned person and `false` elsewhere. One method per rule.
 """
-condition_mask(::RecruitedIndex, is_index::AbstractVector{Bool}) = is_index
-condition_mask(::ExplainIndex, is_index::AbstractVector{Bool}) = falses(length(is_index))
-condition_mask(rule::ConditionOn, data::InfectionLayer) = condition_mask(rule, data.is_index)
-
-function _condition_rule(external_hazard, rule::ConditionOn = RecruitedIndex())
-    return _ext_active(external_hazard) && _ext_explains_index(external_hazard) ?
-        ExplainIndex() : rule
+condition_mask(::RecruitedIndex, data::InfectionLayer) = data.is_index
+function condition_mask(::EarliestInfected, data::InfectionLayer)
+    component, _ = _structure_components(contact_structure(data))
+    n = length(component)
+    earliest_time = Dict{Int, eltype(data.infection_time)}()
+    earliest_host = Dict{Int, Int}()
+    for i in 1:n
+        t = data.infection_time[i]
+        isnan(t) && continue
+        c = component[i]
+        if !haskey(earliest_time, c) || t < earliest_time[c]
+            earliest_time[c] = t
+            earliest_host[c] = i
+        end
+    end
+    is_earliest = falses(n)
+    is_earliest[collect(values(earliest_host))] .= true
+    return is_earliest
 end
 
 """
-    compile_contact_pairs(membership::AbstractVector{<:Integer}, is_index, infected;
-                          external = false, condition_on)
-    compile_contact_pairs(contacts::AbstractVector{<:AbstractVector{<:Integer}}, is_index, infected;
-                          external = false, condition_on)
-    compile_contact_pairs(data::InfectionLayer; external = false, condition_on)
+    compile_contact_pairs(membership::AbstractVector{<:Integer}, is_index, infected; external_hazard = 0.0, seeded = nothing)
+    compile_contact_pairs(contacts::AbstractVector{<:AbstractVector{<:Integer}}, is_index, infected; external_hazard = 0.0, seeded = nothing)
+    compile_contact_pairs(data::InfectionLayer; external_hazard = 0.0, condition_on = RecruitedIndex())
 
 List once who could have infected whom, as a [`ContactPairsLayout`](@ref) to
 reuse across likelihood evaluations during inference.
@@ -1116,54 +1121,35 @@ counts as two separate contacts.
 `infected` is true for each person infected in every set of infection times
 the layout will be used with (their infection time may still be imputed). Only
 infected people can infect others. `is_index` marks people infected from
-outside. With `external = true` every infection that is not conditioned on is
-explained, and each person gets an extra row for infection from outside.
+outside, whom the likelihood takes as given and who appear only as infectors.
 
-`condition_on` is a [`ConditionOn`](@ref) rule saying who is taken as given: they
-appear only as infectors. The default is [`ExplainIndex`](@ref) with
-`external = true` and [`RecruitedIndex`](@ref) without. A source read off the
-outbreak's own infectious windows, such as `MassActionHazard`, has nothing
-infectious before the first case to explain one, so use `RecruitedIndex()` with
-it. The single-argument form reads the contact structure from `data` with
+`external_hazard` is the community hazard the layout will be evaluated with.
+With none (the default, `0.0`) the likelihood conditions on the `is_index`
+people. With one, every infection is explained and each person gets an extra
+row for infection from outside, index cases included, unless the source has
+nothing infectious before the first case to explain one (as with
+`MassActionHazard`), in which case index cases stay conditioned on. Evaluate the
+layout with the same `external_hazard`.
+
+The single-argument form reads the contact structure from `data` with
 [`contact_structure`](@ref EpiBranch.contact_structure) and takes as infected
-everyone with a non-`NaN` `infection_time`.
+everyone with a non-`NaN` `infection_time`. `condition_on`, a
+[`ConditionOn`](@ref) rule, says which people it takes as given where index
+cases are not explained.
 
 `seeded`, a mask like `is_index`, marks chosen initial cases. They are
-conditioned on whatever the rule, so they get no external row even when it
-explains every index case. The single-argument form reads it from
+conditioned on whatever the hazard, so they get no external row even when it
+explains every other index case. The single-argument form reads it from
 [`seeded_hosts`](@ref EpiBranch.seeded_hosts).
 """
 function compile_contact_pairs(
-        structure::AbstractVector,
+        membership::AbstractVector{<:Integer},
         is_index::AbstractVector{Bool}, infected::AbstractVector{Bool};
-        external::Bool = false,
-        condition_on::ConditionOn = external ? ExplainIndex() : RecruitedIndex(),
+        external_hazard = 0.0,
         seeded::Union{Nothing, AbstractVector{Bool}} = nothing
     )
-    _check_host_masks(length(structure), is_index, infected)
-    return _compile_pairs(
-        structure, condition_mask(condition_on, is_index), infected;
-        external, explain_index = condition_on isa ExplainIndex, seeded
-    )
-end
-
-function compile_contact_pairs(
-        data::InfectionLayer; external::Bool = false,
-        condition_on::ConditionOn = external ? ExplainIndex() : RecruitedIndex()
-    )
-    return _compile_pairs(
-        contact_structure(data), condition_mask(condition_on, data),
-        .!isnan.(data.infection_time);
-        external, explain_index = condition_on isa ExplainIndex,
-        seeded = seeded_hosts(data)
-    )
-end
-
-function _compile_pairs(
-        membership::AbstractVector{<:Integer}, given, infected;
-        external, explain_index, seeded
-    )
     n = length(membership)
+    _check_host_masks(n, is_index, infected)
 
     # Each member's contacts are the other members of the group, which the
     # adjacency method handles. A stable sort by label groups the members and
@@ -1180,22 +1166,32 @@ function _compile_pairs(
             g_lo = k + 1
         end
     end
-    layout = _compile_pairs(contacts, given, infected; external, explain_index, seeded)
+    layout = compile_contact_pairs(
+        contacts, is_index, infected; external_hazard, seeded
+    )
     # A group has no per-edge list for a kernel to index into.
     fill!(layout.contact_index, 0)
     return layout
 end
 
-function _compile_pairs(
-        contacts::AbstractVector{<:AbstractVector{<:Integer}}, given, infected;
-        external, explain_index, seeded
+function compile_contact_pairs(
+        contacts::AbstractVector{<:AbstractVector{<:Integer}},
+        is_index::AbstractVector{Bool}, infected::AbstractVector{Bool};
+        external_hazard = 0.0,
+        seeded::Union{Nothing, AbstractVector{Bool}} = nothing
     )
     n = length(contacts)
+    _check_host_masks(n, is_index, infected)
+    external = _ext_active(external_hazard)
+    explain_index = external && _ext_explains_index(external_hazard)
     seeded === nothing || length(seeded) == n ||
         throw(ArgumentError("seeded must cover the same hosts as the contact structure"))
-    length(given) == n ||
-        throw(ArgumentError("condition_on must give one entry per host, $n"))
-    conditioned = [given[j] || (seeded !== nothing && seeded[j]) for j in 1:n]
+    # The hosts the likelihood takes as given rather than explaining: index
+    # cases unless the hazard explains them, and chosen initial cases always.
+    conditioned = [
+        (!explain_index && is_index[j]) || (seeded !== nothing && seeded[j])
+            for j in 1:n
+    ]
 
     # Invert the out-lists of infected hosts into in-lists (compressed rows), so
     # each susceptible's possible infectors come out together, in infector order.
@@ -1256,6 +1252,17 @@ function _compile_pairs(
     return _contact_pairs_layout(
         sus, infector, contact_index, is_ext, external, explain_index,
         conditioned, n, component, ncomponents
+    )
+end
+
+function compile_contact_pairs(
+        data::InfectionLayer; external_hazard = 0.0,
+        condition_on::ConditionOn = RecruitedIndex()
+    )
+    infected = .!isnan.(data.infection_time)
+    return compile_contact_pairs(
+        contact_structure(data), condition_mask(condition_on, data), infected;
+        external_hazard, seeded = seeded_hosts(data)
     )
 end
 
@@ -2228,10 +2235,7 @@ function pairwise_surv_loglik(
         kernel, data::InfectionLayer; external_hazard = 0.0,
         susceptibility = nothing
     )
-    layout = compile_contact_pairs(
-        data; external = _ext_active(external_hazard),
-        condition_on = _condition_rule(external_hazard)
-    )
+    layout = compile_contact_pairs(data; external_hazard)
     return pairwise_surv_loglik(kernel, data, layout; external_hazard, susceptibility)
 end
 
@@ -2472,9 +2476,6 @@ function pairwise_surv_loglik_by_component(
         kernel, data::InfectionLayer; external_hazard = 0.0,
         susceptibility = nothing
     )
-    layout = compile_contact_pairs(
-        data; external = _ext_active(external_hazard),
-        condition_on = _condition_rule(external_hazard)
-    )
+    layout = compile_contact_pairs(data; external_hazard)
     return pairwise_surv_loglik_by_component(kernel, data, layout; external_hazard, susceptibility)
 end
