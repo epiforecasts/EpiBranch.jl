@@ -81,29 +81,36 @@ function EpiBranch.chain_size_plot(
 end
 
 function EpiBranch.containment_plot(
-        results::AbstractDataFrame, x::Symbol;
-        group::Union{Nothing, Symbol} = nothing, y::Symbol = :containment_probability
+        results::AbstractDataFrame, x::Symbol; group::Union{Nothing, Symbol} = nothing
     )
-    for col in (x, y)
-        hasproperty(results, col) ||
+    for col in (x, :containment_probability, group)
+        col === nothing || col in propertynames(results) ||
             throw(ArgumentError("containment_plot: results has no column $col"))
     end
-    eltype(results[!, x]) <: Real ||
-        throw(ArgumentError("containment_plot: column $x must be numeric"))
-    group === nothing || hasproperty(results, group) ||
-        throw(ArgumentError("containment_plot: results has no column $group"))
     isempty(results) && throw(ArgumentError("containment_plot: results is empty"))
-    fig = Figure()
-    ax = Axis(fig[1, 1]; xlabel = string(x), ylabel = "Containment probability")
-    parts = group === nothing ? [(nothing, results)] :
-        [(only(unique(g[!, group])), g) for g in groupby(results, group)]
-    for (value, part) in parts
-        part = sort(part, x)
-        kw = value === nothing ? (;) : (; label = "$group = $value")
-        scatterlines!(ax, Float64.(part[!, x]), Float64.(part[!, y]); kw...)
+    results = copy(results)
+    for col in (x, :containment_probability)
+        results[!, col] = identity.(results[!, col])
     end
-    Makie.ylims!(ax, 0, 1)
-    group === nothing || axislegend(ax; position = :rb)
+    eltype(results[!, x]) <: Real ||
+        throw(ArgumentError("containment_plot: column $x is not numeric"))
+    fig = Figure()
+    ax = Axis(
+        fig[1, 1]; xlabel = string(x), ylabel = "Containment probability",
+        limits = (nothing, (0, 1))
+    )
+    if group === nothing
+        sorted = sort(results, x)
+        scatterlines!(ax, sorted[!, x], sorted.containment_probability; color = :steelblue)
+    else
+        for (key, part) in pairs(groupby(results, group; sort = true))
+            sorted = sort(part, x)
+            scatterlines!(
+                ax, sorted[!, x], sorted.containment_probability; label = string(key[1])
+            )
+        end
+        axislegend(ax, string(group); position = :rt)
+    end
     return fig
 end
 

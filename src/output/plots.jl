@@ -30,13 +30,11 @@ function chain_size_plot(args...; kwargs...)
 end
 
 """
-    containment_plot(results::AbstractDataFrame, x::Symbol; group=nothing,
-                     y=:containment_probability)
+    containment_plot(results::AbstractDataFrame, x::Symbol; group=nothing)
 
-Containment probability against a swept parameter as a Makie `Figure`,
-available after `using Makie` or a backend such as `using CairoMakie`. `results`
-is the output of [`scenario_sweep`](@ref); `x` names a numeric column and `y`
-the column plotted. The plot has one line for each value of the column `group`.
+Containment probability from a [`scenario_sweep`](@ref) table against the numeric
+column `x`, as a Makie `Figure`. With `group`, one line is drawn for each value
+of that column. Points are joined in order of `x`.
 """
 function containment_plot(args...; kwargs...)
     throw(ArgumentError("containment_plot needs a Makie backend: run `using CairoMakie` (or another Makie backend) first"))
