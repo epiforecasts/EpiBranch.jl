@@ -73,6 +73,7 @@ const TEST_GROUPS = (
         "test_interventions.jl",
         "test_case_hooks.jl",
         "test_group_vaccination.jl",
+        "test_mass_vaccination_doses.jl",
         "test_vaccine_effect.jl",
         "test_capacity_constrained.jl",
         "test_held_capacity.jl",

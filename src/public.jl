@@ -135,7 +135,7 @@ public susceptibility_components, susceptibility_host_times, HazardScaling,
     removal_stretches
 public InterventionAction, intervention_actions, action_draw!, action_cache,
     apply_actions!, action_candidates, acts_on_population, gates_on_population_clock,
-    needs_contacts,
+    needs_contacts, population_ledger, protected_share,
     may_revise, is_settled
 
 # Pairwise survival likelihood: how its two accumulation passes group rows
@@ -230,6 +230,7 @@ public apply_trace!
 public capacity_key
 public capacity_time_key
 public held_until
+public protected_by_doses
 public gives_group_doses
 public dose_group_key
 public dose_efficacy

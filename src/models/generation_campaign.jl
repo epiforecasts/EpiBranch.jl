@@ -1,56 +1,70 @@
 # ── Vaccination campaigns in generation counts ───────────────────────
 #
-# A campaign gives its doses to the contacts of each generation, in the order
-# they are made. Its doses for a generation's interval come from the budget of a
-# `CapacityConstrained` and the window of a `Scheduled` around it.
+# A `GroupVaccination` campaign gives its doses to the contacts of each
+# generation, in the order they are made. A `MassVaccination` gives them to the
+# population, so that those it protects leave the susceptibles. Its doses for a
+# generation's interval come from the budget of a `CapacityConstrained` and the
+# window of a `Scheduled` around it.
 
-# A vaccination campaign `simulate_by_generation` can apply: the efficacy of
-# its dose, the days it may give doses between, and the budget limiting how
-# many.
-struct _Campaign{B}
+# A vaccination campaign `simulate_by_generation` can apply. `dosing` is
+# `nothing` for one dosing contacts.
+struct _Campaign{B, D}
     efficacy::Float64
     window::Tuple{Float64, Float64}
     budget::B
+    dosing::D
 end
+
+_doses_contacts(c::_Campaign) = c.dosing === nothing
+
+_count_dosing(leaf) = _group_dosing(leaf)
+function _count_dosing(mv::MassVaccination)
+    return GroupDosing(
+        :type, efficacy(mv), effect_mode(mv), mv.coverage, 0.0, delay_to_immunity(mv),
+        waning(mv)
+    )
+end
+_dosing_rule(leaf) = nothing
+_dosing_rule(mv::MassVaccination) = mv.dosing
 
 # Reads the wrappers around an intervention, then its dose traits. Anything
 # else, or a `Scheduled` with a condition other than a calendar window, cannot be
 # applied to a count and is named in the error.
-function _campaign(iv::AbstractIntervention, window, budget)
-    engine = "simulate_by_generation"
+function _campaign(iv::AbstractIntervention, window, budget; engine = "simulate_by_generation")
     leaf, window, budget = _unwrap_campaign(iv, window, budget, engine)
-    dosing = _group_dosing(leaf)
+    dosing = _count_dosing(leaf)
     dosing === nothing && _refuse_campaign(engine, nameof(typeof(leaf)))
+    name = nameof(typeof(leaf))
     budget === nothing && throw(
         ArgumentError(
-            "simulate_by_generation needs GroupVaccination wrapped in CapacityConstrained: " *
+            "$engine needs $name wrapped in CapacityConstrained: " *
                 "without a dose budget there is no number of doses to give"
         )
     )
     dosing.group_key === :type || throw(
         ArgumentError(
-            "simulate_by_generation applies GroupVaccination to the types, so it needs " *
+            "$engine applies $name to the types, so it needs " *
                 "group_key = :type, not :$(dosing.group_key)"
         )
     )
     dosing.efficacy isa Real || throw(
         ArgumentError(
-            "simulate_by_generation needs a numeric efficacy for GroupVaccination, " *
+            "$engine needs a numeric efficacy for $name, " *
                 "not $(typeof(dosing.efficacy))"
         )
     )
-    for (name, value, none) in (
+    for (what, value, none) in (
             (:coverage, dosing.coverage, 1), (:dose_delay, dosing.dose_delay, 0),
             (:delay_to_immunity, dosing.delay_to_immunity, 0), (:waning, dosing.waning, nothing),
         )
         value === none || (value isa Real && none isa Real && value == none) || throw(
             ArgumentError(
-                "simulate_by_generation cannot apply GroupVaccination with $name = " *
+                "$engine cannot apply $(nameof(typeof(leaf))) with $what = " *
                     "$value: a dose protects at once, with probability efficacy"
             )
         )
     end
-    return _Campaign(Float64(dosing.efficacy), window, budget)
+    return _Campaign(Float64(dosing.efficacy), window, budget, _dosing_rule(leaf))
 end
 
 # The campaigns a spec holds, or an error naming every intervention that
@@ -97,7 +111,7 @@ _by_type(c::_Campaign, ::Any, population) = c
 function _by_type(c::_Campaign, pg::PerGroup, population)
     _group_budgets(pg, population)
     budgets = [_for_resource(c.budget, name) for name in _group_names(population)]
-    return _Campaign(c.efficacy, c.window, budgets)
+    return _Campaign(c.efficacy, c.window, budgets, c.dosing)
 end
 
 # The doses a campaign gives to each type between `t0` and `t1`. With
@@ -145,6 +159,7 @@ function _generation_doses(campaigns, used, generation_length, gen)
     isempty(campaigns) && return doses, taken
     t0, t1 = _generation_interval(generation_length, gen)
     for (k, c) in enumerate(campaigns)
+        _doses_contacts(c) || continue
         d = _doses_of(c, c.budget, t0, t1, used[k])
         (d isa Int ? d > 0 : any(>(0), d)) || continue
         push!(doses, (d, c.efficacy))
@@ -166,6 +181,30 @@ function _doses_left(c::_Campaign, cc::CapacityConstrained, t0, t1, used)
     return b > s ? max(0, floor(Int, _doses_by(cc, b)) - used) : 0
 end
 
+# Gives the population campaigns' doses for generation `gen` at the start of
+# its interval, lowering `susceptibles` by those protected.
+function _vaccinate_population!(
+        rng, campaigns, used, generation_length, gen, susceptibles::Vector{Int}, sizes
+    )
+    isempty(campaigns) && return susceptibles
+    t0, t1 = _generation_interval(generation_length, gen)
+    for (k, c) in enumerate(campaigns)
+        _doses_contacts(c) && continue
+        d = _doses_of(c, c.budget, t0, t1, used[k])
+        by_type = d isa Int ? _split_by_size(rng, d, sizes) : d
+        for i in eachindex(by_type)
+            susceptibles[i] -= protected_by_doses(
+                c.dosing, rng, by_type[i], c.efficacy, susceptibles[i], sizes[i]
+            )
+        end
+        used[k] .+= length(used[k]) == 1 ? sum(by_type) : by_type
+    end
+    return susceptibles
+end
+
+_split_by_size(rng, doses, sizes) =
+    length(sizes) == 1 ? [doses] : rand(rng, Multinomial(doses, sizes ./ sum(sizes)))
+
 # `_generation_doses` for a single type, written into `doses`; returns whether
 # any campaign has a dose.
 function _scalar_doses!(doses::Vector{Int}, campaigns, used, generation_length, gen)
@@ -173,6 +212,10 @@ function _scalar_doses!(doses::Vector{Int}, campaigns, used, generation_length, 
     t0, t1 = _generation_interval(generation_length, gen)
     any_doses = false
     for (k, c) in enumerate(campaigns)
+        if !_doses_contacts(c)
+            doses[k] = 0
+            continue
+        end
         cc = c.budget isa AbstractVector ? only(c.budget) : c.budget
         doses[k] = _doses_left(c, cc, t0, t1, only(used[k]))
         any_doses |= doses[k] > 0

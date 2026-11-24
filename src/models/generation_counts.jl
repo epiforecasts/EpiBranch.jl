@@ -265,8 +265,9 @@ This needs a `generation_length` and a finite population. A campaign is a
 [`GroupVaccination`](@ref) with `group_key = :type`, so that its groups are the
 types, wrapped in [`CapacityConstrained`](@ref) for its doses, and in
 [`Scheduled`](@ref) with a `start_time` and `end_time` if it has a window, in
-either order. Any other intervention, or a condition other than a window,
-raises an `ArgumentError` naming it, as do a `coverage` below one, a
+either order. A [`MassVaccination`](@ref) wrapped the same way vaccinates the
+population instead, see below. Any other intervention, or a condition other than
+a window, raises an `ArgumentError` naming it, as do a `coverage` below one, a
 `dose_delay`, a `delay_to_immunity`, `waning` and an efficacy that is not a
 number.
 
@@ -285,6 +286,13 @@ later contacts. The `eligibility` of the campaign is not read.
 
 Doses are dated by the interval, not the day: every contact of generation
 `g + 1` can use any dose of the interval.
+
+The doses of a `MassVaccination` go to the types instead: a shared budget is
+spread over them in proportion to their size, and a [`PerGroup`](@ref) budget
+gives each type its own. At the start of the interval the `dosing` rule of the
+campaign decides how many susceptibles of each type they protect, and those leave
+`susceptibles` before the contacts of the generation are thinned. The campaign's
+`eligibility_time` is not read.
 
 Doses left unused by earlier generations, from `carry_over` or a single
 budget, still go to contacts of later generations after the window has
@@ -536,7 +544,15 @@ function _run_generations(
     gen = state.generation
     used = _doses_used(state, campaigns)
     doses = zeros(Int, length(campaigns))
+    vaccinates_population = !all(_doses_contacts, campaigns)
     while gen < max_generations && counts != 0
+        if vaccinates_population && susceptibles !== nothing
+            s = [susceptibles]
+            _vaccinate_population!(
+                rng, campaigns, used, state.generation_length, gen, s, [something(sizes)]
+            )
+            susceptibles = only(s)
+        end
         dosed = _scalar_doses!(doses, campaigns, used, state.generation_length, gen)
         m = _draw_multiplier(rng, model.multiplier)
         potential = _single_potential(rng, offspring, counts, m, susceptibles !== nothing)
@@ -575,6 +591,9 @@ function _run_generations(
     gen = state.generation
     used = _doses_used(state, campaigns)
     while gen < max_generations && !all(iszero, counts)
+        susceptibles === nothing || _vaccinate_population!(
+            rng, campaigns, used, state.generation_length, gen, susceptibles, sizes
+        )
         doses, taken = _generation_doses(campaigns, used, state.generation_length, gen)
         m = _draw_multiplier(rng, model.multiplier)
         potential = _generation_potential(

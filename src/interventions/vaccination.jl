@@ -1318,10 +1318,51 @@ function _queued_members(rec::_GroupOffers, gv::GroupVaccination, state, group)
     return queue
 end
 
+# ── Dosing rules ─────────────────────────────────────────────────────
+
+"""
+    AbstractDosing
+
+How a [`MassVaccination`](@ref) spreads a batch of doses over a group, its
+`dosing`. A rule defines [`protected_by_doses`](@ref EpiBranch.protected_by_doses).
+"""
+abstract type AbstractDosing end
+
+"""
+    RandomDosing()
+
+The default [`AbstractDosing`](@ref): each dose goes to a person picked at
+random, and protects with probability `efficacy` times the susceptible share.
+The number protected comes from one binomial draw, whose cost is independent of
+the number of doses.
+"""
+struct RandomDosing <: AbstractDosing end
+
+"""
+    EpiBranch.protected_by_doses(rule, rng, doses, efficacy, susceptibles, size) -> Int
+
+How many of a group's `susceptibles`, out of `size` people, a batch of
+`doses` protects under the dosing `rule`, each dose protecting a susceptible it
+reaches with probability `efficacy`. The caller removes them from the
+susceptibles. A new [`AbstractDosing`](@ref) defines this method.
+"""
+function protected_by_doses(
+        ::RandomDosing, rng::AbstractRNG, doses::Integer, efficacy::Real,
+        susceptibles::Integer, size::Integer
+    )
+    (doses > 0 && susceptibles > 0 && efficacy > 0) || return 0
+    # A susceptible escapes all `doses` with probability (1 - efficacy / size)^doses.
+    # One binomial draw then costs the same for any number of doses. Treating
+    # people as independent is close to exact in a large population.
+    p = -expm1(doses * log1p(-min(efficacy / size, 1.0)))
+    return rand(rng, Binomial(susceptibles, p))
+end
+
 # ── MassVaccination ──────────────────────────────────────────────────
 
 """
     MassVaccination(; efficacy, eligibility_time, coverage = 1.0,
+                    dosing = RandomDosing(),
                     severity_efficacy = 0.0, symptom_efficacy = 0.0,
                     delay_to_immunity = 0.0,
                     waning = nothing, mode = LeakyMode(), dose_label = :default)
@@ -1341,6 +1382,9 @@ Vaccinate the population on a schedule, independently of contact tracing.
   actually vaccinated (consent, absence, logistics). Default 1. A number, a
   distribution or a function `(rng, ind) -> ...`, as for
   [`RingVaccination`](@ref)'s `coverage`.
+- `dosing`: how a dose budget is spread, an [`AbstractDosing`](@ref)
+  (default [`RandomDosing`](@ref)). Read only under
+  [`CapacityConstrained`](@ref).
 - `efficacy`, `delay_to_immunity`, `severity_efficacy`, `symptom_efficacy`: take the same forms,
   drawn once per vaccinated person, for example an age-dependent efficacy or
   immunity taking one to three weeks. See [`AbstractVaccination`](@ref).
@@ -1356,6 +1400,21 @@ On a branching process, the index cases' vaccination days are drawn before
 the race starts and each contact's when it is created; everyone counts as
 vaccinated if their day is finite. They are protected against an exposure
 only if their vaccination day plus `delay_to_immunity` comes before it.
+
+# A dose budget
+
+Under [`CapacityConstrained`](@ref), whose `budget_per_period` is the number
+of doses (a [`PerGroup`](@ref) budget gives one type its own), the campaign
+gives its doses to the population instead of to each person on their
+`eligibility_time`, which is not read. A [`Scheduled`](@ref) window sets
+the days. The `dosing` rule decides who receives each dose. A protected person
+leaves the susceptibles, as an infected person does, and every later contact is
+thinned against those left. On a [`BranchingProcess`](@ref) with a
+[`Population`](@ref) the doses are given as the simulation reaches their days,
+and no dose is recorded on a person. Without a population or with an unlimited
+budget, each person is dosed on their `eligibility_time`.
+[`simulate_by_generation`](@ref) applies a budgeted `MassVaccination` in the
+same way.
 
 # Closed-form offspring distribution
 
@@ -1411,15 +1470,16 @@ Prime-and-boost schedule (two doses with different labels):
 ]
 ```
 """
-struct MassVaccination{V <: VaccineEffect, T, C} <: AbstractVaccination
+struct MassVaccination{V <: VaccineEffect, T, C, D <: AbstractDosing} <: AbstractVaccination
     effect::V
     eligibility_time::T
     coverage::C
+    dosing::D
 end
 
-function MassVaccination(; eligibility_time, coverage = 1.0, effect...)
-    _check_effect_keywords(MassVaccination, (:eligibility_time, :coverage), effect)
-    return MassVaccination(VaccineEffect(; effect...), eligibility_time, coverage)
+function MassVaccination(; eligibility_time, coverage = 1.0, dosing = RandomDosing(), effect...)
+    _check_effect_keywords(MassVaccination, (:eligibility_time, :coverage, :dosing), effect)
+    return MassVaccination(VaccineEffect(; effect...), eligibility_time, coverage, dosing)
 end
 
 vaccine_effect(mv::MassVaccination) = getfield(mv, :effect)

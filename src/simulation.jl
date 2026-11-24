@@ -202,7 +202,8 @@ function _continue_sellke!(state::SimulationState, rng, max_time, ivs, risks, re
     )
     extinct = _sellke_race!(
         state, continuation.members, rng;
-        routes = continuation.rts, interventions = isempty(ivs) ? () : ivs,
+        routes = continuation.rts,
+        interventions = isempty(ivs) ? () : _without_mass_campaigns(state, ivs),
         contacts = continuation.contacts, risks,
         introduction = continuation.introduction, watches = continuation.watches,
         projections = continuation.projections, max_time,
