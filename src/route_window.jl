@@ -150,7 +150,7 @@ Whether the model's interventions can end transmission on `route`, a
 population. A route for which this is `true` closes when the interventions
 remove the case (through `infectious_removal_time`), and [`Isolation`](@ref) and
 [`ContactTracing`](@ref) act on it (see [`risk_applies`](@ref EpiBranch.risk_applies)).
-It is `false` for anything else, so a route type of your own opts in with a
+It is `false` for anything else. A route type of your own opts in with a
 method.
 """
 removed_by_interventions(route) = false

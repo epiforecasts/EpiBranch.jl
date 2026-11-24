@@ -542,8 +542,8 @@ end
 
         # a layout built the obvious way, with condition_on defaulting to
         # ExplainIndex() under external = true, disagrees with the
-        # RecruitedIndex() mass action needs, and must be rejected rather than silently scoring
-        # every index case as unexplained
+        # RecruitedIndex() mass action needs. It must be rejected, because
+        # scoring would treat every index case as unexplained
         Lbad = compile_contact_pairs(data; external = true)
         @test_throws ArgumentError pairwise_surv_loglik(
             Exponential(1.0), data, Lbad; external_hazard = mass_action

@@ -1074,7 +1074,7 @@ struct RecruitedIndex <: ConditionOn end
 
 Condition on nobody: every infection, index cases included, is explained, so
 each index case gets a row for infection from outside. This needs a community
-hazard, and is what [`compile_contact_pairs`](@ref) uses when `external = true`.
+hazard. [`compile_contact_pairs`](@ref) uses it when `external = true`.
 """
 struct ExplainIndex <: ConditionOn end
 

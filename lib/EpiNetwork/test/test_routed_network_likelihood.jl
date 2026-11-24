@@ -162,7 +162,7 @@ end
     @testset "a lapsing isolation gated to the community route leaves the household route alone" begin
         # `Isolation(duration = 7.0)` releases rather than permanently removing,
         # so the window stays open and the stretch is read from `host_times`;
-        # since only the community route is `removed_by_interventions`, the
+        # because only the community route is `removed_by_interventions`, the
         # household route's exposure must be unaffected by it.
         true_household, true_community = 3.0, 6.0
         hh, comm = _routed_adjacency(300, 4)

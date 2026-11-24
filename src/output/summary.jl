@@ -608,7 +608,7 @@ _quantile_name(p::Real) =
     Symbol("q", replace(replace(string(round(100 * p; digits = 6)), r"\.0$" => ""), "." => "_"))
 
 # The time a case is placed by. Onset falls back to infection time for cases
-# without a recorded onset; any other state has no fallback, since a case
+# without a recorded onset; any other state has no fallback, because a case
 # without the time has not been observed.
 function _weekly_time(by::TransitionCount, ind)
     t = _state_time(ind, by.at)
