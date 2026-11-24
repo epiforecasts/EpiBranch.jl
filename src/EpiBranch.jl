@@ -197,7 +197,7 @@ export MeanFieldProcess, MeanFieldState, LinearNoiseProcess, LinearNoiseState
 export StratifiedContacts, flatten_contacts, contacts_from_table, mixing_rate
 export Mixing, FrequencyDependent, DensityDependent
 export read_contacts, ContactFileFormat, CSVFormat, NetCDFFormat
-export epicurve, chain_size_plot, containment_plot
+export epicurve, chain_size_plot, containment_plot, end_of_outbreak_plot
 export MixingMeanFieldProcess, MixingMeanFieldState
 export MixingLinearNoiseProcess, MixingLinearNoiseState
 export DoseAllocation, TriggeredInPriority, SplitByGroupSize, SplitBySusceptibles

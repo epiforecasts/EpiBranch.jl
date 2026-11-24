@@ -5,6 +5,8 @@ using Makie
     @testset "arguments no method takes reach the fallback" begin
         @test_throws ArgumentError epicurve(1)
         @test_throws ArgumentError chain_size_plot(1)
+        @test_throws ArgumentError containment_plot(1)
+        @test_throws ArgumentError end_of_outbreak_plot(1)
     end
 
     model = ModelSpec(
@@ -70,5 +72,23 @@ using Makie
         @test_throws ArgumentError containment_plot(sweep, :delay; group = :missing)
         @test_throws ArgumentError containment_plot(sweep[1:0, :], :delay)
         @test_throws ArgumentError containment_plot(DataFrame(x = ["a"], containment_probability = [1.0]), :x)
+    end
+
+    @testset "end_of_outbreak_plot" begin
+        offspring = NegBin(0.8, 0.5)
+        gt = Gamma(2.0, 3.0)
+        state = first(states)
+        fig = end_of_outbreak_plot(state, offspring, gt)
+        @test fig isa Makie.Figure
+        ax = only(filter(b -> b isa Makie.Axis, fig.content))
+        line = only(filter(p -> p isa Makie.Lines, ax.scene.plots))
+        ts, ps = [p[1] for p in line[1][]], [p[2] for p in line[1][]]
+        k = 7
+        inputs = end_of_outbreak_inputs(state, ts[k]; by = :onset)
+        @test ps[k] ≈ end_of_outbreak_probability(offspring, gt, inputs.τs, inputs.secondary_cases)
+        @test all(0 .<= ps .<= 1)
+        @test ps[end] > 0.9
+        @test end_of_outbreak_plot(state, offspring, gt; times = [10.0, 20.0]) isa Makie.Figure
+        @test_throws ArgumentError end_of_outbreak_plot(state, offspring, gt; times = [-5.0])
     end
 end

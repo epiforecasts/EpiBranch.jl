@@ -1,9 +1,11 @@
 module EpiBranchMakieExt
 
-using EpiBranch: EpiBranch, SimulationState, incidence, summarise
-using DataFrames: AbstractDataFrame, groupby
+using EpiBranch: EpiBranch, SimulationState, incidence, summarise,
+    individuals, is_infected, end_of_outbreak_inputs, end_of_outbreak_probability,
+    _weekly_time
 using Dates: Date, Day
-using Distributions: DiscreteUnivariateDistribution, pdf
+using DataFrames: AbstractDataFrame, groupby
+using Distributions: DiscreteUnivariateDistribution, Distribution, NegativeBinomial, pdf, quantile
 using Makie: Makie, Figure, Axis, band!, lines!, barplot!, scatter!, scatterlines!, axislegend
 
 # Bands cannot take dates, so dates are plotted as day numbers.
@@ -109,6 +111,31 @@ function EpiBranch.containment_plot(
         end
         axislegend(ax, string(group); position = :rt)
     end
+    return fig
+end
+
+function EpiBranch.end_of_outbreak_plot(
+        state::SimulationState, offspring::NegativeBinomial,
+        generation_time::Distribution;
+        by::Symbol = :onset, times = nothing
+    )
+    observed = filter(isfinite, [_weekly_time(by, ind) for ind in individuals(state) if is_infected(ind)])
+    isempty(observed) && throw(ArgumentError("end_of_outbreak_plot: no cases to plot"))
+    first_case = minimum(observed)
+    if times === nothing
+        stop = maximum(observed) + quantile(generation_time, 0.99)
+        times = range(first_case, stop; length = 100)
+    end
+    times = filter(>=(first_case), collect(times))
+    isempty(times) && throw(ArgumentError("end_of_outbreak_plot: no time is after the first case"))
+    probs = map(times) do t
+        inputs = end_of_outbreak_inputs(state, t; by)
+        end_of_outbreak_probability(offspring, generation_time, inputs.τs, inputs.secondary_cases)
+    end
+    fig = Figure()
+    ax = Axis(fig[1, 1]; xlabel = "Time (days)", ylabel = "Probability the outbreak is over")
+    lines!(ax, Float64.(times), Float64.(probs); color = :steelblue, linewidth = 2)
+    Makie.ylims!(ax, 0, 1)
     return fig
 end
 

@@ -446,6 +446,7 @@ Figures of simulation output. They are methods of a package extension, loaded wi
 epicurve
 chain_size_plot
 containment_plot
+end_of_outbreak_plot
 ```
 
 ## Closed-form results

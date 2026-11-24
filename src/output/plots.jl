@@ -39,3 +39,19 @@ of that column. Points are joined in order of `x`.
 function containment_plot(args...; kwargs...)
     throw(ArgumentError("containment_plot needs a Makie backend: run `using CairoMakie` (or another Makie backend) first"))
 end
+
+"""
+    end_of_outbreak_plot(state::SimulationState, offspring::NegativeBinomial,
+                         generation_time::Distribution; by=:onset, times=nothing)
+
+Probability that an outbreak is over at each time, as a Makie `Figure`,
+available after `using Makie` or a backend such as `using CairoMakie`. At each
+time the cases observed so far go to
+[`end_of_outbreak_inputs`](@ref) and
+[`end_of_outbreak_probability`](@ref). `by` chooses the time as in
+[`weekly_incidence`](@ref). `times` defaults to 100 points from the first case
+to the last case plus the 99th percentile of the generation time.
+"""
+function end_of_outbreak_plot(args...; kwargs...)
+    throw(ArgumentError("end_of_outbreak_plot needs a Makie backend: run `using CairoMakie` (or another Makie backend) first"))
+end
