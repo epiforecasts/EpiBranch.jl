@@ -127,11 +127,11 @@ end
         pulse = t -> 50.02 <= t < 50.08 ? 50.0 : 1.0
         threw = [
             try
-                    simulate(quiet(pulse); max_time = 100.0, rng = StableRNG(s))
-                    false
-                catch e
-                    e isa ArgumentError
-                end
+                simulate(quiet(pulse); max_time = 100.0, rng = StableRNG(s))
+                false
+            catch e
+                e isa ArgumentError
+            end
                 for s in 1:300
         ]
         @test any(threw)
