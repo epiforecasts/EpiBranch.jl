@@ -103,12 +103,13 @@ end
         @test all(>=(10.0), ftimes)
         @test isapprox(length(ftimes) / 100, 20.0; atol = 1.5)
         seasonal = Seasonal(amplitude = 1.0, peak_day = 0.0, period = 20.0)
+        scaled = t -> 3 * EpiBranch.calendar_multiplier(seasonal, t)
         stimes = reduce(
             vcat,
-            [imported(simulate(quiet(seasonal); max_time = 20.0, rng = StableRNG(s))) for s in 1:200]
+            [imported(simulate(quiet(scaled); max_time = 20.0, rng = StableRNG(s))) for s in 1:200]
         )
-        # The mean rate is one a day. Few arrive near the trough on day 10.
-        @test isapprox(length(stimes) / 200, 20.0; atol = 1.5)
+        # The mean rate is three a day. Few arrive near the trough on day 10.
+        @test isapprox(length(stimes) / 200, 60.0; atol = 3.0)
         @test count(t -> 8 < t < 12, stimes) < count(t -> t < 2 || t > 18, stimes) / 2
     end
 

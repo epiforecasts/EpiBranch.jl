@@ -305,9 +305,10 @@ one; any other model raises an `ArgumentError` when built. A model with a
 [`simulate`](@ref). [`simulate_by_generation`](@ref) draws the same multiplier.
 
 `importations` is a vector of times at which further index cases arrive,
-or a rate of arrivals per day: a number, a calendar schedule such as
-[`Steps`](@ref) or [`Seasonal`](@ref) giving the rate on each day, or a
-function of the day returning it. A rate needs `max_time` and draws the
+or a rate of arrivals per day: a number, a [`Steps`](@ref) schedule whose
+values are the rate on each day, or a function of the day returning it. A
+[`Seasonal`](@ref) has no scale, so it gives about one arrival a day: scale it
+inside a function, `t -> 5 * calendar_multiplier(Seasonal(...), t)`. A rate needs `max_time` and draws the
 arrivals as a Poisson process over it. A function of the day is bounded by
 its largest value on a 1001-point grid over `max_time`. A peak narrower than
 the grid spacing can be missed. An arrival on a day when the rate exceeds
@@ -412,8 +413,8 @@ end
 function _check_importations(schedule)
     hasmethod(calendar_multiplier, Tuple{typeof(schedule), Float64}) || throw(
         ArgumentError(
-            "`importations` must be a vector of times, a rate, or a calendar " *
-                "schedule (`Steps`, `Seasonal` or a function of time), got $(typeof(schedule))"
+            "`importations` must be a vector of times, a rate, a " *
+                "`Steps` schedule or a function of time, got $(typeof(schedule))"
         )
     )
     return schedule
@@ -442,7 +443,7 @@ function _import_times(m::BranchingProcess, opts::SimOpts, rng)
             ArgumentError(
                 "the `importations` rate $rate on day $t exceeds its bound $bound; " *
                     "a function of the day is bounded by its largest value on a grid " *
-                    "over `max_time`, so use a `Steps` or `Seasonal` schedule for a " *
+                    "over `max_time`, so use a `Steps` schedule for a " *
                     "narrow peak"
             )
         )
