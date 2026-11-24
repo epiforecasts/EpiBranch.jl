@@ -228,3 +228,34 @@ end
         @test only(state.scratch[:_mass_ledgers]).history[end][1] <= 1_000
     end
 end
+
+# A model written against `contacts_of` that mints its contacts and has a
+# population.
+struct _MintedPopulation <: EpiBranch.TransmissionModel
+    k::Int
+    size::Int
+end
+EpiBranch.population_size(m::_MintedPopulation) = Population(m.size)
+function EpiBranch.contacts_of(m::_MintedPopulation, parent, state::EpiBranch.SimulationState)
+    return [
+        (t = parent.infection_time + rand(state.rng);
+            (EpiBranch.make_contact!(state, parent, t), t))
+            for _ in 1:(m.k)
+    ]
+end
+
+@testset "A budgeted MassVaccination protects people on a contacts_of model" begin
+    model = _MintedPopulation(3, 400)
+    campaign = CapacityConstrained(
+        MassVaccination(; efficacy = 1.0, eligibility_time = 0.0); budget_per_period = 380.0
+    )
+    run(ivs, seed) = simulate(
+        ModelSpec(model; interventions = ivs); n_initial = 2,
+        max_generations = 5, rng = StableRNG(seed)
+    )
+    cases(state) = count(is_infected, individuals(state))
+    open_sizes = [cases(run([], i)) for i in 1:30]
+    vaccinated = [run([campaign], i) for i in 1:30]
+    @test all(s -> haskey(s.scratch, :_mass_ledgers), vaccinated)
+    @test mean(cases.(vaccinated)) < 0.5 * mean(open_sizes)
+end
