@@ -69,6 +69,13 @@ using EpiBranch, Distributions, StableRNGs, DataFrames, Dates, Test
         @test any(==(0), df.cases)
     end
 
+    @testset "by names the state that places a case" begin
+        by_infection = incidence(st; interval = 1, by = TransitionCount(:infection))
+        @test sum(by_infection.cases) == count(is_infected, individuals(st))
+        @test incidence(st; interval = 1, by = TransitionCount(:infection)) ==
+            incidence(st; interval = 1, by = TransitionCount(ind -> ind.infection_time))
+    end
+
     @testset "no cases" begin
         @test nrow(incidence(st; by = TransitionCount(:no_such_time))) == 0
         z = incidence(st; by = TransitionCount(:no_such_time), range = (Date(2020, 1, 1), Date(2020, 1, 14)), interval = 7)
