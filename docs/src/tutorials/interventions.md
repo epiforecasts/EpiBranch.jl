@@ -477,6 +477,14 @@ sort(sweep[:, [:R, :mean_delay, :containment_probability]], [:R, :mean_delay])
 
 The six rows are the two offspring distributions crossed with the three delays. The `R` and `mean_delay` columns are read back from the offspring distribution and isolation of each scenario. The table is sorted by R and then by delay. Containment is higher with R = 1.5 than with R = 3, and falls in both cases as isolation is delayed.
 
+With a Makie backend loaded, [`containment_plot`](@ref) draws the containment probability against one column, with a line for each value of another.
+
+```@example interventions
+using CairoMakie
+
+containment_plot(sweep, :mean_delay; group = :R)
+```
+
 ### Containment by a chosen week
 
 A simulation that stops at `max_cases` is not extinct, but an outbreak can also be small or slow at a given time. Reports of ringbp results usually count an outbreak as contained when no case has symptom onset in a window of weeks. `is_extinct(state; by_week = ...)` does that: `by_week = 12:20` is `true` when no case has onset in weeks 12 to 20, counted in 7-day blocks from day 0, and a single week takes an integer. The simulation has to run to the end of the window, here day 140, so `max_time = 140.0`:
