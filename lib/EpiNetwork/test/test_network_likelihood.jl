@@ -222,7 +222,7 @@ end
                 progression = _seir(5.0), interventions, attributes = clinical
             )
             d = network_infections(simulate(m; n_initial = 3, rng = StableRNG(seed)), m)
-            layout = compile_contact_pairs(d; external = ext > 0)
+            layout = compile_contact_pairs(d; external_hazard = ext)
             @test isfinite(loglikelihood(d, m))
             @test isfinite(
                 pairwise_surv_loglik(Weibull(1.5, 4.0), d, layout; external_hazard = ext)
@@ -240,7 +240,7 @@ end
         @test data.obs_end == 40.0
         @test count(data.is_index) >= 1
 
-        layout = compile_contact_pairs(data; external = true)
+        layout = compile_contact_pairs(data; external_hazard = 0.1)
         @test layout.external
         @test loglikelihood(data, m) ==
             pairwise_surv_loglik(Exponential(6.0), data, layout; external_hazard = 0.005)
@@ -269,7 +269,7 @@ end
         )
         data = network_infections(simulate(m; rng = StableRNG(13)), m)
         @test count(data.is_index[1:500]) > count(data.is_index[501:end])
-        layout = compile_contact_pairs(data; external = true)
+        layout = compile_contact_pairs(data; external_hazard = 0.1)
         @test loglikelihood(data, m) ==
             pairwise_surv_loglik(
             Exponential(6.0), data, layout; external_hazard = hazard(θ)
@@ -297,7 +297,7 @@ end
         inf = filter(!isnan, data.infection_time)
         @test count(>(10.0), inf) > length(inf) / 2
 
-        layout = compile_contact_pairs(data; external = true)
+        layout = compile_contact_pairs(data; external_hazard = 0.1)
         g(θ) = pairwise_surv_loglik(
             Exponential(exp(θ[1])), data, layout;
             external_hazard = exp(θ[2])
@@ -342,7 +342,7 @@ end
         @test v ≈ pairwise_surv_loglik(k, capped; external_hazard = 0.01)
         @test loglikelihood(ongoing, m) ≈ v
 
-        layout = compile_contact_pairs(ongoing; external = true)
+        layout = compile_contact_pairs(ongoing; external_hazard = 0.1)
         g(θ) = pairwise_surv_loglik(
             Exponential(exp(θ[1])), ongoing, layout;
             external_hazard = exp(θ[2])
