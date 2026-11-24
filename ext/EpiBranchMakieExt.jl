@@ -1,6 +1,6 @@
 module EpiBranchMakieExt
 
-using EpiBranch: EpiBranch, SimulationState, incidence, summarise
+using EpiBranch: EpiBranch, SimulationState, TransitionCount, incidence, summarise, _onset_or_infection
 using Dates: Date, Day
 using Distributions: DiscreteUnivariateDistribution, pdf
 using Makie: Makie, Figure, Axis, band!, lines!, barplot!, scatter!, axislegend
@@ -18,7 +18,7 @@ end
 
 function EpiBranch.epicurve(
         states::Vector{<:SimulationState};
-        interval::Integer = 7, by::Symbol = :onset,
+        interval::Integer = 7, by::Union{TransitionCount, Function} = _onset_or_infection,
         reference_date::Date = Date(2020, 1, 1), range = nothing,
         probs = (0.025, 0.25, 0.5, 0.75, 0.975)
     )
@@ -41,7 +41,7 @@ end
 
 function EpiBranch.epicurve(
         state::SimulationState;
-        interval::Integer = 7, by::Symbol = :onset,
+        interval::Integer = 7, by::Union{TransitionCount, Function} = _onset_or_infection,
         reference_date::Date = Date(2020, 1, 1), range = nothing
     )
     counts = incidence(state; interval, by, reference_date, range)
