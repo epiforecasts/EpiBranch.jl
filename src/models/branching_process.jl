@@ -305,10 +305,11 @@ one; any other model raises an `ArgumentError` when built. A model with a
 [`simulate`](@ref). [`simulate_by_generation`](@ref) draws the same multiplier.
 
 `importations` is a vector of times at which further index cases arrive,
-or a rate of arrivals per day: a number, a [`Steps`](@ref) schedule whose
-values are the rate on each day, or a function of the day returning it. A
-[`Seasonal`](@ref) has no scale, so it gives about one arrival a day: scale it
-inside a function, `t -> 5 * EpiBranch.calendar_multiplier(Seasonal(...), t)`. A rate needs `max_time` and draws the
+or a rate of arrivals per day: a number, a [`Steps`](@ref) schedule giving
+the rate on each day, or a function of the day returning it. A
+[`Seasonal`](@ref) has no scale and gives about one arrival a day. To scale
+it, use a function, `t -> 5 * EpiBranch.calendar_multiplier(Seasonal(...), t)`.
+A rate needs `max_time` and draws the
 arrivals as a Poisson process over it. A function of the day is bounded by
 its largest value on a 1001-point grid over `max_time`. A peak narrower than
 the grid spacing can be missed. An arrival on a day when the rate exceeds
