@@ -152,16 +152,6 @@ remove the case (through `infectious_removal_time`), and [`Isolation`](@ref) and
 [`ContactTracing`](@ref) act on it (see [`risk_applies`](@ref EpiBranch.risk_applies)).
 It is `false` for anything else, so a route type of your own opts in with a
 method.
-
-States in `until` come from the natural history, so a route ends when the case
-recovers, dies or is buried. Removal by an intervention is different because
-whether it removes the case at all depends on the intervention: perfect
-isolation takes the case out of transmission entirely, whereas leaky isolation
-only reduces it. This is why routes are worth separating. A community route is
-removed by interventions, so isolating a case ends their community
-transmission; a household route is not, so the case goes on infecting the people
-they live with. The same applies to the reduction from leaky isolation, but not
-to a vaccine's protection, which applies on every route.
 """
 removed_by_interventions(route) = false
 removed_by_interventions(route::RouteWindow) = route.removed_by_interventions

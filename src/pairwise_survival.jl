@@ -1091,9 +1091,6 @@ condition_mask(::RecruitedIndex, is_index::AbstractVector{Bool}) = is_index
 condition_mask(::ExplainIndex, is_index::AbstractVector{Bool}) = falses(length(is_index))
 condition_mask(rule::ConditionOn, data::InfectionLayer) = condition_mask(rule, data.is_index)
 
-# The rule a community hazard needs: one that has nothing infectious before the
-# first case, such as `MassActionHazard`, cannot explain an index case, and
-# every other hazard explains them all. Without a hazard `rule` stands.
 function _condition_rule(external_hazard, rule::ConditionOn = RecruitedIndex())
     return _ext_active(external_hazard) && _ext_explains_index(external_hazard) ?
         ExplainIndex() : rule
@@ -1162,9 +1159,6 @@ function compile_contact_pairs(
     )
 end
 
-# `given` marks the hosts the likelihood takes as given. `explain_index` records
-# whether the rule explained the index cases, which the likelihood checks
-# against its community hazard.
 function _compile_pairs(
         membership::AbstractVector{<:Integer}, given, infected;
         external, explain_index, seeded
@@ -1199,8 +1193,6 @@ function _compile_pairs(
     n = length(contacts)
     seeded === nothing || length(seeded) == n ||
         throw(ArgumentError("seeded must cover the same hosts as the contact structure"))
-    # The hosts the likelihood takes as given rather than explaining: those the
-    # rule names, and chosen initial cases always.
     length(given) == n ||
         throw(ArgumentError("condition_on must give one entry per host, $n"))
     conditioned = [given[j] || (seeded !== nothing && seeded[j]) for j in 1:n]
