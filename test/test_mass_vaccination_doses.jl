@@ -229,8 +229,8 @@ end
     end
 end
 
-# A model written against `contacts_of` that mints its contacts and has a
-# population.
+# A model written against `contacts_of` that creates its own contacts and has
+# a population.
 struct _MintedPopulation <: EpiBranch.TransmissionModel
     k::Int
     size::Int
