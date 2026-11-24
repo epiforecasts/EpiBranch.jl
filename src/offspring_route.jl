@@ -606,8 +606,8 @@ function _simulate_offspring(
         state, tree, rng, sim_opts;
         seed! = (best, _, _) -> begin
             fill!(best, zero(T))
-            for (k, t) in enumerate(_import_times(model))
-                best[sim_opts.n_initial + k] = t
+            for k in (sim_opts.n_initial + 1):length(best)
+                best[k] = individuals(state)[k].infection_time
             end
             best
         end, routes,
