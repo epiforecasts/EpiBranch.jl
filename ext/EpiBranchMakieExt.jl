@@ -86,6 +86,10 @@ function EpiBranch.containment_plot(
             throw(ArgumentError("containment_plot: results has no column $col"))
     end
     isempty(results) && throw(ArgumentError("containment_plot: results is empty"))
+    results = copy(results)
+    for col in (x, :containment_probability)
+        results[!, col] = identity.(results[!, col])
+    end
     eltype(results[!, x]) <: Real ||
         throw(ArgumentError("containment_plot: column $x is not numeric"))
     fig = Figure()

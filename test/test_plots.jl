@@ -61,6 +61,11 @@ using Makie
         @test [collect.(p[1][]) for p in lines] == [
             [[1.0, 0.9], [5.0, 0.6]], [[1.0, 0.4], [5.0, 0.1]],
         ]
+        anysweep = DataFrame(Dict(c => Vector{Any}(sweep[!, c]) for c in names(sweep)))
+        fig = containment_plot(anysweep[1:2, :], :delay)
+        ax = only(filter(b -> b isa Makie.Axis, fig.content))
+        line = only(filter(p -> p isa Makie.ScatterLines, ax.scene.plots))
+        @test collect.(line[1][]) == [[1.0, 0.9], [5.0, 0.6]]
         @test_throws ArgumentError containment_plot(sweep, :missing)
         @test_throws ArgumentError containment_plot(sweep, :delay; group = :missing)
         @test_throws ArgumentError containment_plot(sweep[1:0, :], :delay)
