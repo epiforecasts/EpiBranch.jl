@@ -1,1 +1,1 @@
-`serial_interval` documents that a model with a shared within-host trajectory has no closed form, and its errors for such a model name `realised_serial_intervals` and a fit as the route.
+The `serial_interval` documentation now says that a model with a shared within-host trajectory has no closed form. For such a model the errors point to `realised_serial_intervals` and a fitted distribution.
