@@ -1,0 +1,1 @@
+`weekly_incidence`, `incidence`, `epicurve` and `end_of_outbreak_inputs` take `by` as a `TransitionCount` (for example `TransitionCount(:infection)` or `TransitionCount(:reporting)`) or a function of the case, in place of a `Symbol`. The default is unchanged: onset, with infection time for a case without one.

@@ -177,7 +177,7 @@ end
 # own `name` (see `OnRoutes`).
 function _offspring_window(w::Infectiousness)
     return RouteWindow(
-        w.name; until = (w.until..., INTERVENTION_REMOVAL), kernel = nothing
+        w.name; until = w.until, removed_by_interventions = true, kernel = nothing
     )
 end
 
@@ -610,8 +610,8 @@ function _simulate_offspring(
         state, tree, rng, sim_opts;
         seed! = (best, _, _) -> begin
             fill!(best, zero(T))
-            for (k, t) in enumerate(_import_times(model))
-                best[sim_opts.n_initial + k] = t
+            for k in (sim_opts.n_initial + 1):length(best)
+                best[k] = individuals(state)[k].infection_time
             end
             best
         end, routes,

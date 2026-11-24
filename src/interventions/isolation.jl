@@ -361,7 +361,7 @@ end
 
 # Leaky isolation's residual block stands in for the removal perfect isolation
 # makes, so it reaches the same routes: those the case is isolated from.
-risk_applies(::Isolation, route) = route !== nothing && INTERVENTION_REMOVAL in route.until
+risk_applies(::Isolation, route) = removed_by_interventions(route)
 
 function reset!(::Isolation, ind::Individual)
     # Only undo an isolation this Isolation set, named by the handle it kept

@@ -297,7 +297,7 @@ its own start, end and timing during a case's course of infection.
 RouteWindow
 window_open
 window_close
-EpiBranch.INTERVENTION_REMOVAL
+EpiBranch.removed_by_interventions
 OnRoutes
 ```
 
@@ -447,6 +447,8 @@ Figures of simulation output. They are methods of a package extension, loaded wi
 ```@docs
 epicurve
 chain_size_plot
+containment_plot
+end_of_outbreak_plot
 ```
 
 ## Closed-form results

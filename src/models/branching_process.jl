@@ -305,7 +305,16 @@ one; any other model raises an `ArgumentError` when built. A model with a
 [`simulate`](@ref). [`simulate_by_generation`](@ref) draws the same multiplier.
 
 `importations` is a vector of times at which further index cases arrive,
-added to the `n_initial` index cases at time 0. Their `:infection_route` is
+or a rate of arrivals per day: a number, a [`Steps`](@ref) schedule giving
+the rate on each day, or a function of the day returning it. A
+[`Seasonal`](@ref) has no scale and gives about one arrival a day. To scale
+it, use a function, `t -> 5 * EpiBranch.calendar_multiplier(Seasonal(...), t)`.
+A rate needs `max_time` and draws the
+arrivals as a Poisson process over it. A function of the day is bounded by
+its largest value on a 1001-point grid over `max_time`. A peak narrower than
+the grid spacing can be missed. An arrival on a day when the rate exceeds
+that bound raises an `ArgumentError`. Imports come in addition to the
+`n_initial` index cases at time 0, and their `:infection_route` is
 `:external`. In a multi-type model each import's type is drawn uniformly from
 the types; `index_types` applies only to the index cases at time 0. Only the
 offspring route of `BranchingProcess` reads `importations`; a model with its
@@ -334,6 +343,10 @@ BranchingProcess(M, R -> NegBin(R, 0.16), LogNormal(1.6, 0.5))
 
 # one index case at time 0 and imports on days 7 and 21
 BranchingProcess(NegBin(0.9, 0.5), LogNormal(1.6, 0.5); importations = [7.0, 21.0])
+
+# imports at 0.2 a day, falling to 0.05 a day from day 30 (needs `max_time`)
+BranchingProcess(NegBin(0.9, 0.5), LogNormal(1.6, 0.5);
+    importations = Steps([30.0], [0.2, 0.05]))
 
 # add isolation with a ModelSpec
 ModelSpec(BranchingProcess(NegBin(2.5, 0.16), LogNormal(1.6, 0.5));
@@ -392,11 +405,54 @@ function _check_importations(times::AbstractVector{<:Real})
     )
     return collect(times)
 end
-_check_importations(x) = throw(
-    ArgumentError("`importations` must be a vector of times, got $(typeof(x))")
-)
-_import_times(::TransmissionModel) = ()
-_import_times(m::BranchingProcess) = m.importations === nothing ? () : m.importations
+function _check_importations(rate::Real)
+    isfinite(rate) && rate >= 0 || throw(
+        ArgumentError("an `importations` rate must be finite and non-negative")
+    )
+    return Float64(rate)
+end
+function _check_importations(schedule)
+    hasmethod(calendar_multiplier, Tuple{typeof(schedule), Float64}) || throw(
+        ArgumentError(
+            "`importations` must be a vector of times, a rate, a " *
+                "`Steps` schedule or a function of time, got $(typeof(schedule))"
+        )
+    )
+    return schedule
+end
+
+_import_times(::TransmissionModel, ::SimOpts, rng) = ()
+function _import_times(m::BranchingProcess, opts::SimOpts, rng)
+    imp = m.importations
+    imp === nothing && return ()
+    imp isa AbstractVector && return imp
+    horizon = Float64(minimum(time_bound, opts.stopping_rules; init = Inf))
+    isfinite(horizon) || throw(
+        ArgumentError(
+            "importations at a rate need a finite time limit: pass `max_time`"
+        )
+    )
+    rate_at(t) = imp isa Real ? Float64(imp) : Float64(calendar_multiplier(imp, t))
+    bound = imp isa Real ? Float64(imp) : calendar_bound(imp)
+    bound === nothing && (bound = 1.1 * maximum(rate_at, range(0.0, horizon; length = 1001)))
+    times = Float64[]
+    bound > 0 || return times
+    t = randexp(rng) / bound
+    while t < horizon
+        rate = rate_at(t)
+        rate <= bound || throw(
+            ArgumentError(
+                "the `importations` rate $rate on day $t exceeds its bound $bound; " *
+                    "a function of the day is bounded by its largest value on a grid " *
+                    "over `max_time`, so use a `Steps` schedule for a " *
+                    "narrow peak"
+            )
+        )
+        rand(rng) * bound <= rate && push!(times, t)
+        t += randexp(rng) / bound
+    end
+    return times
+end
 
 # The population a process is built with, from the `population` keyword or
 # the `population_size` shorthand for one group, checked against the number of

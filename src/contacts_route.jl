@@ -76,7 +76,7 @@ _pair_kernel(::_ContactsOf, infector_id, target_id, state) = nothing
 # The model times each exposure from the case's infection, and an intervention
 # that removes the case ends its exposures.
 _contacts_window() = RouteWindow(
-    :transmission; from = :infection, until = (INTERVENTION_REMOVAL,), kernel = nothing
+    :transmission; from = :infection, removed_by_interventions = true, kernel = nothing
 )
 _route_open(::_ContactsOf, ind, w::RouteWindow) = ind.infection_time
 _route_may_block(::_ContactsOf) = true

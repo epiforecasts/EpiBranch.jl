@@ -916,7 +916,7 @@ EpiBranch.individuals(s::PeopleOnlyState) = s.people
             targets = EpiBranch.MassAction(
                 state, members; mixing_by = (:age_band,), rate, from = :infection
             ),
-            from = :infection, until = (:recovered, EpiBranch.INTERVENTION_REMOVAL),
+            from = :infection, until = (:recovered,),
             interventions
         )
         return state

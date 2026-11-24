@@ -1,9 +1,12 @@
 module EpiBranchMakieExt
 
-using EpiBranch: EpiBranch, SimulationState, incidence, summarise
+using EpiBranch: EpiBranch, SimulationState, TransitionCount, incidence, summarise,
+    individuals, is_infected, end_of_outbreak_inputs, end_of_outbreak_probability,
+    _onset_or_infection, _case_time
 using Dates: Date, Day
-using Distributions: DiscreteUnivariateDistribution, pdf
-using Makie: Makie, Figure, Axis, band!, lines!, barplot!, scatter!, axislegend
+using DataFrames: AbstractDataFrame, groupby
+using Distributions: DiscreteUnivariateDistribution, Distribution, NegativeBinomial, pdf, quantile
+using Makie: Makie, Figure, Axis, band!, lines!, barplot!, scatter!, scatterlines!, axislegend
 
 # Bands cannot take dates, so dates are plotted as day numbers.
 _day_numbers(dates) = Float64.((dates .- first(dates)) ./ Day(1))
@@ -18,7 +21,7 @@ end
 
 function EpiBranch.epicurve(
         states::Vector{<:SimulationState};
-        interval::Integer = 7, by::Symbol = :onset,
+        interval::Integer = 7, by::Union{TransitionCount, Function} = _onset_or_infection,
         reference_date::Date = Date(2020, 1, 1), range = nothing,
         probs = (0.025, 0.25, 0.5, 0.75, 0.975)
     )
@@ -41,7 +44,7 @@ end
 
 function EpiBranch.epicurve(
         state::SimulationState;
-        interval::Integer = 7, by::Symbol = :onset,
+        interval::Integer = 7, by::Union{TransitionCount, Function} = _onset_or_infection,
         reference_date::Date = Date(2020, 1, 1), range = nothing
     )
     counts = incidence(state; interval, by, reference_date, range)
@@ -74,6 +77,65 @@ function EpiBranch.chain_size_plot(
     )
     scatter!(ax, collect(grid), pdf.(law, grid); color = :black, label = "Exact")
     axislegend(ax; position = :rt)
+    return fig
+end
+
+function EpiBranch.containment_plot(
+        results::AbstractDataFrame, x::Symbol; group::Union{Nothing, Symbol} = nothing
+    )
+    for col in (x, :containment_probability, group)
+        col === nothing || col in propertynames(results) ||
+            throw(ArgumentError("containment_plot: results has no column $col"))
+    end
+    isempty(results) && throw(ArgumentError("containment_plot: results is empty"))
+    results = copy(results)
+    for col in (x, :containment_probability)
+        results[!, col] = identity.(results[!, col])
+    end
+    eltype(results[!, x]) <: Real ||
+        throw(ArgumentError("containment_plot: column $x is not numeric"))
+    fig = Figure()
+    ax = Axis(
+        fig[1, 1]; xlabel = string(x), ylabel = "Containment probability",
+        limits = (nothing, (0, 1))
+    )
+    if group === nothing
+        sorted = sort(results, x)
+        scatterlines!(ax, sorted[!, x], sorted.containment_probability; color = :steelblue)
+    else
+        for (key, part) in pairs(groupby(results, group; sort = true))
+            sorted = sort(part, x)
+            scatterlines!(
+                ax, sorted[!, x], sorted.containment_probability; label = string(key[1])
+            )
+        end
+        axislegend(ax, string(group); position = :rt)
+    end
+    return fig
+end
+
+function EpiBranch.end_of_outbreak_plot(
+        state::SimulationState, offspring::NegativeBinomial,
+        generation_time::Distribution;
+        by::Union{TransitionCount, Function} = _onset_or_infection, times = nothing
+    )
+    observed = filter(isfinite, [_case_time(by, ind) for ind in individuals(state) if is_infected(ind)])
+    isempty(observed) && throw(ArgumentError("end_of_outbreak_plot: no cases to plot"))
+    first_case = minimum(observed)
+    if times === nothing
+        stop = maximum(observed) + quantile(generation_time, 0.99)
+        times = range(first_case, stop; length = 100)
+    end
+    times = filter(>=(first_case), collect(times))
+    isempty(times) && throw(ArgumentError("end_of_outbreak_plot: no time is after the first case"))
+    probs = map(times) do t
+        inputs = end_of_outbreak_inputs(state, t; by)
+        end_of_outbreak_probability(offspring, generation_time, inputs.τs, inputs.secondary_cases)
+    end
+    fig = Figure()
+    ax = Axis(fig[1, 1]; xlabel = "Time (days)", ylabel = "Probability the outbreak is over")
+    lines!(ax, Float64.(times), Float64.(probs); color = :steelblue, linewidth = 2)
+    Makie.ylims!(ax, 0, 1)
     return fig
 end
 
