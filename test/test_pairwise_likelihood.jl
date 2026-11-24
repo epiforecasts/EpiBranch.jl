@@ -21,6 +21,9 @@ struct _GappedInfections{S} <: InfectionLayer
 end
 EpiBranch.contact_structure(d::_GappedInfections) = d.structure
 
+# A `ConditionOn` with no `condition_mask` method.
+struct _NoMask <: ConditionOn end
+
 struct _TestInfections{S} <: InfectionLayer
     structure::S
     infection_time::Vector{Float64}
@@ -288,7 +291,7 @@ end
         @test isempty(L.no_rows)
 
         # with a community hazard every host is explained and gets an external row
-        Le = compile_contact_pairs(membership, is_index, infected; external = true)
+        Le = compile_contact_pairs(membership, is_index, infected; external_hazard = 0.1)
         @test Le.sus == [1, 1, 2, 2, 3, 3, 3, 4, 5, 5]
         @test Le.infector == [0, 2, 0, 1, 0, 1, 2, 0, 0, 4]
         @test Le.is_ext == (Le.infector .== 0)
@@ -302,7 +305,7 @@ end
 
         # a chosen initial case is conditioned on even when the hazard explains the index cases
         Lseed = compile_contact_pairs(
-            membership, is_index, infected; external = true, seeded = [false, false, false, true, false]
+            membership, is_index, infected; external_hazard = 0.1, seeded = [false, false, false, true, false]
         )
         @test Lseed.sus == [1, 1, 2, 2, 3, 3, 3, 5, 5]
         @test isempty(Lseed.no_rows)
@@ -315,6 +318,33 @@ end
         # each household is its own connected component, numbered in label order
         @test L.component == [1, 1, 1, 2, 2]
         @test L.ncomponents == 2
+    end
+
+    @testset "ConditionOn picks the conditioned hosts in any contact structure" begin
+        # undirected path 1-2-3 and a separate pair 4-5; 2 is recruited, but
+        # 1 is infected first, and 5 first in its pair
+        contacts = [[2], [1, 3], [2], [5], [4]]
+        data = _TestInfections(
+            contacts, [0.5, 1.0, 2.0, 3.0, 1.0], [0.5, 1.0, 2.0, 3.0, 1.0],
+            fill(Inf, 5), [false, true, false, false, false]
+        )
+        @test EpiBranch.condition_mask(RecruitedIndex(), data) == data.is_index
+        @test EpiBranch.condition_mask(EarliestInfected(), data) ==
+            [true, false, false, false, true]
+
+        recruited = compile_contact_pairs(data)
+        earliest = compile_contact_pairs(data; condition_on = EarliestInfected())
+        @test recruited.sus != earliest.sus
+        @test 1 ∉ earliest.sus && 5 ∉ earliest.sus
+        @test 2 ∉ recruited.sus
+
+        # a community hazard explains every host, so the rule has no effect
+        @test compile_contact_pairs(data; external_hazard = 0.1).sus ==
+            compile_contact_pairs(
+            data; external_hazard = 0.1, condition_on = EarliestInfected()
+        ).sus
+
+        @test_throws MethodError compile_contact_pairs(data; condition_on = _NoMask())
     end
 
     @testset "layout on a directed graph" begin
@@ -335,7 +365,7 @@ end
         # 4 is not conditioned on but no infected host lists it as a contact
         @test L.no_rows == [4]
 
-        Le = compile_contact_pairs(contacts, is_index, infected; external = true)
+        Le = compile_contact_pairs(contacts, is_index, infected; external_hazard = 0.1)
         @test Le.sus == [1, 2, 2, 3, 3, 3, 4]
         @test Le.infector == [0, 0, 1, 0, 1, 2, 0]
         @test Le.contact_index == [0, 0, 1, 0, 2, 1, 0]
@@ -417,8 +447,8 @@ end
         net = _TestInfections(adjacency, inf, infectious, removal, is_index; obs_end = 10.0)
 
         for external in (false, true)
-            Lh = compile_contact_pairs(hh; external)
-            Ln = compile_contact_pairs(net; external)
+            Lh = compile_contact_pairs(hh; external_hazard = external ? 0.1 : 0.0)
+            Ln = compile_contact_pairs(net; external_hazard = external ? 0.1 : 0.0)
             @test Lh.sus == Ln.sus
             @test Lh.infector == Ln.infector
             @test Lh.is_ext == Ln.is_ext
@@ -442,7 +472,7 @@ end
             contacts, [1.0, 4.0, NaN, NaN], [1.0, 4.0, NaN, NaN],
             [6.0, 8.0, Inf, Inf], [true, false, false, false]; obs_end = 3.0
         )
-        L = compile_contact_pairs(data; external = true)
+        L = compile_contact_pairs(data; external_hazard = 0.1)
         k = Weibull(1.5, 3.0)
         # community rows stop at the earlier of infection and obs_end, and 2 has no
         # community event; 3 is exposed to 1 over [1, 6] and to 2 over [4, 8]
@@ -485,7 +515,7 @@ end
             [1, 2], [2.5, NaN], [2.5, NaN], [10.0, Inf], [true, false];
             obs_end = 4.0
         )
-        L = compile_contact_pairs(data; external = true)
+        L = compile_contact_pairs(data; external_hazard = 0.1)
         integrated(t) = 0.2 * min(t, 2.0) + 0.05 * max(t - 2.0, 0.0)
         expected = log(0.05) - integrated(2.5) - integrated(4.0)
         @test pairwise_surv_loglik(Exponential(1.0), data, L; external_hazard = schedule) ≈
@@ -537,14 +567,14 @@ end
         data = _TestInfections([1], [0.0], [0.0], [3.0], [true]; obs_end = 5.0)
         mass_action = MassActionHazard(; transmission_rate = 0.6, population_size = 4)
         @test pairwise_surv_loglik(Exponential(1.0), data; external_hazard = mass_action) == 0.0
-        L = compile_contact_pairs(data; external = true, explain_index = false)
+        L = compile_contact_pairs(data; external_hazard = mass_action)
         @test pairwise_surv_loglik(Exponential(1.0), data, L; external_hazard = mass_action) == 0.0
 
         # a layout built the obvious way, with explain_index defaulting to
         # external = true, disagrees with the explain_index = false mass
         # action needs, and must be rejected rather than silently scoring
         # every index case as unexplained
-        Lbad = compile_contact_pairs(data; external = true)
+        Lbad = compile_contact_pairs(data; external_hazard = 0.1)
         @test_throws ArgumentError pairwise_surv_loglik(
             Exponential(1.0), data, Lbad; external_hazard = mass_action
         )
@@ -590,7 +620,7 @@ end
         lone = _TestInfections([1], [0.0], [0.0], [3.0], [true]; obs_end = 5.0)
         @test pairwise_surv_loglik(Exponential(1.0), lone; external_hazard = total) ≈ log(α)
         @test pairwise_surv_loglik(Exponential(1.0), lone; external_hazard = mass) == 0.0
-        Lsum = compile_contact_pairs(lone; external = true, explain_index = true)
+        Lsum = compile_contact_pairs(lone; external_hazard = total)
         @test pairwise_surv_loglik(Exponential(1.0), lone, Lsum; external_hazard = total) ≈ log(α)
 
         # 1 is an index case infectious over (0, 3]; 2 is infected at 3, when
@@ -681,9 +711,9 @@ end
             [1, 1, 2], [0.0, NaN, 0.0], [0.0, NaN, 0.0],
             [3.0, Inf, 3.0], [true, false, true]; obs_end = 5.0
         )
-        L = compile_contact_pairs(data; external = true, explain_index = false)
-        k = Exponential(2.0)
         mass_action = MassActionHazard(; transmission_rate = β, population_size = N)
+        L = compile_contact_pairs(data; external_hazard = mass_action)
+        k = Exponential(2.0)
 
         r = β / N
         # 1 and 3 are conditioned on; 2 escapes the community hazard (I(t) = 2
@@ -701,7 +731,7 @@ end
             [1, 1, 2], [0.0, NaN, 0.0], [0.0, NaN, 0.0],
             [3.0, Inf, 3.0], [true, false, true]; obs_end = 5.0
         )
-        L = compile_contact_pairs(data; external = true)
+        L = compile_contact_pairs(data; external_hazard = 0.1)
         k = Exponential(2.0)
         α = 0.1
         # each case at 0 adds log α; 2 escapes α·5 from the community and 3/2 from 1
@@ -814,7 +844,7 @@ end
                 v = pairwise_surv_loglik(wk, full; external_hazard = α)
                 @test isfinite(v)
                 @test v ≈ pairwise_surv_loglik(wk, cut; external_hazard = α)
-                L = compile_contact_pairs(full; external = true)
+                L = compile_contact_pairs(full; external_hazard = 0.1)
                 @test pairwise_surv_loglik(wk, full, L; external_hazard = α) ≈ v
             end
         end
@@ -824,7 +854,7 @@ end
             adjacency, inf, infectious, removal, index;
             obs_end = 10.0, followup_end = 6.0
         )
-        L = compile_contact_pairs(full; external = true)
+        L = compile_contact_pairs(full; external_hazard = 0.1)
         f(θ) = pairwise_surv_loglik(
             Weibull(exp(θ[1]), exp(θ[2])), full, L;
             external_hazard = exp(θ[3])
@@ -906,7 +936,7 @@ end
         adjacency = [[2], [1], [4], [3]]
         for structure in (membership, adjacency)
             data = _TestInfections(structure, inf, inf, removal, index; obs_end = 5.0)
-            L = compile_contact_pairs(data; external = true)
+            L = compile_contact_pairs(data; external_hazard = 0.1)
             f(θ) = pairwise_surv_loglik(
                 Exponential(exp(θ[1])), data;
                 external_hazard = exp(θ[2])
@@ -934,7 +964,7 @@ end
                 structure, [0.0, 1.0, NaN, NaN], [0.0, 1.0, NaN, NaN],
                 [5.0, 6.0, Inf, Inf], index; obs_end = 5.0
             )
-            okL = compile_contact_pairs(ok; external = true)
+            okL = compile_contact_pairs(ok; external_hazard = 0.1)
             h(θ) = pairwise_surv_loglik(
                 Exponential(exp(θ[1])), ok, okL;
                 external_hazard = exp(θ[2])
@@ -996,8 +1026,8 @@ end
         hh = _TestInfections(membership, inf, infectious, removal, is_index; obs_end = 10.0)
         net = _TestInfections(adjacency, inf, infectious, removal, is_index; obs_end = 10.0)
         for external in (false, true)
-            Lh = compile_contact_pairs(hh; external)
-            Ln = compile_contact_pairs(net; external)
+            Lh = compile_contact_pairs(hh; external_hazard = external ? 0.1 : 0.0)
+            Ln = compile_contact_pairs(net; external_hazard = external ? 0.1 : 0.0)
             @test Lh.component == membership
             @test Lh.component == Ln.component
             @test Lh.ncomponents == Ln.ncomponents == 4
@@ -1023,7 +1053,7 @@ end
         removal2 = [5.0, 6.0, 12.0, 13.0]
         index2 = [true, false, true, false]
         data = _TestInfections(structure, inf2, inf2, removal2, index2; obs_end = 5.0)
-        L = compile_contact_pairs(data; external = true)
+        L = compile_contact_pairs(data; external_hazard = 0.1)
         k = Exponential(3.0)
         α = 0.1
         by_component = pairwise_surv_loglik_by_component(k, data, L; external_hazard = α)
@@ -1082,7 +1112,7 @@ end
             true, false, false, false,
         ]
         hh = _TestInfections(membership, inf, infectious, removal, is_index; obs_end = 10.0)
-        L = compile_contact_pairs(hh; external = true)
+        L = compile_contact_pairs(hh; external_hazard = 0.1)
         k = Exponential(2.5)
 
         total = pairwise_surv_loglik(k, hh, L; external_hazard = 0.05)

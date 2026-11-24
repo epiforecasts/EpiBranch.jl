@@ -116,62 +116,6 @@ function household_infections(
 end
 
 """
-    ConditionOn
-
-How the household likelihood conditions on the index case: which member of
-each household is taken as given rather than explained by transmission within
-the household. [`RecruitedIndex`](@ref) and [`EarliestInfected`](@ref) are the
-two supplied; a rule of your own needs only a [`condition_mask`](@ref
-EpiHouseholds.condition_mask) method.
-"""
-abstract type ConditionOn end
-
-"""
-    RecruitedIndex()
-
-Condition each household on its recruited index case, `data.is_index`, as
-recorded.
-
-Only that one member is taken as given. Co-primary cases infected from outside
-at about the same time are assumed to come from household transmission unless the model
-has a community hazard. Recruitment that depends on the index case's detection,
-symptoms or secondary cases makes the households unrepresentative. The
-estimate is then biased unless the likelihood is conditioned on that
-recruitment, which this rule does not do.
-"""
-struct RecruitedIndex <: ConditionOn end
-
-"""
-    EarliestInfected()
-
-Condition each household on whichever member has the earliest
-`infection_time` (on a tie, the lowest person number). This is worked out from
-`data` on every call, so the conditioned member can change as imputed
-infection times change.
-
-This covers an index case that was not the first infected, but it still takes
-only one member per household as given. Co-primary cases infected from outside
-at about the same time are assumed to come from household transmission unless the model
-has a community hazard. Recruitment that depends on detection, symptoms or
-secondary cases biases the estimate unless the likelihood is conditioned on it.
-"""
-struct EarliestInfected <: ConditionOn end
-
-"""
-    condition_mask(rule::ConditionOn, data::HouseholdInfections) -> AbstractVector{Bool}
-
-Which person in each household `rule` conditions on: a vector shaped like
-`data.is_index`, `true` for each household's conditioned member and `false`
-elsewhere. One method per rule.
-"""
-condition_mask(::RecruitedIndex, data::HouseholdInfections) = data.is_index
-function condition_mask(::EarliestInfected, data::HouseholdInfections)
-    return _earliest_infected(
-        data.household_of, data.infection_time, .!isnan.(data.infection_time)
-    )
-end
-
-"""
     loglikelihood(data::HouseholdInfections, model::HouseholdProcess;
                   condition_on = RecruitedIndex(), susceptibility = nothing,
                   layout = nothing) -> Float64
@@ -188,9 +132,8 @@ vaccination in the model is evaluated from the immunity times
 
 The pair layout is rebuilt on every call unless `layout` supplies one. In a
 fitting loop, build it once with [`compile_household_pairs`](@ref) and pass it
-as `layout`, with the `external` and `explain_index` settings the model's
-`external_hazard` implies; `condition_on` is then ignored. A layout is fixed to
-the data it was built from. Rebuild it when the set of infected members
+as `layout`, together with the `external_hazard` of the model; `condition_on` is then
+ignored. A layout is fixed to the data it was built from. Rebuild it when the set of infected members
 changes, and at every evaluation with `condition_on = EarliestInfected()`.
 """
 function Distributions.loglikelihood(
@@ -198,12 +141,9 @@ function Distributions.loglikelihood(
         condition_on::ConditionOn = RecruitedIndex(), susceptibility = nothing,
         layout::Union{Nothing, ContactPairsLayout} = nothing
     )
-    external = _ext_active(model.external_hazard)
     if layout === nothing
         layout = compile_household_pairs(
-            data; external,
-            explain_index = external && _ext_explains_index(model.external_hazard),
-            condition_on
+            data; external_hazard = model.external_hazard, condition_on
         )
     end
     return pairwise_surv_loglik(
@@ -236,8 +176,8 @@ from households. Build it with [`compile_household_pairs`](@ref).
 const HouseholdPairsLayout = ContactPairsLayout
 
 """
-    compile_household_pairs(household_of, is_index, infected; external=false, explain_index=external)
-    compile_household_pairs(data::HouseholdInfections; external=false, explain_index=external, condition_on=RecruitedIndex())
+    compile_household_pairs(household_of, is_index, infected; external_hazard=0.0)
+    compile_household_pairs(data::HouseholdInfections; external_hazard=0.0, condition_on=RecruitedIndex())
 
 List once who could have infected whom in a household population, where
 household members are each other's possible infectors; this is
@@ -247,8 +187,8 @@ there. Evaluate the result with
 
 `condition_on` is a [`ConditionOn`](@ref) rule saying how to condition on the
 index case: which member of each household the likelihood takes as given,
-when index cases are not explained (`explain_index = false`; when they are,
-every infection is explained and the rule has no effect). [`RecruitedIndex`](@ref),
+when the `external_hazard` does not explain index cases (when it does, every
+infection is explained and the rule has no effect). [`RecruitedIndex`](@ref),
 the default, conditions on the recruited index case, `data.is_index`, fixed
 when the data are read. [`EarliestInfected`](@ref) conditions on the household
 member with the earliest `infection_time` in `data`, worked out on every call.
@@ -263,40 +203,14 @@ function compile_household_pairs(
         household_of::AbstractVector{<:Integer},
         is_index::AbstractVector{Bool},
         infected::AbstractVector{Bool};
-        external::Bool = false, explain_index::Bool = external
+        external_hazard = 0.0
     )
-    return compile_contact_pairs(household_of, is_index, infected; external, explain_index)
+    return compile_contact_pairs(household_of, is_index, infected; external_hazard)
 end
 
 function compile_household_pairs(
-        d::HouseholdInfections; external::Bool = false, explain_index::Bool = external,
+        d::HouseholdInfections; external_hazard = 0.0,
         condition_on::ConditionOn = RecruitedIndex()
     )
-    infected = .!isnan.(d.infection_time)
-    return compile_contact_pairs(
-        d.household_of, condition_mask(condition_on, d), infected;
-        external, explain_index, seeded = d.seeded
-    )
-end
-
-# The earliest-infected member of each household named in `household_of`,
-# among the hosts `infected` marks, as an `is_index`-shaped mask: `true` for
-# each household's earliest case, `false` elsewhere (including households with
-# no infected member). Ties keep the lowest host id.
-function _earliest_infected(household_of, infection_time, infected::AbstractVector{Bool})
-    n = length(household_of)
-    earliest_time = Dict{Int, eltype(infection_time)}()
-    earliest_host = Dict{Int, Int}()
-    for i in 1:n
-        infected[i] || continue
-        h = household_of[i]
-        t = infection_time[i]
-        if !haskey(earliest_time, h) || t < earliest_time[h]
-            earliest_time[h] = t
-            earliest_host[h] = i
-        end
-    end
-    is_earliest = falses(n)
-    is_earliest[collect(values(earliest_host))] .= true
-    return is_earliest
+    return compile_contact_pairs(d; external_hazard, condition_on)
 end

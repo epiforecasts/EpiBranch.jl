@@ -73,7 +73,7 @@
             progression = sir
         )
         data = household_infections(simulate(model; rng = StableRNG(11)), model)
-        layout = compile_household_pairs(data; external = true)
+        layout = compile_household_pairs(data; external_hazard = 0.1)
         per_arm = [
             pairwise_surv_loglik_by_component(
                 Exponential(3.0), data, layout; external_hazard = a
@@ -120,7 +120,7 @@
             progression = sir
         )
         data = household_infections(simulate(model; rng = StableRNG(17)), model)
-        layout = compile_household_pairs(data; external = true)
+        layout = compile_household_pairs(data; external_hazard = 0.1)
         g(θ) = pairwise_surv_loglik(
             Exponential(exp(θ[1])), data, layout; external_hazard = hazard(θ)
         )
@@ -206,7 +206,7 @@ end
                 progression = sir
             )
             data = household_infections(simulate(model; rng = StableRNG(13)), model)
-            layout = compile_household_pairs(data; external = true)
+            layout = compile_household_pairs(data; external_hazard = 0.1)
             per_schedule = [
                 pairwise_surv_loglik_by_component(
                     Exponential(3.0), data, layout; external_hazard = s

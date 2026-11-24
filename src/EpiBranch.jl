@@ -310,6 +310,7 @@ export end_of_outbreak_probability, end_of_outbreak_inputs
 export PairKernel, PairContext, Steps, Seasonal, record_kernel, LayerHost
 export InfectionLayer, PairwiseSurvivalData, ContactPairsLayout, MassActionHazard, SumHazard
 export compile_contact_pairs, pairwise_surv_loglik, pairwise_surv_loglik_by_component
+export ConditionOn, RecruitedIndex, EarliestInfected
 # Progression (natural-history) likelihood
 export progression_loglik
 
