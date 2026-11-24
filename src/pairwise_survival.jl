@@ -1063,10 +1063,7 @@ Condition on the recruited index cases, `data.is_index`, as recorded.
 
 Only those people are taken as given. Co-primary cases infected from outside at
 about the same time are assumed to come from transmission within the contact
-structure unless the model has a community hazard. Recruitment that depends on
-the index case's detection, symptoms or secondary cases makes the sample
-unrepresentative. The estimate is then biased unless the likelihood is
-conditioned on that recruitment, which this rule does not do.
+structure unless the model has a community hazard.
 """
 struct RecruitedIndex <: ConditionOn end
 
@@ -1075,15 +1072,8 @@ struct RecruitedIndex <: ConditionOn end
 
 Condition on whichever person in each connected part of the contact structure
 (each household, for households) has the earliest `infection_time`, and on the
-lowest person number on a tie. This is worked out from `data` on every call, so
-the conditioned person can change as imputed infection times change.
-
-This covers an index case that was not the first infected, but it still takes
-only one person per group as given. Co-primary cases infected from outside at
-about the same time are assumed to come from transmission within the contact
-structure unless the model has a community hazard. Recruitment that depends on
-detection, symptoms or secondary cases biases the estimate unless the
-likelihood is conditioned on it.
+lowest person number on a tie. This is worked out from `data` on every call.
+Only one person per group is taken as given.
 """
 struct EarliestInfected <: ConditionOn end
 
@@ -1096,21 +1086,13 @@ for each conditioned person and `false` elsewhere. One method per rule.
 condition_mask(::RecruitedIndex, data::InfectionLayer) = data.is_index
 function condition_mask(::EarliestInfected, data::InfectionLayer)
     component, _ = _structure_components(contact_structure(data))
-    return _earliest_infected(component, data.infection_time, .!isnan.(data.infection_time))
-end
-
-# The earliest-infected person of each component, among the hosts `infected`
-# marks, as an `is_index`-shaped mask: `true` for each component's earliest
-# case, `false` elsewhere (including components with no infected member). Ties
-# keep the lowest host id.
-function _earliest_infected(component, infection_time, infected::AbstractVector{Bool})
     n = length(component)
-    earliest_time = Dict{Int, eltype(infection_time)}()
+    earliest_time = Dict{Int, eltype(data.infection_time)}()
     earliest_host = Dict{Int, Int}()
     for i in 1:n
-        infected[i] || continue
+        t = data.infection_time[i]
+        isnan(t) && continue
         c = component[i]
-        t = infection_time[i]
         if !haskey(earliest_time, c) || t < earliest_time[c]
             earliest_time[c] = t
             earliest_host[c] = i
