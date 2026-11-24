@@ -59,8 +59,8 @@ end
                 for i in 1:reps
         ]
         @test same == random
-        # A weight above 1 leaves fewer doses for the unprotected, and the pool
-        # is the unprotected plus the weighted protected.
+        # A weight above 1 leaves fewer doses for the unprotected. The pool is
+        # the unprotected plus the weighted protected.
         draws = [
             protected(FavourVaccinated(3.0), 2_000, 0.8, 600, 300, 1_000; seed = i)
                 for i in 1:reps
