@@ -544,6 +544,7 @@ nothing # hide
 
 Wrapped in [`CapacityConstrained`](@ref), a `MassVaccination` gives a number of doses to the population instead of vaccinating each person on their `eligibility_time`.
 Each dose goes to a person picked at random (the `dosing` rule, [`RandomDosing`](@ref) by default) and protects a susceptible it reaches with probability `efficacy`.
+[`SusceptibleDosing`](@ref) gives every dose to a susceptible, and [`FavourVaccinated`](@ref)`(weight)` makes a person already protected `weight` times as likely as anyone else to receive each dose.
 Those it protects leave the susceptibles, as infected people do.
 A [`PerGroup`](@ref) budget gives one type of a model with several types its own doses.
 This applies to a [`BranchingProcess`](@ref) with a [`Population`](@ref) and to [`simulate_by_generation`](@ref); there the doses of a generation are given at the start of its interval.

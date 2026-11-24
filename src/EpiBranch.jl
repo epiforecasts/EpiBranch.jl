@@ -224,7 +224,8 @@ export AnyOf, AllOf, NoneOf
 export TraceRate, ConstantRate
 export TraceAction, Quarantine, FlagOnly
 export AbstractVaccination, VaccineEffect, RingVaccination, MassVaccination,
-    GroupVaccination, AbstractDosing, RandomDosing
+    GroupVaccination, AbstractDosing, RandomDosing,
+    SusceptibleDosing, FavourVaccinated
 export AbstractEffectMode, LeakyMode, AllOrNothingMode
 export Scheduled, Risk
 export AbstractTrigger, is_triggered!, trigger_can_lapse, required_transitions,

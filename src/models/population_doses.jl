@@ -132,7 +132,8 @@ function _give_period!(l::_MassLedger, state, t0, t1, dated)
     for g in eachindex(by_type)
         susceptibles = max(l.sizes[g] - cases[g] - protected[g], 0)
         protected[g] += protected_by_doses(
-            c.dosing, state.rng, by_type[g], c.efficacy, susceptibles, l.sizes[g]
+            c.dosing, state.rng, by_type[g], c.efficacy, susceptibles,
+            protected[g], l.sizes[g]
         )
     end
     l.used .+= length(l.used) == 1 ? sum(by_type) : by_type
