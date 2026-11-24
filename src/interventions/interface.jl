@@ -293,11 +293,11 @@ acts on infections through a given transmission route, and whether its
 that route. `route` is a [`RouteWindow`](@ref), or `nothing` for an infection
 from outside the population. A model with a single route names it
 `:transmission`, as does each [`Infectiousness`](@ref) window of a
-[`BranchingProcess`](@ref) that is not given its own `name`; the window is
-[`removed_by_interventions`](@ref EpiBranch.removed_by_interventions), lists
+[`BranchingProcess`](@ref) that is not given its own `name`; the window has
+[`removed_by_interventions`](@ref EpiBranch.removed_by_interventions) set, lists
 whatever states it has in `until`, and names no `from`. A model written against [`generate_offspring`](@ref) has one such
 window, and one written against [`contacts_of`](@ref) a single `:transmission`
-route removed by interventions. The default is `true`, so protection
+route removed by interventions. The default is `true`: protection
 such as vaccination follows a person across routes. [`Scheduled`](@ref) and
 [`CapacityConstrained`](@ref) answer for the intervention they contain, and so
 does [`OnRoutes`](@ref), narrowed further to the routes it names.

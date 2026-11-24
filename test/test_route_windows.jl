@@ -238,7 +238,7 @@ EpiBranch.records_contacts(::AlwaysRecord, parent, contact, state, t) = true
 
     @testset "removed_by_interventions is opt-in per route" begin
         # Two routes differing only in whether the interventions
-        # remove them. This is the whole mechanism behind a control measure cutting
+        # remove them. That is how a control measure can cut
         # one route and leaving another: the household route survives isolation,
         # the community route does not.
         iso = Isolation(delay = Exponential(1.0), duration = Inf)

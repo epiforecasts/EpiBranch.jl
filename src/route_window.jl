@@ -36,7 +36,7 @@ people in the network.
 - `until` is the tuple of states that end the route; it closes at the
   earliest of them. A state ends only the routes that list it, so a control
   measure can end one route and leave another open.
-- `removed_by_interventions` makes the route one that the model's interventions
+- `removed_by_interventions` marks a route that the interventions in the model
   (isolation, or quarantine after being traced) end; see
   [`removed_by_interventions`](@ref EpiBranch.removed_by_interventions).
 - `kernel` is the contact interval on this route: the time in days from the
@@ -145,10 +145,10 @@ end
 """
     removed_by_interventions(route) -> Bool
 
-Whether the model's interventions end transmission along `route`: the route
-then stops when they remove the case (perfect isolation, or quarantine after
-tracing). `false` for a [`RouteWindow`](@ref) unless it is built with
-`removed_by_interventions = true`, and `false` for `nothing`, an infection from
+Whether the interventions in the model end transmission along `route`. Such a
+route stops when they remove the case (perfect isolation, or quarantine after
+tracing). It is `false` for a [`RouteWindow`](@ref) unless built with
+`removed_by_interventions = true`, and for `nothing`, an infection from
 outside the population.
 """
 removed_by_interventions(w::RouteWindow) = w.removed_by_interventions

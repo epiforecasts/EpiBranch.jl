@@ -114,7 +114,7 @@ RouteWindow(name; from = nothing, until = (), kernel, reach = name,
 - `until` names the states that end the route, which closes at the earliest of
   their times. **A state listed by one route and not another ends only the
   first.** This is how a control measure cuts one route and leaves another.
-- `removed_by_interventions` makes the route one that isolation and
+- `removed_by_interventions` marks a route that isolation and
   quarantine end; see below.
 - `kernel` is the route's contact-interval distribution, measured from when the
   route opens.
@@ -159,7 +159,7 @@ Other states that end a route come from the natural history, but removal by an
 intervention cannot be read from a single recorded value: complete isolation
 takes a case out of transmission, while leaky isolation only reduces it, which
 a window cannot express. A route that isolation and quarantine should end is built with
-[`removed_by_interventions = true`](@ref EpiBranch.removed_by_interventions), and the removal time
+[`removed_by_interventions = true`](@ref EpiBranch.removed_by_interventions). The removal time
 then comes from each intervention's `infectious_removal_time`. `:isolated` in
 an `until` refers to a `Transition(:isolated, ...)` in the natural history
 instead.

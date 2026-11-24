@@ -190,8 +190,8 @@ is what a detection reads. The full history, which a likelihood needs, is the
 lists of stretches under `:_isolation_stretches` (perfect isolation) and
 `:_removal_stretches` (the shared default key), because one pair of times cannot
 record that a person was quarantined, released and later isolated again. A
-window that isolation should end is
-[`removed_by_interventions`](@ref EpiBranch.removed_by_interventions) (see [Transmission routes](new-structures.md#Transmission-routes)), which respects leaky
+window that isolation should end has
+[`removed_by_interventions`](@ref EpiBranch.removed_by_interventions) set (see [Transmission routes](new-structures.md#Transmission-routes)), which respects leaky
 isolation. `:isolated` in an `until` refers to a `Transition(:isolated, …)` in
 the natural history. Set and undo isolation with `set_isolated!` and
 `clear_isolated!`.

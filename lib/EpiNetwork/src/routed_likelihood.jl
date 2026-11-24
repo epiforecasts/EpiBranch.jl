@@ -399,8 +399,8 @@ end
 
 Log-likelihood of a routed-network outbreak under `windows`, a collection of
 [`RouteWindow`](@ref)s in the same order as `data`'s routes, giving each
-route's kernel, which states end it and whether interventions
-([`removed_by_interventions`](@ref EpiBranch.removed_by_interventions)) do.
+route's kernel, its ending states and whether interventions
+([`removed_by_interventions`](@ref EpiBranch.removed_by_interventions)) end it.
 
 Each susceptible's survival is the sum of every route's cumulative hazard
 from every possible infector on it (routes are independent competing risks),
