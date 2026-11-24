@@ -1,0 +1,1 @@
+`containment_plot` plots the containment probability from `scenario_sweep` against a swept parameter, with one line per value of a grouping column, and `end_of_outbreak_plot` plots the probability that a simulated outbreak is over at each time. Both return a Makie `Figure` and live in `EpiBranchMakieExt`.
