@@ -147,19 +147,9 @@ end
 
 Whether the model's interventions end transmission along `route`: the route
 then stops when they remove the case (perfect isolation, or quarantine after
-tracing), asking each intervention when it does through
-`infectious_removal_time`. `false` for a [`RouteWindow`](@ref) unless it is
-built with `removed_by_interventions = true`, and `false` for `nothing`, an
-infection from outside the population.
-
-Whether an intervention removes the case at all depends on the intervention:
-perfect isolation takes the case out of transmission, whereas leaky isolation
-only reduces it. This is why routes are worth separating. A community route
-is removed by interventions, so isolating a case ends their community
-transmission; a household route is not, so the case goes on infecting the
-people they live with. The same applies to the reduction from leaky isolation,
-but not to a vaccine's protection, which applies on every route; see
-[`risk_applies`](@ref EpiBranch.risk_applies).
+tracing). `false` for a [`RouteWindow`](@ref) unless it is built with
+`removed_by_interventions = true`, and `false` for `nothing`, an infection from
+outside the population.
 """
 removed_by_interventions(w::RouteWindow) = w.removed_by_interventions
 removed_by_interventions(::Nothing) = false
