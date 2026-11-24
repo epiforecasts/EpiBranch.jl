@@ -238,8 +238,10 @@ end
 EpiBranch.population_size(m::_MintedPopulation) = Population(m.size)
 function EpiBranch.contacts_of(m::_MintedPopulation, parent, state::EpiBranch.SimulationState)
     return [
-        (t = parent.infection_time + rand(state.rng);
-            (EpiBranch.make_contact!(state, parent, t), t))
+        (
+            t = parent.infection_time + rand(state.rng);
+            (EpiBranch.make_contact!(state, parent, t), t)
+        )
             for _ in 1:(m.k)
     ]
 end
