@@ -33,7 +33,7 @@ using EpiNetwork, EpiBranch, Distributions
 household = RouteWindow(:household; until = (:recovered,),
     kernel = Weibull(1.5, 3.0), reach = household_adjacency)
 community = RouteWindow(:community;
-    until = (:recovered, EpiBranch.INTERVENTION_REMOVAL),
+    until = (:recovered,), removed_by_interventions = true,
     kernel = Exponential(12.0), reach = community_adjacency)
 
 model = ModelSpec(RoutedNetwork([household, community]);
@@ -43,7 +43,7 @@ model = ModelSpec(RoutedNetwork([household, community]);
     attributes = clinical_presentation(incubation_period = LogNormal(1.0, 0.3)))
 ```
 
-Because the household route does not list `INTERVENTION_REMOVAL`, a case who
+Because the household route is not `removed_by_interventions`, a case who
 isolates keeps infecting their household to the end of their infectious
 period, as self-isolation at home does. Each route's kernel describes
 transmission as if the case were never removed; the realised number of
@@ -69,8 +69,9 @@ secondary cases falls according to which routes isolation cuts.
   records lists them in its `watches`, and only the routes reading a record
   that changes have their contacts redrawn;
 - `until`: the states that end transmission on this route, so one route can be
-  cut and another left alone. Include `EpiBranch.INTERVENTION_REMOVAL` for a
-  route that isolation or quarantine should end;
+  cut and another left alone;
+- `removed_by_interventions`: `true` for a route that isolation or quarantine
+  should end;
 - `from`: when the route's infectiousness starts. The default, `nothing`, takes
   the model's `from` or, if that is also `nothing`, the start the progression
   implies (`:infectious` when a latent period produces it). Name `:infection`
@@ -200,7 +201,7 @@ function _start_unset(w::RouteWindow, from)
     w.from === nothing || return w
     return RouteWindow(
         w.name, from, w.until, w.kernel, w.reach, w.contacts_from,
-        w.traceable
+        w.traceable, w.removed_by_interventions
     )
 end
 
@@ -210,7 +211,7 @@ function _validate_route_kernel(w::RouteWindow)
     return RouteWindow(
         w.name, w.from, w.until,
         _validate_kernel(w.kernel, w.reach; route = w.name), w.reach,
-        w.contacts_from, w.traceable
+        w.contacts_from, w.traceable, w.removed_by_interventions
     )
 end
 

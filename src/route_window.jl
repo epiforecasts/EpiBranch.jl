@@ -18,7 +18,8 @@
 
 """
     RouteWindow(name; from = nothing, until, kernel, reach = name,
-                contacts_from = :infection, traceable = 1.0)
+                contacts_from = :infection, traceable = 1.0,
+                removed_by_interventions = false)
 
 A route of transmission, such as community, household or funeral, with its
 own start, end and timing over a case's natural history. Used with
@@ -34,9 +35,10 @@ people in the network.
   infection.
 - `until` is the tuple of states that end the route; it closes at the
   earliest of them. A state ends only the routes that list it, so a control
-  measure can end one route and leave another open. List
-  [`EpiBranch.INTERVENTION_REMOVAL`](@ref) for a route that the model's
-  interventions (isolation, or quarantine after being traced) should end.
+  measure can end one route and leave another open.
+- `removed_by_interventions` is `true` for a route that the model's
+  interventions (isolation, or quarantine after being traced) should end, which
+  [`removed_by_interventions`](@ref EpiBranch.removed_by_interventions) reports.
 - `kernel` is the contact interval on this route: the time in days from the
   route opening to a contact that would infect if the route were still open.
 - `reach` tells the model who the route reaches. `RoutedNetwork`
@@ -74,7 +76,7 @@ the people it lives with:
 
 ```julia
 community = RouteWindow(:community; from = :infectious,
-    until = (:recovered, EpiBranch.INTERVENTION_REMOVAL), kernel = Exponential(4.0),
+    until = (:recovered,), removed_by_interventions = true, kernel = Exponential(4.0),
     reach = community_contacts)
 household = RouteWindow(:household; from = :infectious,
     until = (:recovered,), kernel = Weibull(1.5, 3.0), reach = household_contacts)
@@ -97,7 +99,7 @@ one in five:
 
 ```julia
 community = RouteWindow(:community;
-    until = (:recovered, EpiBranch.INTERVENTION_REMOVAL),
+    until = (:recovered,), removed_by_interventions = true,
     kernel = Exponential(4.0), traceable = 0.2, reach = community_contacts)
 ```
 """
@@ -109,11 +111,12 @@ struct RouteWindow{K, R}
     reach::R
     contacts_from::Symbol
     traceable::Float64
+    removed_by_interventions::Bool
 
     function RouteWindow(
             name::Symbol, from::Union{Symbol, Nothing}, until::Tuple,
             kernel::K, reach::R, contacts_from::Symbol,
-            traceable::Real
+            traceable::Real, removed_by_interventions::Bool
         ) where {K, R}
         0 <= traceable <= 1 || throw(
             ArgumentError(
@@ -123,7 +126,7 @@ struct RouteWindow{K, R}
         )
         return new{K, R}(
             name, from, until, kernel, reach, contacts_from,
-            Float64(traceable)
+            Float64(traceable), removed_by_interventions
         )
     end
 end
@@ -131,10 +134,37 @@ end
 function RouteWindow(
         name::Symbol; from::Union{Symbol, Nothing} = nothing, until::Tuple = (),
         kernel, reach = name, contacts_from::Symbol = :infection,
-        traceable::Real = 1.0
+        traceable::Real = 1.0, removed_by_interventions::Bool = false
     )
-    return RouteWindow(name, from, until, kernel, reach, contacts_from, traceable)
+    return RouteWindow(
+        name, from, until, kernel, reach, contacts_from, traceable,
+        removed_by_interventions
+    )
 end
+
+"""
+    removed_by_interventions(route) -> Bool
+
+Whether the model's interventions can end transmission on `route`, a
+[`RouteWindow`](@ref) or `nothing` for an infection from outside the
+population. A route for which this is `true` closes when the interventions
+remove the case (through `infectious_removal_time`), and [`Isolation`](@ref) and
+[`ContactTracing`](@ref) act on it (see [`risk_applies`](@ref EpiBranch.risk_applies)).
+It is `false` for anything else, so a route type of your own opts in with a
+method.
+
+States in `until` come from the natural history, so a route ends when the case
+recovers, dies or is buried. Removal by an intervention is different because
+whether it removes the case at all depends on the intervention: perfect
+isolation takes the case out of transmission entirely, whereas leaky isolation
+only reduces it. This is why routes are worth separating. A community route is
+removed by interventions, so isolating a case ends their community
+transmission; a household route is not, so the case goes on infecting the people
+they live with. The same applies to the reduction from leaky isolation, but not
+to a vaccine's protection, which applies on every route.
+"""
+removed_by_interventions(route) = false
+removed_by_interventions(route::RouteWindow) = route.removed_by_interventions
 
 function Base.show(io::IO, w::RouteWindow)
     print(
@@ -143,6 +173,7 @@ function Base.show(io::IO, w::RouteWindow)
     )
     w.contacts_from === :infection || print(io, ", contacts_from=:", w.contacts_from)
     w.traceable == 1 || print(io, ", traceable=", w.traceable)
+    w.removed_by_interventions && print(io, ", removed_by_interventions=true")
     return print(io, ")")
 end
 
@@ -169,8 +200,8 @@ earliest of its `until` states, or `Inf` if none has been reached. Each route
 is ended separately, so the same event can end one route and leave another
 open.
 
-A route listing [`EpiBranch.INTERVENTION_REMOVAL`](@ref) also closes when the
-`interventions` remove the case for good (perfect isolation, or quarantine,
+A route with [`removed_by_interventions`](@ref EpiBranch.removed_by_interventions)
+also closes when the `interventions` remove the case for good (perfect isolation, or quarantine,
 with no end); leaky or time-limited isolation acts on each contact instead. Pass
 the interventions the simulation used to get the same closing time as the
 simulation.

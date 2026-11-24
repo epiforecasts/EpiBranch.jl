@@ -177,7 +177,7 @@ end
 # own `name` (see `OnRoutes`).
 function _offspring_window(w::Infectiousness)
     return RouteWindow(
-        w.name; until = (w.until..., INTERVENTION_REMOVAL), kernel = nothing
+        w.name; until = w.until, removed_by_interventions = true, kernel = nothing
     )
 end
 

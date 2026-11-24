@@ -719,12 +719,14 @@ end
             test_sensitivity = 1.0, duration = Inf
         )
         hk, ck = Weibull(1.5, 4.0), Exponential(20.0)
-        REM = EpiBranch.INTERVENTION_REMOVAL
 
-        routes(hh_until) = [
-            RouteWindow(:household; until = hh_until, kernel = hk, reach = hh),
+        routes(hh_removed) = [
             RouteWindow(
-                :community; until = (:recovered, REM), kernel = ck,
+                :household; until = (:recovered,), removed_by_interventions = hh_removed,
+                kernel = hk, reach = hh
+            ),
+            RouteWindow(
+                :community; until = (:recovered,), removed_by_interventions = true, kernel = ck,
                 reach = comm
             ),
         ]
@@ -741,21 +743,21 @@ end
                 for s in 1:40
         ) / 40
 
-        removed = run(routes((:recovered, REM)), [iso])   # isolation cuts both
-        selfiso = run(routes((:recovered,)), [iso])       # household route survives
+        removed = run(routes(true), [iso])   # isolation cuts both
+        selfiso = run(routes(false), [iso])       # household route survives
 
         # Self-isolation must be strictly worse than being removed outright:
         # the household route keeps running either way it is cut.
         @test selfiso > removed
 
         # Both must beat no control at all.
-        @test removed < run(routes((:recovered,)), AbstractIntervention[])
+        @test removed < run(routes(false), AbstractIntervention[])
 
         # Under self-isolation the surviving transmission is mostly within
         # households, which is the whole point of separating the routes.
         st = simulate(
             ModelSpec(
-                RoutedNetwork(routes((:recovered,)));
+                RoutedNetwork(routes(false));
                 progression = _sir(10.0), interventions = [iso],
                 attributes = clinical
             );
@@ -1092,7 +1094,6 @@ end
         # A single route opening at the infectious start is a NetworkProcess, so
         # isolation and tracing must give the same outbreaks, including under a
         # latent period where a case can isolate before it becomes infectious.
-        REM = EpiBranch.INTERVENTION_REMOVAL
         adj = ring_adjacency(80)
         k = Exponential(1.0)
         prog = [
@@ -1110,7 +1111,7 @@ end
         routed = RoutedNetwork(
             [
                 RouteWindow(
-                    :all; until = (:recovered, REM),
+                    :all; until = (:recovered,), removed_by_interventions = true,
                     kernel = k, reach = adj
                 ),
             ]
@@ -1338,7 +1339,6 @@ end
         # Setting `from = :onset` on each route or on the model describes the
         # same outbreak, and both trace household and community contacts from
         # infection, as NetworkProcess does.
-        REM = EpiBranch.INTERVENTION_REMOVAL
         adj = ring_adjacency(80)
         k = Exponential(1.0)
         prog = [
@@ -1356,14 +1356,14 @@ end
             [
                 RouteWindow(
                     :all; from = :onset,
-                    until = (:recovered, REM), kernel = k, reach = adj
+                    until = (:recovered,), removed_by_interventions = true, kernel = k, reach = adj
                 ),
             ]
         )
         on_model = RoutedNetwork(
             [
                 RouteWindow(
-                    :all; until = (:recovered, REM),
+                    :all; until = (:recovered,), removed_by_interventions = true,
                     kernel = k, reach = adj
                 ),
             ];
@@ -1385,9 +1385,8 @@ end
         # Nobody dies, so no funeral route ever opens and node 3 is never a
         # contact of anyone: tracing must not reach it, whichever node is the
         # index case.
-        REM = EpiBranch.INTERVENTION_REMOVAL
         household = RouteWindow(
-            :household; until = (:recovered, REM),
+            :household; until = (:recovered,), removed_by_interventions = true,
             kernel = Exponential(1.0), reach = [[2], [1], Int[]]
         )
         funeral = RouteWindow(
@@ -1421,9 +1420,8 @@ end
         # Node 1 dies on day 8 and meets node 3 only at its funeral. It isolates
         # and is traced long before that, but node 3 cannot be reached before
         # the funeral, while its household contact node 2 is reached at once.
-        REM = EpiBranch.INTERVENTION_REMOVAL
         household = RouteWindow(
-            :household; until = (:died, REM),
+            :household; until = (:died,), removed_by_interventions = true,
             kernel = Exponential(1.0), reach = [[2], [1], Int[]]
         )
         funeral = RouteWindow(
@@ -1463,7 +1461,7 @@ end
         # isolated before it dies never holds a funeral and its funeral
         # neighbour is never traced.
         safe = RouteWindow(
-            :funeral; from = :died, until = (REM,),
+            :funeral; from = :died, removed_by_interventions = true,
             kernel = Exponential(1.0), reach = [[3], Int[], [1]], contacts_from = :died
         )
         m_safe = ModelSpec(
@@ -1555,7 +1553,6 @@ end
         hh_of(i) = (i - 1) ÷ hs
         hh = [[j for j in (hh_of(i) * hs + 1):(hh_of(i) * hs + hs) if j != i] for i in 1:n]
         comm = [[mod1(i + hs, n), mod1(i - hs, n)] for i in 1:n]
-        REM = EpiBranch.INTERVENTION_REMOVAL
         clinical = clinical_presentation(
             incubation_period = LogNormal(1.0, 0.3),
             prob_asymptomatic = 0.0
@@ -1578,7 +1575,7 @@ end
                         kernel = Weibull(1.5, 4.0), reach = hh
                     ),
                     RouteWindow(
-                        :community; until = (:recovered, REM),
+                        :community; until = (:recovered,), removed_by_interventions = true,
                         kernel = Exponential(3.0), reach = comm, traceable = p
                     ),
                 ]

@@ -155,8 +155,8 @@ simulation's random number generator, and runs are reproducible.
 Other states that end a route come from the natural history, but removal by an
 intervention cannot be read from a single recorded value: complete isolation
 takes a case out of transmission, while leaky isolation only reduces it, which
-a window cannot express. A route that isolation and quarantine should end lists
-[`EpiBranch.INTERVENTION_REMOVAL`](@ref) in its `until`, and the removal time
+a window cannot express. A route that isolation and quarantine should end sets
+`removed_by_interventions = true`, and the removal time
 then comes from each intervention's `infectious_removal_time`. `:isolated` in
 an `until` refers to a `Transition(:isolated, ...)` in the natural history
 instead.
@@ -167,7 +167,7 @@ with whom):
 
 ```julia
 community = RouteWindow(:community;
-    until = (:recovered, EpiBranch.INTERVENTION_REMOVAL),
+    until = (:recovered,), removed_by_interventions = true,
     kernel = Exponential(12.0), reach = community_adjacency)
 household = RouteWindow(:household; until = (:recovered,),
     kernel = Weibull(1.5, 3.0), reach = household_adjacency)

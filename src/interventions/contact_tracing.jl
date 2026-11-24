@@ -1082,9 +1082,7 @@ end
 prevents_contact(t::_Tracing) = prevents_contact(t.action)
 
 # A quarantine is a removal, so it reaches only the routes a removal can cut.
-function risk_applies(::_Tracing, route)
-    return route !== nothing && INTERVENTION_REMOVAL in route.until
-end
+risk_applies(::_Tracing, route) = removed_by_interventions(route)
 
 """With `depth > 1`, keep following traced contacts with ring budget left for
 one more hop, whether or not they are themselves infected, so tracing can

@@ -278,7 +278,7 @@ kernel or host traits. The likely cause is a case whose infectious window \
 never closes: either the progression has no terminal transition reaching \
 one of `until`'s states, or one is reachable but gated so that some cases \
 reach none of them (see `exclusive_probabilities`). A window closed only \
-by `INTERVENTION_REMOVAL` reaches this too when the case's isolation or \
+by `removed_by_interventions` reaches this too when the case's isolation or \
 quarantine is due to lapse, since only a removal that stands for the rest \
 of the infectious period closes the window by itself. A component whose \
 certain block is in force also lands here until it declares \
@@ -593,28 +593,6 @@ function _proposal_blocked(
     return blocked, level == _CONTACT_PREVENTED, permanent, release
 end
 
-"""
-    INTERVENTION_REMOVAL
-
-List this in a [`RouteWindow`](@ref)'s `until` to let control measures end
-transmission along that route: the route then stops when the model's
-interventions (isolation, quarantine after tracing) remove the case.
-
-Other states in `until` come from the natural history, so a route ends when
-the case recovers, dies or is buried. Removal by an intervention is different
-because whether it removes the case at all depends on the intervention:
-perfect isolation takes the case out of transmission entirely, whereas leaky
-isolation only reduces it. Listing `INTERVENTION_REMOVAL` asks each
-intervention when it removes the case (through `infectious_removal_time`).
-
-This is why routes are worth separating. A community route lists it, so
-isolating a case ends their community transmission; a household route does
-not, so the case goes on infecting the people they live with. The same applies
-to the reduction from leaky isolation, but not to a vaccine's protection, which
-applies on every route; see [`risk_applies`](@ref EpiBranch.risk_applies).
-"""
-const INTERVENTION_REMOVAL = :intervention_removal
-
 # Close a window: the earliest of its `until` states' times, the intervention
 # removal when the window opted into it, and a post-exposure abort, which ends
 # the infection outright and so closes every route, opted in or not — the same
@@ -626,7 +604,7 @@ const INTERVENTION_REMOVAL = :intervention_removal
 function _route_close(ind, w::RouteWindow, interventions)
     route_interventions = filter(iv -> risk_applies(iv, w), interventions)
     return _route_close(
-        ind, _time_keys(w.until), INTERVENTION_REMOVAL in w.until, route_interventions
+        ind, _time_keys(w.until), removed_by_interventions(w), route_interventions
     )
 end
 
@@ -657,7 +635,7 @@ end
 function _shorthand_window(from, until)
     return RouteWindow(
         :transmission; from = something(from, :infection),
-        until = (something(until, ())..., INTERVENTION_REMOVAL), kernel = nothing
+        until = something(until, ()), removed_by_interventions = true, kernel = nothing
     )
 end
 
@@ -862,8 +840,8 @@ way, which read that relationship rather than the proposals.
 
 A model with several transmission routes passes `routes`, a collection of
 `(RouteWindow, targets)` pairs, in place of `from`/`until`/`targets`. Each route
-opens and closes on its own window, and only a route listing
-`INTERVENTION_REMOVAL` in its `until` can be cut by the interventions'
+opens and closes on its own window, and only a route with
+[`removed_by_interventions`](@ref EpiBranch.removed_by_interventions) can be cut by the interventions'
 removals and blocked by removal risks such as isolation; among those routes,
 [`risk_applies`](@ref) decides which interventions reach each one by
 its `name`, so a measure can close one route and leave another open. A case
@@ -1015,7 +993,7 @@ function _sellke_race_typed!(
     # that stand in for one: a household route runs on through an isolation
     # scoped away from it, and blocking every proposal it makes would cut it
     # just as surely. This also lets several interventions share a window
-    # opted into `INTERVENTION_REMOVAL` while each still only closes the
+    # removed by interventions while each still only closes the
     # routes it names, as an `OnRoutes`-wrapped one does. A vaccine's
     # protection is no removal, and a vaccinated person is protected at home
     # too, so risks scoped to every route still apply. The model's own risks
@@ -1027,10 +1005,8 @@ function _sellke_race_typed!(
             for (w, _) in rts
     ]
     route_applies = [Bool[risk_applies(iv, w) for iv in typed_interventions] for (w, _) in rts]
-    close_keys = map(
-        ((w, _),) -> Symbol[_time_keys(filter(!=(INTERVENTION_REMOVAL), w.until))...], rts
-    )
-    removable = map(((w, _),) -> (INTERVENTION_REMOVAL in w.until)::Bool, rts)
+    close_keys = map(((w, _),) -> Symbol[_time_keys(w.until)...], rts)
+    removable = map(((w, _),) -> removed_by_interventions(w), rts)
 
     # An intervention declaring `acts_on_population` needs no case settled to
     # propose its actions, so it is offered every member before the race

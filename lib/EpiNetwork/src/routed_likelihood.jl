@@ -8,8 +8,8 @@
 # route's cumulative hazard (independent competing risks), and the event term
 # at an infected person's own infection time is a log-sum-exp over every
 # route and infector that could have produced it, exactly as `logsumexp` over
-# `data.contacts` terms would be for a single route. A route not listing
-# `EpiBranch.INTERVENTION_REMOVAL` keeps exposing its susceptibles through a
+# `data.contacts` terms would be for a single route. A route that is not
+# `removed_by_interventions` keeps exposing its susceptibles through a
 # stretch that removes the infector on another route, which is the entire
 # point of separating them.
 
@@ -202,8 +202,8 @@ Collect who was infected when from a routed-network outbreak simulated from
 race closed it, including a lapsing removal (such as an `Isolation` with a
 finite `duration`) stored in the record's `host_times` the same way
 [`network_infections`](@ref) stores it, for
-[`pairwise_surv_loglik`](@ref) to read back out on whichever routes list
-[`EpiBranch.INTERVENTION_REMOVAL`](@ref).
+[`pairwise_surv_loglik`](@ref) to read back out on whichever routes are
+[`removed_by_interventions`](@ref EpiBranch.removed_by_interventions).
 """
 function routed_network_infections(
         state::SimulationState,
@@ -399,18 +399,18 @@ end
 
 Log-likelihood of a routed-network outbreak under `windows`, a collection of
 [`RouteWindow`](@ref)s in the same order as `data`'s routes, giving each
-route's kernel and which states (including
-[`EpiBranch.INTERVENTION_REMOVAL`](@ref)) end it.
+route's kernel, which states end it and whether
+[`removed_by_interventions`](@ref EpiBranch.removed_by_interventions).
 
 Each susceptible's survival is the sum of every route's cumulative hazard
 from every possible infector on it (routes are independent competing risks),
 and an infected person's event term is the log of the summed hazard, over
 every route and every possible infector, at their infection time — the
 marginal density of whichever route and infector's draw came first in the
-race. A route whose `until` does not list `EpiBranch.INTERVENTION_REMOVAL`
+race. A route that is not `removed_by_interventions`
 keeps exposing its susceptibles through a stretch that an intervention such as
 `Isolation` or `Quarantine` removed the infector for on another route; one
-that does list it has that stretch, read from `data`'s `host_times` as the
+that is has that stretch, read from `data`'s `host_times` as the
 single-route likelihood reads it, taken out of its own exposure.
 
 `external_hazard` is community infection shared across every route, as for
@@ -468,7 +468,7 @@ function EpiBranch.pairwise_surv_loglik(
         ArgumentError("followup_end must be a non-negative number (Inf allowed), got $tfollow")
     )
     gaps = _removal_gaps(data)
-    gates = Bool[INTERVENTION_REMOVAL in w.until for w in windows]
+    gates = Bool[removed_by_interventions(w) for w in windows]
     infected = .!isnan.(data.infection_time)
     in_neighbours = [_route_in_neighbours(data.contacts[r], infected) for r in 1:n_routes]
     mixtures = _routed_host_mixtures(susceptibility, data, n)

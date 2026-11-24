@@ -689,11 +689,11 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         ]
         community = Infectiousness(
             Poisson(0.5); from = :infectious,
-            until = (:died, EpiBranch.INTERVENTION_REMOVAL), kernel = Exponential(1.0)
+            until = (:died,), kernel = Exponential(1.0)
         )
         funeral = Infectiousness(
             Poisson(3.0); from = :died,
-            until = (:buried, EpiBranch.INTERVENTION_REMOVAL), kernel = Uniform(0.0, 5.0)
+            until = (:buried,), kernel = Uniform(0.0, 5.0)
         )
         function funeral_cases(interventions)
             model = ModelSpec(

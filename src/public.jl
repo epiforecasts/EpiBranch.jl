@@ -179,9 +179,9 @@ public supports_waning
 # pair's contacts after a standing block would otherwise end them.
 public records_contacts
 
-# The pseudo-state a `RouteWindow` lists in its `until` to be cut by whatever
-# the composed interventions remove the case at.
-public INTERVENTION_REMOVAL
+# Whether a transmission route is cut by whatever the composed interventions
+# remove the case at.
+public removed_by_interventions
 
 # The run seam a model with its own simulation loop defines, and the public
 # wrapper around its construction: it resolves `max_time` from the run's

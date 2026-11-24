@@ -375,8 +375,8 @@ Used by interventions that isolate or quarantine people. `release_time` is
 required: pass `Inf` for isolation that never ends, so that indefinite
 isolation is always a stated choice.
 
-A transmission route that isolation should end lists
-[`EpiBranch.INTERVENTION_REMOVAL`](@ref) in its `until`, which also allows
+A transmission route that isolation should end is
+[`removed_by_interventions`](@ref EpiBranch.removed_by_interventions), which also allows
 for leaky isolation. `:isolated` in an `until` instead refers to a
 `Transition(:isolated, …)` step in the natural history.
 

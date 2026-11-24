@@ -360,13 +360,13 @@ rule for when transmission along them stops. Each kind of contact is a
 *route*, given as a [`RouteWindow`](@ref). Self-isolation can then stop
 community transmission while household transmission continues.
 
-The `until` argument of each route answers one question: does isolation stop
-transmission on this route?
+The `removed_by_interventions` argument of each route answers one question: does
+isolation stop transmission on this route?
 
-- `until = (:recovered,)`: no. Only recovery ends transmission on this route.
+- `removed_by_interventions = false` (the default): no. Only recovery ends transmission on this route.
   For a household route this is self-isolation at home. The trailing comma is
   needed to make a list of one item.
-- `until = (:recovered, EpiBranch.INTERVENTION_REMOVAL)`: yes. Transmission
+- `removed_by_interventions = true`: yes. Transmission
   on this route stops while the case is isolated or quarantined, and ends at
   recovery. With `duration = Inf` isolation ends it for good; with a finite
   `duration`, a case who is still infectious when released transmits on this
@@ -408,15 +408,13 @@ clinical2 = clinical_presentation(incubation_period = LogNormal(0.5, 0.3),
 iso2 = Isolation(delay = Exponential(1.0), test_sensitivity = 1.0,
     duration = Inf)
 
-stopped_by_isolation = (:recovered, EpiBranch.INTERVENTION_REMOVAL)
-not_stopped_by_isolation = (:recovered,)
-
 # The scenarios differ only in whether isolation stops household
 # transmission. Isolation always stops community transmission.
-routes(household_until) = [
-    RouteWindow(:household; until = household_until,
+routes(household_stopped) = [
+    RouteWindow(:household; until = (:recovered,),
+        removed_by_interventions = household_stopped,
         kernel = Weibull(1.5, 4.0), reach = hh_adj),
-    RouteWindow(:community; until = stopped_by_isolation,
+    RouteWindow(:community; until = (:recovered,), removed_by_interventions = true,
         kernel = Exponential(30.0), reach = comm_adj)]
 
 # Mean final size over 80 simulated outbreaks, each started by 3 index cases
@@ -431,11 +429,11 @@ function mean_size(route_list, interventions)
 end
 
 println("no control:                                 ",
-    mean_size(routes(not_stopped_by_isolation), AbstractIntervention[]))
+    mean_size(routes(false), AbstractIntervention[]))
 println("isolation away from home (all routes stop): ",
-    mean_size(routes(stopped_by_isolation), [iso2]))
+    mean_size(routes(true), [iso2]))
 println("self-isolation at home:                     ",
-    mean_size(routes(not_stopped_by_isolation), [iso2]))
+    mean_size(routes(false), [iso2]))
 ```
 
 The household contact interval is `Weibull(1.5, 4.0)` (shape 1.5 and scale 4
@@ -473,9 +471,9 @@ iso3 = Isolation(delay = Exponential(4.0), test_sensitivity = 1.0,
 ct3 = ContactTracing(probability = 0.9, isolation_to_trace_delay = Exponential(0.5),
     action = Quarantine(duration = Inf))
 traced_routes(community_traceable) = [
-    RouteWindow(:household; until = stopped_by_isolation,
+    RouteWindow(:household; until = (:recovered,), removed_by_interventions = true,
         kernel = Weibull(1.5, 4.0), reach = hh_adj),
-    RouteWindow(:community; until = stopped_by_isolation,
+    RouteWindow(:community; until = (:recovered,), removed_by_interventions = true,
         kernel = Exponential(15.0), reach = comm_adj,
         traceable = community_traceable)]
 
@@ -628,7 +626,7 @@ the household route's estimate is not biased by ignoring the community
 route's contribution, or the other way round.
 
 ```@example networks
-truth2 = ModelSpec(RoutedNetwork(routes(not_stopped_by_isolation));
+truth2 = ModelSpec(RoutedNetwork(routes(false));
     progression = [Transition(:recovered; from = :infection, delay = 10.0,
         terminal = true)])
 data2 = routed_network_infections(
@@ -638,9 +636,9 @@ data2 = routed_network_infections(
 # at the kernel it was simulated with
 ll2(community_scale) = pairwise_surv_loglik(
     [
-        RouteWindow(:household; until = not_stopped_by_isolation,
+        RouteWindow(:household; until = (:recovered,),
             kernel = Weibull(1.5, 4.0), reach = hh_adj),
-        RouteWindow(:community; until = stopped_by_isolation,
+        RouteWindow(:community; until = (:recovered,), removed_by_interventions = true,
             kernel = Exponential(community_scale), reach = comm_adj),
     ],
     data2
@@ -655,8 +653,8 @@ close to the 30-day mean `routes` simulated the community route with.
 isolation here. Had it been simulated with a lapsing isolation instead, one
 with a finite `duration` such as `iso` above (`duration = 7.0`) rather than
 `iso2`'s permanent one, `pairwise_surv_loglik` would take it out of each
-route's exposure the way the simulation applies it: only a route whose
-`until` lists `EpiBranch.INTERVENTION_REMOVAL` loses exposure during the
+route's exposure the way the simulation applies it: only a route that is
+`removed_by_interventions` loses exposure during the
 stretch a case is isolated for, and has it back once released.
 
 !!! warning "Data that stop before the outbreak ends (right-censoring)"
