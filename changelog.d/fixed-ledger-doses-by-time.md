@@ -1,1 +1,1 @@
-A budgeted `MassVaccination` on the individual-based race now gives each period's doses over the susceptibles at the period's own time, counting the cases infected by then, so exposures checked out of time order read the same doses.
+A budgeted `MassVaccination` on the individual-based race now gives each period the doses for the susceptibles at the time of that period, counting the cases infected by then. Exposures checked out of time order therefore read the same doses.
