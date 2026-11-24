@@ -122,6 +122,20 @@ end
         @test_throws ArgumentError quiet(-1.0)
         @test_throws ArgumentError quiet("daily")
     end
+
+    @testset "A function rate above its grid bound is refused, not under-drawn" begin
+        pulse = t -> 50.02 <= t < 50.08 ? 50.0 : 1.0
+        threw = [
+            try
+                    simulate(quiet(pulse); max_time = 100.0, rng = StableRNG(s))
+                    false
+                catch e
+                    e isa ArgumentError
+                end
+                for s in 1:300
+        ]
+        @test any(threw)
+    end
 end
 
 @testset "A count-eligible model with importations runs as individuals" begin
