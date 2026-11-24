@@ -159,14 +159,14 @@ using Dates
     @testset "weekly_incidence with no finite times is an empty typed frame" begin
         model = BranchingProcess(Poisson(2.0), Exponential(5.0))
         state = simulate(model; n_initial = 3, rng = StableRNG(1))
-        df = weekly_incidence(state; by = :no_such_time)
+        df = weekly_incidence(state; by = TransitionCount(:no_such_time))
         @test names(df) == ["week", "cases"]
         @test nrow(df) == 0
         @test eltype(df.week) == Date
         @test eltype(df.cases) == Int
     end
 
-    @testset "weekly_incidence by=:reporting excludes unreported (Inf) cases" begin
+    @testset "weekly_incidence by=TransitionCount(:reporting) excludes unreported (Inf) cases" begin
         # A Reporting transition with probability < 1 leaves unreported cases
         # with :reporting_time = Inf. Binning by :reporting must skip those
         # rather than throw InexactError on Day(floor(Int, Inf)).
@@ -177,7 +177,7 @@ using Dates
             ModelSpec(model; progression = [rep], attributes = clinical);
             max_cases = 200, rng = rng
         )
-        df = weekly_incidence(state; by = :reporting)
+        df = weekly_incidence(state; by = TransitionCount(:reporting))
         @test df isa DataFrame
         n_reported = count(ind -> get(ind.state, :reported, false), individuals(state))
         @test sum(df.cases) == n_reported

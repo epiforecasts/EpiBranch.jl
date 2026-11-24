@@ -19,6 +19,21 @@ using EpiBranch, Distributions, StableRNGs, DataFrames, Dates, Test
         @test d.date == collect(first(d.date):Week(1):last(d.date))
     end
 
+    @testset "by takes a TransitionCount or a function of the case" begin
+        inf = weekly_incidence(st; by = TransitionCount(:infection))
+        @test sum(inf.cases) == st.cumulative_cases
+        by_fn = weekly_incidence(st; by = ind -> ind.infection_time)
+        @test by_fn == inf
+        onset = weekly_incidence(st; by = TransitionCount(:onset))
+        @test onset.week[1] >= inf.week[1]
+        @test incidence(st; by = TransitionCount(:infection)).cases ==
+            incidence(st; by = ind -> ind.infection_time).cases
+        @test_throws TypeError weekly_incidence(st; by = :infection)
+        @test_throws TypeError end_of_outbreak_inputs(st, 20.0; by = :onset)
+        @test end_of_outbreak_inputs(st, 20.0; by = TransitionCount(:infection)).τs ==
+            [20.0 - ind.infection_time for ind in individuals(st) if ind.infection_time <= 20.0]
+    end
+
     @testset "daily, other intervals and range" begin
         d1 = incidence(st; interval = 1)
         @test sum(d1.cases) == sum(incidence(st).cases)
@@ -55,8 +70,8 @@ using EpiBranch, Distributions, StableRNGs, DataFrames, Dates, Test
     end
 
     @testset "no cases" begin
-        @test nrow(incidence(st; by = :no_such_time)) == 0
-        z = incidence(st; by = :no_such_time, range = (Date(2020, 1, 1), Date(2020, 1, 14)), interval = 7)
+        @test nrow(incidence(st; by = TransitionCount(:no_such_time))) == 0
+        z = incidence(st; by = TransitionCount(:no_such_time), range = (Date(2020, 1, 1), Date(2020, 1, 14)), interval = 7)
         @test z.cases == [0, 0, 0]
     end
 end

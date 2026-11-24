@@ -1,8 +1,8 @@
 """
-    epicurve(states::Vector{<:SimulationState}; interval=7, by=:onset,
+    epicurve(states::Vector{<:SimulationState}; interval=7, by=_onset_or_infection,
              reference_date=Date(2020, 1, 1), range=nothing,
              probs=(0.025, 0.25, 0.5, 0.75, 0.975))
-    epicurve(state::SimulationState; interval=7, by=:onset,
+    epicurve(state::SimulationState; interval=7, by=_onset_or_infection,
              reference_date=Date(2020, 1, 1), range=nothing)
 
 Epidemic curve of simulated outbreaks as a Makie `Figure`, available after
@@ -42,7 +42,7 @@ end
 
 """
     end_of_outbreak_plot(state::SimulationState, offspring::NegativeBinomial,
-                         generation_time::Distribution; by=:onset, times=nothing)
+                         generation_time::Distribution; by=_onset_or_infection, times=nothing)
 
 Probability that an outbreak is over at each time, as a Makie `Figure`,
 available after `using Makie` or a backend such as `using CairoMakie`. At each

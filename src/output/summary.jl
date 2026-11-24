@@ -276,7 +276,7 @@ function is_extinct(
     weeks = by_week isa Int ? (by_week:by_week) : by_week
     for ind in individuals(state)
         !is_infected(ind) && continue
-        t = _weekly_time(:onset, ind)
+        t = _onset_or_infection(ind)
         isfinite(t) || continue
         week_num = div(floor(Int, t), 7) + 1
         week_num in weeks && return false
@@ -331,7 +331,7 @@ function generation_R(state::SimulationState)
 end
 
 """
-    weekly_incidence(state::SimulationState; by=:onset,
+    weekly_incidence(state::SimulationState; by=_onset_or_infection,
                      reference_date::Date=Date(2020, 1, 1))
 
 Weekly case counts from one simulated outbreak, the epidemic curve a
@@ -339,20 +339,20 @@ surveillance system would plot. Returns a DataFrame with columns `week` (the
 date of the Monday starting each week, counted from `reference_date` as
 simulation day 0) and `cases`. Weeks with no cases are left out.
 
-`by` chooses which date places a case in a week:
+`by` selects the date used to place a case in a week. The default is symptom
+onset, or infection time for a case without an onset time. A
+[`TransitionCount`](@ref) places a case at the time it reached that state, and
+a case that never reached it is left out:
 
-- `:onset` (default): symptom onset, as on a surveillance epidemic curve. A
-  case without an onset time (for example an asymptomatic case from
-  `clinical_presentation`) is placed by its infection time.
-- `:infection`: infection time. This is not observed in real surveillance,
-  and the curve comes out earlier by roughly one incubation period.
-- `:reporting`: reporting time, set by [`Reporting`](@ref). Cases never reported
-  are left out.
-- any other recorded time, such as `:admission_time`.
+- `TransitionCount(:infection)`: infection time.
+- `TransitionCount(:reporting)`: reporting time, set by [`Reporting`](@ref).
+- `TransitionCount(:admission)`, or any other recorded state.
+
+A function of the case, `ind -> time`, is also accepted.
 """
 function weekly_incidence(
         state::SimulationState;
-        by::Symbol = :onset,
+        by::Union{TransitionCount, Function} = _onset_or_infection,
         reference_date::Date = Date(2020, 1, 1)
     )
     # Skip non-finite times: `NaN` (no such field) and `Inf` (an unreached
@@ -360,7 +360,7 @@ function weekly_incidence(
     # default). `Day(floor(Int, Inf))` would otherwise throw.
     times = filter(
         isfinite,
-        [_weekly_time(by, ind) for ind in individuals(state) if is_infected(ind)]
+        [_case_time(by, ind) for ind in individuals(state) if is_infected(ind)]
     )
     dates = [reference_date + Day(floor(Int, t)) for t in times]
     df = DataFrame(week = [d - Day(dayofweek(d) - 1) for d in dates])
@@ -384,7 +384,7 @@ function weekly_incidence(df::AbstractDataFrame; date::Symbol = :date_onset)
 end
 
 """
-    weekly_incidence(states::Vector{<:SimulationState}; by=:onset,
+    weekly_incidence(states::Vector{<:SimulationState}; by=_onset_or_infection,
                      reference_date::Date=Date(2020, 1, 1))
 
 Weekly case counts across several simulated outbreaks, such as the output of
@@ -401,7 +401,7 @@ early keeps its zeros up to the last week of the longest one.
 """
 function weekly_incidence(
         states::Vector{<:SimulationState};
-        by::Symbol = :onset,
+        by::Union{TransitionCount, Function} = _onset_or_infection,
         reference_date::Date = Date(2020, 1, 1)
     )
     tables = [weekly_incidence(s; by, reference_date) for s in states]
@@ -430,7 +430,7 @@ function weekly_incidence(
 end
 
 """
-    incidence(state::SimulationState; interval=7, by=:onset,
+    incidence(state::SimulationState; interval=7, by=_onset_or_infection,
               reference_date::Date=Date(2020, 1, 1), range=nothing,
               cumulative=false, by_generation=false)
     incidence(states::Vector{<:SimulationState}; kwargs...)
@@ -445,7 +445,8 @@ the same rows and line up.
 - `interval`: the bin width in days, `1` for daily counts and `7` for weekly. With
   a multiple of 7 the bins start on a Monday, as in [`weekly_incidence`](@ref);
   otherwise they start at `reference_date`, simulation day 0.
-- `by`: which date places a case in a bin, as in [`weekly_incidence`](@ref).
+- `by`: the date used to place a case in a bin, as in [`weekly_incidence`](@ref), for
+  example `TransitionCount(:infection)`.
 - `range`: a tuple of dates `(first, last)`. The bins are those containing these
   two dates. Cases outside them are not counted. By default the bins run
   from the first to the last bin with a case in any of the outbreaks.
@@ -469,7 +470,7 @@ incidence(states[1]; cumulative = true, by_generation = true)
 function incidence(
         state::SimulationState;
         interval::Integer = 7,
-        by::Symbol = :onset,
+        by::Union{TransitionCount, Function} = _onset_or_infection,
         reference_date::Date = Date(2020, 1, 1),
         range::Union{Nothing, Tuple{Date, Date}} = nothing,
         cumulative::Bool = false,
@@ -484,7 +485,7 @@ end
 function incidence(
         states::Vector{<:SimulationState};
         interval::Integer = 7,
-        by::Symbol = :onset,
+        by::Union{TransitionCount, Function} = _onset_or_infection,
         reference_date::Date = Date(2020, 1, 1),
         range::Union{Nothing, Tuple{Date, Date}} = nothing,
         cumulative::Bool = false,
@@ -508,7 +509,7 @@ function _incidence(states; interval, by, reference_date, range, cumulative, by_
     gens = [Int[] for _ in states]
     for (i, s) in enumerate(states), ind in individuals(s)
         is_infected(ind) || continue
-        t = _weekly_time(by, ind)
+        t = _case_time(by, ind)
         isfinite(t) || continue
         push!(bins[i], bin_of(reference_date + Day(floor(Int, t))))
         push!(gens[i], ind.generation)
@@ -604,19 +605,13 @@ end
 _quantile_name(p::Real) =
     Symbol("q", replace(replace(string(round(100 * p; digits = 6)), r"\.0$" => ""), "." => "_"))
 
-# Onset with infection-time fallback for cases without a recorded onset.
-function _weekly_time(by::Symbol, ind)
-    if by === :onset
-        v = get(ind.state, :onset_time, NaN)
-        return v isa Real && !isnan(v) ? float(v) : ind.infection_time
-    elseif by === :infection
-        return ind.infection_time
-    else
-        # No fallback: a case without the recorded time has not been observed.
-        v = get(ind.state, by === :reporting ? :reporting_time : by, NaN)
-        return v isa Real ? float(v) : NaN
-    end
+function _onset_or_infection(ind)
+    v = get(ind.state, :onset_time, NaN)
+    return v isa Real && !isnan(v) ? float(v) : ind.infection_time
 end
+
+_case_time(by::TransitionCount, ind) = _state_time(ind, by.at)
+_case_time(by, ind) = float(by(ind))
 
 """
     scenario_sweep(params::Dict{Symbol, Vector}; n_sim=500, rng=Random.default_rng(), sim_kwargs...)

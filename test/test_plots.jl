@@ -22,7 +22,7 @@ using Makie
         @test length(ax.scene.plots) == 3
 
         @test epicurve(states[1]; interval = 1) isa Makie.Figure
-        @test epicurve(states; interval = 14, by = :infection) isa Makie.Figure
+        @test epicurve(states; interval = 14, by = TransitionCount(:infection)) isa Makie.Figure
         fig90 = epicurve(states; probs = (0.05, 0.25, 0.5, 0.75, 0.95))
         ax90 = only(filter(b -> b isa Makie.Axis, fig90.content))
         labels = [p.label[] for p in ax90.scene.plots if p isa Makie.Band]
@@ -84,7 +84,7 @@ using Makie
         line = only(filter(p -> p isa Makie.Lines, ax.scene.plots))
         ts, ps = [p[1] for p in line[1][]], [p[2] for p in line[1][]]
         k = 7
-        inputs = end_of_outbreak_inputs(state, ts[k]; by = :onset)
+        inputs = end_of_outbreak_inputs(state, ts[k]; by = EpiBranch._onset_or_infection)
         @test ps[k] ≈ end_of_outbreak_probability(offspring, gt, inputs.τs, inputs.secondary_cases)
         @test all(0 .<= ps .<= 1)
         @test ps[end] > 0.9

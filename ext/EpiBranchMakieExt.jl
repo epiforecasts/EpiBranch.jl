@@ -1,8 +1,8 @@
 module EpiBranchMakieExt
 
-using EpiBranch: EpiBranch, SimulationState, incidence, summarise,
+using EpiBranch: EpiBranch, SimulationState, TransitionCount, incidence, summarise,
     individuals, is_infected, end_of_outbreak_inputs, end_of_outbreak_probability,
-    _weekly_time
+    _onset_or_infection, _case_time
 using Dates: Date, Day
 using DataFrames: AbstractDataFrame, groupby
 using Distributions: DiscreteUnivariateDistribution, Distribution, NegativeBinomial, pdf, quantile
@@ -21,7 +21,7 @@ end
 
 function EpiBranch.epicurve(
         states::Vector{<:SimulationState};
-        interval::Integer = 7, by::Symbol = :onset,
+        interval::Integer = 7, by::Union{TransitionCount, Function} = _onset_or_infection,
         reference_date::Date = Date(2020, 1, 1), range = nothing,
         probs = (0.025, 0.25, 0.5, 0.75, 0.975)
     )
@@ -44,7 +44,7 @@ end
 
 function EpiBranch.epicurve(
         state::SimulationState;
-        interval::Integer = 7, by::Symbol = :onset,
+        interval::Integer = 7, by::Union{TransitionCount, Function} = _onset_or_infection,
         reference_date::Date = Date(2020, 1, 1), range = nothing
     )
     counts = incidence(state; interval, by, reference_date, range)
@@ -117,9 +117,9 @@ end
 function EpiBranch.end_of_outbreak_plot(
         state::SimulationState, offspring::NegativeBinomial,
         generation_time::Distribution;
-        by::Symbol = :onset, times = nothing
+        by::Union{TransitionCount, Function} = _onset_or_infection, times = nothing
     )
-    observed = filter(isfinite, [_weekly_time(by, ind) for ind in individuals(state) if is_infected(ind)])
+    observed = filter(isfinite, [_case_time(by, ind) for ind in individuals(state) if is_infected(ind)])
     isempty(observed) && throw(ArgumentError("end_of_outbreak_plot: no cases to plot"))
     first_case = minimum(observed)
     if times === nothing
