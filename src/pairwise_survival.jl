@@ -1072,7 +1072,7 @@ struct RecruitedIndex <: ConditionOn end
 
 Condition on whichever person in each connected part of the contact structure
 (each household, for households) has the earliest `infection_time`, and on the
-lowest person number on a tie. This is worked out from `data` on every call.
+lowest person number on a tie. The choice is recomputed from `data` on every call.
 Only one person per group is taken as given.
 """
 struct EarliestInfected <: ConditionOn end

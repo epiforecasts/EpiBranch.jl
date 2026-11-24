@@ -132,7 +132,7 @@ vaccination in the model is evaluated from the immunity times
 
 The pair layout is rebuilt on every call unless `layout` supplies one. In a
 fitting loop, build it once with [`compile_household_pairs`](@ref) and pass it
-as `layout`, with the model's `external_hazard`; `condition_on` is then
+as `layout`, together with the `external_hazard` of the model; `condition_on` is then
 ignored. A layout is fixed to the data it was built from. Rebuild it when the set of infected members
 changes, and at every evaluation with `condition_on = EarliestInfected()`.
 """
