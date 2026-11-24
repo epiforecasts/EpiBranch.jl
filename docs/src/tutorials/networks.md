@@ -366,7 +366,7 @@ transmission on this route?
 - `until = (:recovered,)`: no. Only recovery ends transmission on this route.
   For a household route this is self-isolation at home. The trailing comma is
   needed to make a list of one item.
-- `until = (:recovered, EpiBranch.INTERVENTION_REMOVAL)`: yes. Transmission
+- `until = (:recovered,), removed_by_interventions = true`: yes. Transmission
   on this route stops while the case is isolated or quarantined, and ends at
   recovery. With `duration = Inf` isolation ends it for good; with a finite
   `duration`, a case who is still infectious when released transmits on this
@@ -408,16 +408,16 @@ clinical2 = clinical_presentation(incubation_period = LogNormal(0.5, 0.3),
 iso2 = Isolation(delay = Exponential(1.0), test_sensitivity = 1.0,
     duration = Inf)
 
-stopped_by_isolation = (:recovered, EpiBranch.INTERVENTION_REMOVAL)
-not_stopped_by_isolation = (:recovered,)
+stopped_by_isolation = true
+not_stopped_by_isolation = false
 
 # The scenarios differ only in whether isolation stops household
 # transmission. Isolation always stops community transmission.
-routes(household_until) = [
-    RouteWindow(:household; until = household_until,
-        kernel = Weibull(1.5, 4.0), reach = hh_adj),
-    RouteWindow(:community; until = stopped_by_isolation,
-        kernel = Exponential(30.0), reach = comm_adj)]
+routes(household_removed) = [
+    RouteWindow(:household; until = (:recovered,),
+        removed_by_interventions = household_removed, kernel = Weibull(1.5, 4.0), reach = hh_adj),
+    RouteWindow(:community; until = (:recovered,),
+        removed_by_interventions = stopped_by_isolation, kernel = Exponential(30.0), reach = comm_adj)]
 
 # Mean final size over 80 simulated outbreaks, each started by 3 index cases
 function mean_size(route_list, interventions)
@@ -473,10 +473,10 @@ iso3 = Isolation(delay = Exponential(4.0), test_sensitivity = 1.0,
 ct3 = ContactTracing(probability = 0.9, isolation_to_trace_delay = Exponential(0.5),
     action = Quarantine(duration = Inf))
 traced_routes(community_traceable) = [
-    RouteWindow(:household; until = stopped_by_isolation,
-        kernel = Weibull(1.5, 4.0), reach = hh_adj),
-    RouteWindow(:community; until = stopped_by_isolation,
-        kernel = Exponential(15.0), reach = comm_adj,
+    RouteWindow(:household; until = (:recovered,),
+        removed_by_interventions = stopped_by_isolation, kernel = Weibull(1.5, 4.0), reach = hh_adj),
+    RouteWindow(:community; until = (:recovered,),
+        removed_by_interventions = stopped_by_isolation, kernel = Exponential(15.0), reach = comm_adj,
         traceable = community_traceable)]
 
 println("isolation only:                               ",
@@ -638,10 +638,10 @@ data2 = routed_network_infections(
 # at the kernel it was simulated with
 ll2(community_scale) = pairwise_surv_loglik(
     [
-        RouteWindow(:household; until = not_stopped_by_isolation,
-            kernel = Weibull(1.5, 4.0), reach = hh_adj),
-        RouteWindow(:community; until = stopped_by_isolation,
-            kernel = Exponential(community_scale), reach = comm_adj),
+        RouteWindow(:household; until = (:recovered,),
+            removed_by_interventions = not_stopped_by_isolation, kernel = Weibull(1.5, 4.0), reach = hh_adj),
+        RouteWindow(:community; until = (:recovered,),
+            removed_by_interventions = stopped_by_isolation, kernel = Exponential(community_scale), reach = comm_adj),
     ],
     data2
 )
@@ -655,8 +655,8 @@ close to the 30-day mean `routes` simulated the community route with.
 isolation here. Had it been simulated with a lapsing isolation instead, one
 with a finite `duration` such as `iso` above (`duration = 7.0`) rather than
 `iso2`'s permanent one, `pairwise_surv_loglik` would take it out of each
-route's exposure the way the simulation applies it: only a route whose
-`until` lists `EpiBranch.INTERVENTION_REMOVAL` loses exposure during the
+route's exposure the way the simulation applies it: only a route with
+`removed_by_interventions` loses exposure during the
 stretch a case is isolated for, and has it back once released.
 
 !!! warning "Data that stop before the outbreak ends (right-censoring)"
