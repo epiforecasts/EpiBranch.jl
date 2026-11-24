@@ -522,6 +522,9 @@ function _chain_length_assert_full_reporting(prog, attrs)
     )
 end
 
+_has_chain_length_law(offspring::Union{Poisson, NegativeBinomial}) = mean(offspring) < 1
+_has_chain_length_law(_) = false
+
 # Safety stop for runs whose cases grow geometrically (R above 1). Runs it
 # stops are right-censored at the length reached, as with any other stop.
 const _LENGTH_SAFETY_MAX_CASES = 100_000
@@ -555,14 +558,22 @@ function _chain_length_model_loglik(
     # Analytical iff no interventions thin transmission, as for chain size
     # above, and the process, attributes and progression each leave the
     # offspring law unchanged (see `offspring_law_unchanged`).
-    if isempty(ivs) && offspring_law_unchanged(process) && offspring_law_unchanged(attrs) &&
-            all(offspring_law_unchanged, prog)
-        try
-            return loglikelihood(data, single_type_offspring(process); n_initial)
-        catch e
-            (e isa MethodError || e isa ArgumentError) || rethrow()
-        end
+    if isempty(ivs) && has_single_type_law(process) && offspring_law_unchanged(process) &&
+            offspring_law_unchanged(attrs) && all(offspring_law_unchanged, prog)
+        offspring = single_type_offspring(process)
+        _has_chain_length_law(offspring) &&
+            return loglikelihood(data, offspring; n_initial)
     end
+    return _simulated_chain_length_loglik(
+        data, process, ivs, attrs, prog, obs, rec,
+        n_initial, max_generations, max_time, stopping_rules, n_sim, rng
+    )
+end
+
+function _simulated_chain_length_loglik(
+        data, process, ivs, attrs, prog, obs, rec,
+        n_initial, max_generations, max_time, stopping_rules, n_sim, rng
+    )
     sim_opts = _build_sim_opts(
         process, n_initial, nothing, nothing, _LENGTH_SAFETY_MAX_CASES,
         max_generations, max_time, stopping_rules

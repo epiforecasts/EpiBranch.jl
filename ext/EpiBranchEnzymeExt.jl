@@ -1,22 +1,41 @@
 module EpiBranchEnzymeExt
 
-# Enzyme cannot compile these checks and lookups in the `ModelSpec`
-# constructor. They return nothing or a symbol and have no derivative.
-
 using EpiBranch: EpiBranch
-using Enzyme: Enzyme
-using Enzyme.EnzymeRules: EnzymeRules
+using Enzyme: Annotation, Const, EnzymeRules
 
-EnzymeRules.inactive(::typeof(EpiBranch.validate_process_windows), args...) = nothing
-
-for f in (
-        :_warn_incomplete_terminal_coverage, :_validate_dose_schedule,
-        :_validate_test_triggers, :_validate_testing_sensitivity,
-        :_warn_unmet_trigger_requirements, :_warn_inert_interventions,
-    )
-    @eval EnzymeRules.inactive(::typeof(EpiBranch.$f), args...) = nothing
+for f in EpiBranch._MODEL_CHECKS
+    @eval EnzymeRules.inactive(::typeof($f), args...) = nothing
 end
 
+# Symbol and Bool lookups with no derivative. Left active, Enzyme on
+# Julia 1.10 reports their constant result as stored into a differentiable value.
 EnzymeRules.inactive(::typeof(EpiBranch._resolved_key), args...) = nothing
+EnzymeRules.inactive(::typeof(EpiBranch._reporting_closed_form_readable), args...) = nothing
+EnzymeRules.inactive(::typeof(EpiBranch.has_single_type_law), args...) = nothing
+
+function _refuse_simulation()
+    throw(
+        ArgumentError(
+            "this likelihood is estimated by simulation, which Enzyme cannot " *
+                "differentiate in reverse mode; use a model with a closed-form " *
+                "likelihood, or forward mode"
+        )
+    )
+end
+
+for f in (EpiBranch._simulated_chain_length_loglik,)
+    @eval begin
+        function EnzymeRules.augmented_primal(
+                config::EnzymeRules.RevConfig, ::Const{typeof($f)}, ::Type, args::Annotation...
+            )
+            return _refuse_simulation()
+        end
+        function EnzymeRules.reverse(
+                config::EnzymeRules.RevConfig, ::Const{typeof($f)}, dret, tape, args::Annotation...
+            )
+            return _refuse_simulation()
+        end
+    end
+end
 
 end
