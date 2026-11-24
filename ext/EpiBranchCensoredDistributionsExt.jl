@@ -12,9 +12,6 @@ using EpiBranch
 using ConvolvedDistributions: convolved, difference
 using Distributions: Distribution
 
-# The route for a model whose onset and infectiousness share a trajectory (or
-# are otherwise linked per case): there is no closed form, so the interval is
-# simulated.
 const _SIMULATED_ROUTE = " For a model whose onset and infectiousness share a " *
     "trajectory, simulate it and fit the intervals from " *
     "realised_serial_intervals(states) instead."
