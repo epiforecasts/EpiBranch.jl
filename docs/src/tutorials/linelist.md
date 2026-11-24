@@ -228,6 +228,17 @@ all_cases = vcat(linelist.(states)...; cols = :union, source = :sim_id)
 
 The same works for [`contacts`](@ref).
 
+### Epidemic curve
+
+With a Makie backend loaded, [`epicurve`](@ref) plots the weekly cases of many runs as a median with 50% and 95% bands. It also takes a single run, drawn as bars.
+
+```@example linelist
+using CairoMakie
+
+states = simulate(model, 200; max_time = 84.0, rng = StableRNG(1))
+epicurve(states)
+```
+
 ## Contacts table
 
 [`contacts`](@ref) returns one row per contact: the case (`from`), the

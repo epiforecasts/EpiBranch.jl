@@ -559,11 +559,9 @@ block_grad = mean(
 println("d(# surviving)/dp ≈ $(round(block_grad, digits = 1)) (exact: $(-n_contacts))")
 ```
 
-Wiring this into `simulate`'s own short-circuiting risk loop, so a
-`chain_size_distribution` under interventions yields a usable gradient
-for a gradient-based sampler, is follow-up work: the loop decides and
-returns inside the same function that draws, which needs restructuring
-rather than a call-site change like the two above.
+This section does not cover gradients of simulated outputs under interventions.
+For a gradient-based sampler, use the likelihood functions with Enzyme or
+Mooncake.
 
 ## Clusters started by more than one case
 

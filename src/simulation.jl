@@ -742,7 +742,7 @@ function new_state(
     return SimulationState(
         Individual{T}[], Int[], 0, rng, 0, false,
         population(model), zero(T), _fresh_attributes(attributes),
-        convert(Vector{AbstractClinicalTransition}, transitions)
+        _progvec(transitions)
     )
 end
 
@@ -978,6 +978,14 @@ function initialise_state(
         n_types = n_types(model), infection_time = 0, types = sim_opts.index_types
     )
     seed!(state, 1:(sim_opts.n_initial), interventions, transitions)
+    for t in _import_times(model)
+        ind = only(
+            add_individuals!(
+                state, 1, interventions; n_types = n_types(model), infection_time = t
+            )
+        )
+        ind.state[:infection_route] = :external
+    end
     return state
 end
 

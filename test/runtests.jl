@@ -31,6 +31,7 @@ const TEST_GROUPS = (
         "test_case_definition.jl",
         "test_streams.jl",
         "test_branching_process.jl",
+        "test_importations.jl",
         "test_attributes.jl",
         "test_asymptomatic_links.jl",
         "test_settle_case.jl",
@@ -42,6 +43,7 @@ const TEST_GROUPS = (
         "test_engine_support.jl",
         "test_event_queue.jl",
         "test_route_windows.jl",
+        "test_ad.jl",
     ],
     population = [
         "test_density_dependent.jl",
@@ -63,6 +65,7 @@ const TEST_GROUPS = (
         "test_linelist.jl",
         "test_data_from_tables.jl",
         "test_incidence.jl",
+        "test_plots.jl",
     ],
     interventions = [
         "test_quality.jl",
@@ -90,6 +93,7 @@ const TEST_GROUPS = (
         "test_mixing_vaccination.jl",
         "test_generation_campaigns.jl",
         "test_per_group.jl",
+        "test_plot_recipe.jl",
     ],
     inference = [
         "test_model_spec.jl",
@@ -110,7 +114,6 @@ const TEST_GROUPS = (
         "test_multitype_analytical.jl",
         "test_integration.jl",
         "test_r_targets.jl",
-        "test_ad.jl",
         "test_stochastic_ad.jl",
         "test_pair_kernels.jl",
         "test_seeding_helpers.jl",

@@ -60,6 +60,16 @@ d_nb = chain_size_distribution(NegBin(0.8, 0.5))
 println("NegBin(R = 0.8, k = 0.5), P(size = 1): $(round(pdf(d_nb, 1), digits=4))")
 ```
 
+With a Makie backend loaded, [`chain_size_plot`](@ref) checks simulated chain sizes against the exact law.
+
+```@example chains
+using CairoMakie
+
+sizes = chain_statistics(simulate(BranchingProcess(Poisson(0.8)), 5_000;
+    rng = StableRNG(1))).size
+chain_size_plot(sizes, d_borel; max_size = 20)
+```
+
 The mean chain size with R = 0.8 is 1/(1 − R) = 5. P(size = 1) is the
 probability that an introduction causes no onward transmission at all; with
 strong superspreading (k = 0.5) most introductions do not spread.

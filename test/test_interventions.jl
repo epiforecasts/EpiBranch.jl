@@ -2295,7 +2295,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                         ),
                         ContactTracing(
                             eligibility, ConstantRate(1.0),
-                            ConstantDelay(Dirac(0.0)), FlagOnly()
+                            Dirac(0.0), FlagOnly()
                         ),
                         RingVaccination(efficacy = 0.0, post_exposure_efficacy = 1.0),
                     ],

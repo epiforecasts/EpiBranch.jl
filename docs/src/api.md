@@ -211,6 +211,7 @@ AllCases
 IsolationTrigger
 AfterSymptomOnset
 AfterPositiveTest
+AtTestTime
 ```
 
 ### Contact tracing
@@ -234,8 +235,6 @@ AllOf
 NoneOf
 TraceRate
 ConstantRate
-TraceDelay
-ConstantDelay
 TraceAction
 Quarantine
 FlagOnly
@@ -314,6 +313,8 @@ To project an outbreak that has already started, build its state from a table
 of the cases observed so far with
 [`state_from_cases`](@ref) and continue it with
 `simulate(model, state; max_time)`.
+
+With RecipesBase loaded, as it is by Plots.jl, `plot(state)` draws the transmission tree of a [`SimulationState`](@ref): infection time on the horizontal axis, one row per case, and a line from each case to their infector.
 
 ```@docs
 simulate
@@ -437,6 +438,15 @@ weekly_incidence
 incidence
 summarise
 scenario_sweep
+```
+
+## Plots
+
+Figures of simulation output. They are methods of a package extension, loaded with `using Makie` or a backend such as `using CairoMakie`.
+
+```@docs
+epicurve
+chain_size_plot
 ```
 
 ## Closed-form results
@@ -897,7 +907,6 @@ EpiBranch.records_isolation
 EpiBranch.is_eligible
 EpiBranch.trigger_time
 EpiBranch.traces
-EpiBranch.draw_trace_delay
 EpiBranch.apply_trace!
 ```
 

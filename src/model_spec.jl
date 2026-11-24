@@ -425,18 +425,13 @@ function _validate_testing_sensitivity(interventions, progression)
     return nothing
 end
 
-# The checks and warnings `ModelSpec` runs on its parts.
-function _validate_model_spec(process, prog, ivs)
-    validate_process_windows(process, prog)
-    _warn_incomplete_terminal_coverage(prog)
-    _validate_dose_schedule(ivs)
-    foreach(_store_traits!, ivs)
-    _validate_test_triggers(ivs, prog)
-    _validate_testing_sensitivity(ivs, prog)
-    _warn_unmet_trigger_requirements(ivs, prog)
-    _warn_inert_interventions(ivs)
-    return nothing
-end
+# Checks without a derivative. The AD extensions mark them inactive or give them a zero adjoint.
+const _MODEL_CHECKS = (
+    validate_process_windows, _warn_incomplete_terminal_coverage,
+    _validate_dose_schedule, _validate_test_triggers, _validate_testing_sensitivity,
+    _warn_unmet_trigger_requirements, _warn_inert_interventions, _warn_contactless,
+    _store_traits!,
+)
 
 """
     ModelSpec(process; progression, interventions, attributes, observation, recorder,
@@ -493,8 +488,15 @@ function ModelSpec(
         case_definition = nothing
     )
     prog = _progvec(progression)
+    validate_process_windows(process, prog)
+    _warn_incomplete_terminal_coverage(prog)
     ivs = _intervention_vector(interventions)
-    _validate_model_spec(process, prog, ivs)
+    _validate_dose_schedule(ivs)
+    foreach(_store_traits!, ivs)
+    _validate_test_triggers(ivs, prog)
+    _validate_testing_sensitivity(ivs, prog)
+    _warn_unmet_trigger_requirements(ivs, prog)
+    _warn_inert_interventions(ivs)
     return ModelSpec(process, prog, ivs, attributes, observation, recorder, case_definition)
 end
 
@@ -553,7 +555,7 @@ population(s::ModelSpec) = population(s.process)
 # helpers and the Turing `~` distribution wrappers treat a spec like the
 # process it wraps.
 single_type_offspring(s::ModelSpec) = single_type_offspring(s.process)
-has_single_type_law(s::ModelSpec) = has_single_type_law(s.process)
+@noinline has_single_type_law(s::ModelSpec) = has_single_type_law(s.process)
 offspring_law_unchanged(s::ModelSpec) = offspring_law_unchanged(s.process)
 _analytic_offspring(s::ModelSpec) = _analytic_offspring(s.process)
 n_types(s::ModelSpec) = n_types(s.process)

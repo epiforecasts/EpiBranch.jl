@@ -12,7 +12,7 @@
         @test st.eligibility isa SymptomaticParent
         @test st.trace_rate isa ConstantRate
         @test st.trace_rate.p == 0.5
-        @test st.isolation_to_trace_delay isa ConstantDelay
+        @test st.isolation_to_trace_delay isa Distribution
         @test st.action isa Quarantine
 
         st2 = SourceTracing(OnSymptomOnset(), 0.7, Exponential(2.0), FlagOnly())

@@ -132,6 +132,7 @@ end
 function count_rule(model::BranchingProcess)
     isempty(transmission_risks(model)) || return nothing
     model.multiplier === nothing || return nothing
+    model.importations === nothing || return nothing
     _immune_total(population(model)) == 0 || return nothing
     _counts_population(population(model), n_types(model)) || return nothing
     windows = model.infectiousness
