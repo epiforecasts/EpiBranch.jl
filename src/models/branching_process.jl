@@ -309,8 +309,8 @@ or a rate of arrivals per day: a number, a calendar schedule such as
 [`Steps`](@ref) or [`Seasonal`](@ref) giving the rate on each day, or a
 function of the day returning it. A rate needs `max_time` and draws the
 arrivals as a Poisson process over it. A function of the day is bounded by
-its largest value on a 1001-point grid over `max_time`, so a peak narrower than
-the grid spacing can be missed; an arrival on a day where the rate exceeds
+its largest value on a 1001-point grid over `max_time`. A peak narrower than
+the grid spacing can be missed. An arrival on a day when the rate exceeds
 that bound raises an `ArgumentError`. Imports come in addition to the
 `n_initial` index cases at time 0, and their `:infection_route` is
 `:external`. In a multi-type model each import's type is drawn uniformly from
