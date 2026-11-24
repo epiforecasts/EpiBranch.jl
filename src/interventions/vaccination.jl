@@ -1355,10 +1355,7 @@ function protected_by_doses(
     return _protected_among(rng, doses, efficacy, susceptibles, size)
 end
 
-# A susceptible escapes all `doses` with probability (1 - efficacy / pool)^doses,
-# where `pool` is the weight of everyone a dose can reach. One binomial draw then
-# costs the same for any number of doses. Treating people as independent is close
-# to exact in a large population.
+# One binomial draw; `pool` is the weight of everyone a dose can reach.
 function _protected_among(rng, doses, efficacy, susceptibles, pool)
     (doses > 0 && susceptibles > 0 && efficacy > 0) || return 0
     p = -expm1(doses * log1p(-min(efficacy / pool, 1.0)))
@@ -1368,10 +1365,8 @@ end
 """
     SusceptibleDosing()
 
-An [`AbstractDosing`](@ref) that gives every dose to a susceptible, as when
-people are screened for immunity first. No dose reaches an infected or already
-protected person, so the share of the group still susceptible does not slow
-the rollout.
+An [`AbstractDosing`](@ref) that gives every dose to a susceptible; no dose
+reaches an infected or already protected person.
 """
 struct SusceptibleDosing <: AbstractDosing end
 
@@ -1387,9 +1382,7 @@ end
 
 An [`AbstractDosing`](@ref) in which a person already protected by the
 campaigns is `weight` times as likely as anyone else to receive each dose. A
-`weight` above 1 sends doses to the protected again, as when uptake clusters in
-the same people, and leaves fewer for those not yet protected. A `weight` of 1
-is [`RandomDosing`](@ref) and 0 gives no dose to the protected.
+`weight` of 1 is [`RandomDosing`](@ref) and 0 gives no dose to the protected.
 """
 struct FavourVaccinated <: AbstractDosing
     weight::Float64
