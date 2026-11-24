@@ -1,1 +1,1 @@
-`containment_plot(sweep, x; group)` plots the containment probability in a `scenario_sweep` table against a numeric column, with one line per value of `group` when it is given. It is a Makie figure like `epicurve`, loaded with `using Makie` or a backend such as `using CairoMakie`.
+`containment_plot(sweep, x; group)` plots the containment probability in a `scenario_sweep` table against a numeric column, with one line for each value of `group` when it is given. Like `epicurve` it returns a Makie figure, and needs `using Makie` or a backend such as `using CairoMakie`.
