@@ -153,6 +153,14 @@ EpiBranch.records_contacts(::AlwaysRecord, parent, contact, state, t) = true
         @test occursin("from=nothing", repr(d))
         @test d.until == ()
         @test d.reach == [[2], [1]]
+
+        # a route is not removed by interventions unless it says so
+        @test !EpiBranch.removed_by_interventions(w)
+        @test !occursin("removed_by_interventions", repr(w))
+        r = RouteWindow(:community; kernel = Exponential(1.0), removed_by_interventions = true)
+        @test EpiBranch.removed_by_interventions(r)
+        @test occursin("removed_by_interventions=true", repr(r))
+        @test !EpiBranch.removed_by_interventions(nothing)
     end
 
     @testset "traceability is a validated probability" begin
@@ -175,8 +183,8 @@ EpiBranch.records_contacts(::AlwaysRecord, parent, contact, state, t) = true
         @test_throws ArgumentError RouteWindow(:a; kernel = nothing, traceable = NaN)
         # the positional form validates too, so no construction path skips it
         @test_throws ArgumentError RouteWindow(
-            :a, nothing, (), nothing, :a,
-            :infection, 2.0, false
+            :a, nothing, (), nothing, :a, false,
+            :infection, 2.0
         )
     end
 
@@ -229,8 +237,8 @@ EpiBranch.records_contacts(::AlwaysRecord, parent, contact, state, t) = true
     end
 
     @testset "removed_by_interventions is opt-in per route" begin
-        # Two routes differing only in whether they list the intervention
-        # removal. This is the whole mechanism behind a control measure cutting
+        # Two routes differing only in whether the interventions
+        # remove them. That is how a control measure can cut
         # one route and leaving another: the household route survives isolation,
         # the community route does not.
         iso = Isolation(delay = Exponential(1.0), duration = Inf)
@@ -315,7 +323,7 @@ EpiBranch.records_contacts(::AlwaysRecord, parent, contact, state, t) = true
     end
 
     @testset "OnRoutes narrows an intervention to only the named routes" begin
-        # Both routes are removed_by_interventions here, so a bare isolation
+        # Both routes are removed by interventions here, so a bare isolation
         # closes both before either contact, due at 5. Wrapping it in
         # `OnRoutes` leaves every route it does not name running, the same
         # outcome the household route above gets by never opting in, but
@@ -717,7 +725,7 @@ EpiBranch.records_contacts(::AlwaysRecord, parent, contact, state, t) = true
             ]
         ) == [true, false, true]
         @test !EpiBranch.risk_applies(ProtectOnRoute(:household), nothing)
-        # Isolation and quarantine follow the route's removal listing; a vaccine,
+        # Isolation and quarantine follow whether the route is removed by interventions; a vaccine,
         # including its effect on onward transmission, does not.
         for route in (
                 nothing, RouteWindow(:household; until = (:recovered,), kernel = Dirac(1.0)),

@@ -190,15 +190,15 @@ is what a detection reads. The full history, which a likelihood needs, is the
 lists of stretches under `:_isolation_stretches` (perfect isolation) and
 `:_removal_stretches` (the shared default key), because one pair of times cannot
 record that a person was quarantined, released and later isolated again. A
-window that isolation should end is [`removed_by_interventions`](@ref EpiBranch.removed_by_interventions)
-(see [Transmission routes](new-structures.md#Transmission-routes)), which respects leaky
+window that isolation should end has
+[`removed_by_interventions`](@ref EpiBranch.removed_by_interventions) set (see [Transmission routes](new-structures.md#Transmission-routes)), which respects leaky
 isolation. `:isolated` in an `until` refers to a `Transition(:isolated, …)` in
 the natural history. Set and undo isolation with `set_isolated!` and
 `clear_isolated!`.
 
 `:isolation_time` is when the case leaves transmission and
 `:isolation_release_time` when it may resume; competing risks and
-`removed_by_interventions` routes read these. Whether the isolation also counts as a
+removal by interventions read these. Whether the isolation also counts as a
 detection is a separate question, answered by `is_isolated`, which `OnIsolation`
 tracing, group vaccination and the line list read. `Isolation` answers no for
 an isolation at or after [`outcome_time`](@ref), since a self-report or trace
@@ -321,8 +321,8 @@ model](@ref)).
 - **Choosing routes.** [`EpiBranch.risk_applies`](@ref) chooses which routes an
   intervention's risk acts on. It receives the route window, or `nothing` for
   an introduction from outside. Its default `true` keeps vaccine protection on
-  every route. Isolation and contact tracing test whether the route is
-  `removed_by_interventions`, and `Scheduled` and
+  every route. Isolation and contact tracing test
+  `EpiBranch.removed_by_interventions(route)`, and `Scheduled` and
   `CapacityConstrained` pass the question on to the intervention they hold.
   An intervention of your own can choose any set of routes, for example only
   the routes that intervention removal ends:

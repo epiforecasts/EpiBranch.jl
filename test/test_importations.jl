@@ -56,7 +56,7 @@ using StableRNGs
 
     @testset "Invalid importations are refused" begin
         @test_throws ArgumentError BranchingProcess(Poisson(1.0); importations = [-1.0])
-        @test_throws ArgumentError BranchingProcess(Poisson(1.0); importations = 0.1)
+        @test_throws ArgumentError BranchingProcess(Poisson(1.0); importations = "daily")
     end
 
     @testset "Imports in a multi-type model draw their type uniformly" begin
@@ -69,6 +69,73 @@ using StableRNGs
         @test individual_type(inds[1]) == 1
         n2 = count(i -> individual_type(i) == 2, inds[2:end])
         @test 60 < n2 < 140
+    end
+end
+
+@testset "BranchingProcess importations at a rate" begin
+    quiet(imp) = BranchingProcess(Poisson(0.0), Exponential(5.0); importations = imp)
+    imported(state) = [i.infection_time for i in individuals(state)[2:end]]
+
+    @testset "A constant rate gives Poisson arrivals within max_time" begin
+        counts = [
+            length(imported(simulate(quiet(0.5); max_time = 40.0, rng = StableRNG(s))))
+                for s in 1:300
+        ]
+        @test isapprox(sum(counts) / 300, 20.0; atol = 0.7)
+        state = simulate(quiet(0.5); max_time = 40.0, rng = StableRNG(1))
+        @test all(i -> get(i.state, :infection_route, nothing) === :external, individuals(state)[2:end])
+        @test all(<(40.0), imported(state))
+    end
+
+    @testset "A schedule or function of time sets the rate on each day" begin
+        steps = Steps([10.0], [0.0, 2.0])
+        times = reduce(
+            vcat,
+            [imported(simulate(quiet(steps); max_time = 20.0, rng = StableRNG(s))) for s in 1:100]
+        )
+        @test all(>=(10.0), times)
+        @test isapprox(length(times) / 100, 20.0; atol = 1.5)
+        fn = t -> t < 10 ? 0.0 : 2.0
+        ftimes = reduce(
+            vcat,
+            [imported(simulate(quiet(fn); max_time = 20.0, rng = StableRNG(s))) for s in 1:100]
+        )
+        @test all(>=(10.0), ftimes)
+        @test isapprox(length(ftimes) / 100, 20.0; atol = 1.5)
+        seasonal = Seasonal(amplitude = 1.0, peak_day = 0.0, period = 20.0)
+        scaled = t -> 3 * EpiBranch.calendar_multiplier(seasonal, t)
+        stimes = reduce(
+            vcat,
+            [imported(simulate(quiet(scaled); max_time = 20.0, rng = StableRNG(s))) for s in 1:200]
+        )
+        # The mean rate is three a day. Few arrive near the trough on day 10.
+        @test isapprox(length(stimes) / 200, 60.0; atol = 3.0)
+        @test count(t -> 8 < t < 12, stimes) < count(t -> t < 2 || t > 18, stimes) / 2
+    end
+
+    @testset "Rate-based imports share capacity limits" begin
+        state = simulate(quiet(5.0); max_cases = 10, max_time = 100.0, rng = StableRNG(2))
+        @test state.cumulative_cases == 10
+    end
+
+    @testset "A rate needs max_time, and invalid rates are refused" begin
+        @test_throws ArgumentError simulate(quiet(0.5); rng = StableRNG(1))
+        @test_throws ArgumentError quiet(-1.0)
+        @test_throws ArgumentError quiet("daily")
+    end
+
+    @testset "A function rate above its grid bound is refused, not under-drawn" begin
+        pulse = t -> 50.02 <= t < 50.08 ? 50.0 : 1.0
+        threw = [
+            try
+                simulate(quiet(pulse); max_time = 100.0, rng = StableRNG(s))
+                false
+            catch e
+                e isa ArgumentError
+            end
+                for s in 1:300
+        ]
+        @test any(threw)
     end
 end
 

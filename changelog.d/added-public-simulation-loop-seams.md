@@ -6,7 +6,6 @@ dispatches to, with the `condition`/`max_attempts` retry handled once in
 resolves a run's `max_time` and reconciles its aggregate bookkeeping, so a
 model driving the construction no longer touches `_max_time` or
 `_reconcile_sellke_bookkeeping!` directly. `EpiBranch.infectious_from` derives
-a progression's infectious window, and `EpiBranch.INTERVENTION_REMOVAL` is now
-declared `public`. A new `MixingProcess` model runs structured mixing (age
+the infectious window of a progression. A new `MixingProcess` model runs structured mixing (age
 bands, spatial patches, …) as mass action on the same race as
 `HomogeneousProcess`, reachable entirely through these public names.

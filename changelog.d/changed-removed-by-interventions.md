@@ -1,1 +1,0 @@
-`RouteWindow` takes `removed_by_interventions = true` for a route that isolation and quarantine should end, and `removed_by_interventions(route)` reports it, in place of listing `EpiBranch.INTERVENTION_REMOVAL` in `until`, which is removed. `until` now holds only disease states. A route type of your own opts in with a method of `removed_by_interventions`.

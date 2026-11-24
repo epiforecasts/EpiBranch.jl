@@ -70,8 +70,8 @@ secondary cases falls according to which routes isolation cuts.
   that changes have their contacts redrawn;
 - `until`: the states that end transmission on this route, so one route can be
   cut and another left alone;
-- `removed_by_interventions`: `true` for a route that isolation or quarantine
-  should end;
+- `removed_by_interventions`: whether isolation or quarantine ends the route
+  (default `false`);
 - `from`: when the route's infectiousness starts. The default, `nothing`, takes
   the model's `from` or, if that is also `nothing`, the start the progression
   implies (`:infectious` when a latent period produces it). Name `:infection`
@@ -200,8 +200,8 @@ end
 function _start_unset(w::RouteWindow, from)
     w.from === nothing || return w
     return RouteWindow(
-        w.name, from, w.until, w.kernel, w.reach, w.contacts_from,
-        w.traceable, w.removed_by_interventions
+        w.name, from, w.until, w.kernel, w.reach, w.removed_by_interventions,
+        w.contacts_from, w.traceable
     )
 end
 
@@ -211,7 +211,7 @@ function _validate_route_kernel(w::RouteWindow)
     return RouteWindow(
         w.name, w.from, w.until,
         _validate_kernel(w.kernel, w.reach; route = w.name), w.reach,
-        w.contacts_from, w.traceable, w.removed_by_interventions
+        w.removed_by_interventions, w.contacts_from, w.traceable
     )
 end
 

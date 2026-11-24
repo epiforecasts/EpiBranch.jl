@@ -8,8 +8,8 @@
 # route's cumulative hazard (independent competing risks), and the event term
 # at an infected person's own infection time is a log-sum-exp over every
 # route and infector that could have produced it, exactly as `logsumexp` over
-# `data.contacts` terms would be for a single route. A route that is not
-# `removed_by_interventions` keeps exposing its susceptibles through a
+# `data.contacts` terms would be for a single route. A route not removed
+# by interventions keeps exposing its susceptibles through a
 # stretch that removes the infector on another route, which is the entire
 # point of separating them.
 
@@ -399,18 +399,18 @@ end
 
 Log-likelihood of a routed-network outbreak under `windows`, a collection of
 [`RouteWindow`](@ref)s in the same order as `data`'s routes, giving each
-route's kernel, which states end it and whether
-[`removed_by_interventions`](@ref EpiBranch.removed_by_interventions).
+route's kernel, its ending states and whether interventions
+([`removed_by_interventions`](@ref EpiBranch.removed_by_interventions)) end it.
 
 Each susceptible's survival is the sum of every route's cumulative hazard
 from every possible infector on it (routes are independent competing risks),
 and an infected person's event term is the log of the summed hazard, over
 every route and every possible infector, at their infection time — the
 marginal density of whichever route and infector's draw came first in the
-race. A route that is not `removed_by_interventions`
+race. A route that is not removed by interventions
 keeps exposing its susceptibles through a stretch that an intervention such as
 `Isolation` or `Quarantine` removed the infector for on another route; one
-that is has that stretch, read from `data`'s `host_times` as the
+that is removed by them has that stretch, read from `data`'s `host_times` as the
 single-route likelihood reads it, taken out of its own exposure.
 
 `external_hazard` is community infection shared across every route, as for

@@ -162,7 +162,7 @@ end
     @testset "a lapsing isolation gated to the community route leaves the household route alone" begin
         # `Isolation(duration = 7.0)` releases rather than permanently removing,
         # so the window stays open and the stretch is read from `host_times`;
-        # because only the community route is `removed_by_interventions`, the
+        # since only the community route is removed by interventions, the
         # household route's exposure must be unaffected by it.
         true_household, true_community = 3.0, 6.0
         hh, comm = _routed_adjacency(300, 4)
@@ -190,7 +190,7 @@ end
         @test any(!ismissing, data.host_times[EpiBranch.REMOVAL_STRETCHES_KEY])
         # a lapsing isolation never permanently closes a window; the stretch it
         # records takes the exposure out instead, so both routes close at the
-        # same recovery time, whichever is `removed_by_interventions`
+        # same recovery time, whichever is removed by interventions
         infected = findall(!isnan, data.infection_time)
         @test data.removal_time[1][infected] == data.infection_time[infected] .+ 10.0
         @test data.removal_time[2][infected] == data.infection_time[infected] .+ 10.0
@@ -214,10 +214,10 @@ end
         true_household, true_community = 3.0, 6.0
         hh, comm = _routed_adjacency(300, 4)
         LEAKY = EpiBranch.LEAKY_REMOVAL_STRETCHES_KEY
-        mkwindows(θ, removed) = [
+        mkwindows(θ, comm_removed) = [
             RouteWindow(:household; until = (:recovered,), kernel = Exponential(exp(θ[1])), reach = hh),
             RouteWindow(
-                :community; until = (:recovered,), removed_by_interventions = removed,
+                :community; until = (:recovered,), removed_by_interventions = comm_removed,
                 kernel = Exponential(exp(θ[2])), reach = comm
             ),
         ]
@@ -250,7 +250,7 @@ end
         @test ll_leaky != pairwise_surv_loglik(mkwindows(θ, true), stripped)
         @test loglikelihood(data, m) == ll_leaky
 
-        # a route that is not removed_by_interventions ignores the leak
+        # a route that is not removed by interventions ignores the leak
         @test pairwise_surv_loglik(mkwindows(θ, false), data) ==
             pairwise_surv_loglik(mkwindows(θ, false), stripped)
 
@@ -517,7 +517,7 @@ end
         @testset "a vaccinated host still gets a gated route and an external hazard" begin
             # A vaccinated host's mixture goes through `_routed_modifier_loglik`
             # for every route and the external hazard alike. A route gated to
-            # `removed_by_interventions` and a non-zero `external_hazard` must both
+            # removal by interventions and a non-zero `external_hazard` must both
             # reach the survival and event terms in that function, which an
             # unvaccinated host's plain sum goes through with no modifier.
             windows3 = [

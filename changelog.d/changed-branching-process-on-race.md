@@ -35,8 +35,8 @@ across generations. This changes a run in these ways:
   timed from onset can give, is dropped: no exposure happens then. Before, it
   was infected before its infector.
 - `risk_applies` is asked about each `Infectiousness` window of a branching
-  process, as a route named `:transmission` with `INTERVENTION_REMOVAL` in
-  its `until`. An intervention answering `false` for it no longer blocks
+  process, as a route named `:transmission` with `removed_by_interventions = true`.
+  An intervention answering `false` for it no longer blocks
   contacts there; before, a branching process applied every risk.
 - The line list of a branching process has the `index` column the other
   models already had.

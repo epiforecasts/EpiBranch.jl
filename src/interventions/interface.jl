@@ -293,16 +293,16 @@ acts on infections through a given transmission route, and whether its
 that route. `route` is a [`RouteWindow`](@ref), or `nothing` for an infection
 from outside the population. A model with a single route names it
 `:transmission`, as does each [`Infectiousness`](@ref) window of a
-[`BranchingProcess`](@ref) that is not given its own `name`; the window's
-window is [`removed_by_interventions`](@ref EpiBranch.removed_by_interventions),
-and names no `from`. A model written against [`generate_offspring`](@ref) has one
-such window, and one written against [`contacts_of`](@ref) a single
-`:transmission` route with the same property. The default is `true`, so protection
+[`BranchingProcess`](@ref) that is not given its own `name`; the window has
+[`removed_by_interventions`](@ref EpiBranch.removed_by_interventions) set, lists
+whatever states it has in `until`, and names no `from`. A model written against [`generate_offspring`](@ref) has one such
+window, and one written against [`contacts_of`](@ref) a single `:transmission`
+route removed by interventions. The default is `true`: protection
 such as vaccination follows a person across routes. [`Scheduled`](@ref) and
 [`CapacityConstrained`](@ref) answer for the intervention they contain, and so
 does [`OnRoutes`](@ref), narrowed further to the routes it names.
 
-[`Isolation`](@ref) and [`ContactTracing`](@ref) act only on routes that are
+[`Isolation`](@ref) and [`ContactTracing`](@ref) act only on routes with
 [`removed_by_interventions`](@ref EpiBranch.removed_by_interventions), and not on infections
 from outside the population; wrap either in [`OnRoutes`](@ref) to isolate or
 quarantine a case out of only some of a model's named routes, such as

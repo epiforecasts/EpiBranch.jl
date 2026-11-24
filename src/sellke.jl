@@ -278,7 +278,7 @@ kernel or host traits. The likely cause is a case whose infectious window \
 never closes: either the progression has no terminal transition reaching \
 one of `until`'s states, or one is reachable but gated so that some cases \
 reach none of them (see `exclusive_probabilities`). A window closed only \
-by `removed_by_interventions` reaches this too when the case's isolation or \
+by intervention removal reaches this too when the case's isolation or \
 quarantine is due to lapse, since only a removal that stands for the rest \
 of the infectious period closes the window by itself. A component whose \
 certain block is in force also lands here until it declares \
@@ -841,7 +841,7 @@ way, which read that relationship rather than the proposals.
 A model with several transmission routes passes `routes`, a collection of
 `(RouteWindow, targets)` pairs, in place of `from`/`until`/`targets`. Each route
 opens and closes on its own window, and only a route with
-[`removed_by_interventions`](@ref EpiBranch.removed_by_interventions) can be cut by the interventions'
+`removed_by_interventions` can be cut by the interventions'
 removals and blocked by removal risks such as isolation; among those routes,
 [`risk_applies`](@ref) decides which interventions reach each one by
 its `name`, so a measure can close one route and leave another open. A case
@@ -1005,7 +1005,9 @@ function _sellke_race_typed!(
             for (w, _) in rts
     ]
     route_applies = [Bool[risk_applies(iv, w) for iv in typed_interventions] for (w, _) in rts]
-    close_keys = map(((w, _),) -> Symbol[_time_keys(w.until)...], rts)
+    close_keys = map(
+        ((w, _),) -> Symbol[_time_keys(w.until)...], rts
+    )
     removable = map(((w, _),) -> removed_by_interventions(w), rts)
 
     # An intervention declaring `acts_on_population` needs no case settled to
