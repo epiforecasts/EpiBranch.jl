@@ -47,27 +47,31 @@ using Makie
     end
 
     @testset "containment_plot" begin
-        results = DataFrame(
-            R = repeat([0.5, 1.0, 2.0], 2), k = repeat([0.2, 0.2, 0.2, 1.0, 1.0, 1.0]; inner = 1),
-            containment_probability = [0.9, 0.7, 0.3, 0.95, 0.6, 0.1]
+        @test_throws ArgumentError containment_plot(1, :x)
+        sweep = DataFrame(
+            delay = [5.0, 1.0, 5.0, 1.0], R = [1.5, 1.5, 3.0, 3.0],
+            containment_probability = [0.6, 0.9, 0.1, 0.4]
         )
-        fig = containment_plot(results, :R)
+        fig = containment_plot(sweep[1:2, :], :delay)
         ax = only(filter(b -> b isa Makie.Axis, fig.content))
-        @test length(ax.scene.plots) == 1
-        figg = containment_plot(results, :R; group = :k)
-        axg = only(filter(b -> b isa Makie.Axis, figg.content))
-        lines = filter(p -> p isa Makie.Lines, [q for p in axg.scene.plots for q in p.plots])
+        line = only(filter(p -> p isa Makie.ScatterLines, ax.scene.plots))
+        @test collect.(line[1][]) == [[1.0, 0.9], [5.0, 0.6]]
+        grouped = containment_plot(sweep, :delay; group = :R)
+        ax = only(filter(b -> b isa Makie.Axis, grouped.content))
+        lines = filter(p -> p isa Makie.ScatterLines, ax.scene.plots)
         @test length(lines) == 2
-        @test_throws ArgumentError containment_plot(results, :missing)
-        @test_throws ArgumentError containment_plot(results, :R; group = :missing)
-        @test_throws ArgumentError containment_plot(DataFrame(x = ["a"], containment_probability = [0.5]), :x)
-
-        swept = scenario_sweep(
-            Dict(:offspring => [NegBin(0.5, 0.5), NegBin(2.0, 0.5)]); n_sim = 20, max_cases = 100,
-            rng = StableRNG(3)
-        )
-        swept.R = [mean(o) for o in swept.offspring]
-        @test containment_plot(swept, :R) isa Makie.Figure
+        @test [collect.(p[1][]) for p in lines] == [
+            [[1.0, 0.9], [5.0, 0.6]], [[1.0, 0.4], [5.0, 0.1]],
+        ]
+        anysweep = DataFrame(Dict(c => Vector{Any}(sweep[!, c]) for c in names(sweep)))
+        fig = containment_plot(anysweep[1:2, :], :delay)
+        ax = only(filter(b -> b isa Makie.Axis, fig.content))
+        line = only(filter(p -> p isa Makie.ScatterLines, ax.scene.plots))
+        @test collect.(line[1][]) == [[1.0, 0.9], [5.0, 0.6]]
+        @test_throws ArgumentError containment_plot(sweep, :missing)
+        @test_throws ArgumentError containment_plot(sweep, :delay; group = :missing)
+        @test_throws ArgumentError containment_plot(sweep[1:0, :], :delay)
+        @test_throws ArgumentError containment_plot(DataFrame(x = ["a"], containment_probability = [1.0]), :x)
     end
 
     @testset "end_of_outbreak_plot" begin
@@ -80,7 +84,7 @@ using Makie
         line = only(filter(p -> p isa Makie.Lines, ax.scene.plots))
         ts, ps = [p[1] for p in line[1][]], [p[2] for p in line[1][]]
         k = 7
-        inputs = end_of_outbreak_inputs(state, ts[k]; by = TransitionCount(:onset))
+        inputs = end_of_outbreak_inputs(state, ts[k]; by = EpiBranch._onset_or_infection)
         @test ps[k] ≈ end_of_outbreak_probability(offspring, gt, inputs.τs, inputs.secondary_cases)
         @test all(0 .<= ps .<= 1)
         @test ps[end] > 0.9

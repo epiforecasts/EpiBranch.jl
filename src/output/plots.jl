@@ -1,8 +1,8 @@
 """
-    epicurve(states::Vector{<:SimulationState}; interval=7, by = TransitionCount(:onset),
+    epicurve(states::Vector{<:SimulationState}; interval=7, by=_onset_or_infection,
              reference_date=Date(2020, 1, 1), range=nothing,
              probs=(0.025, 0.25, 0.5, 0.75, 0.975))
-    epicurve(state::SimulationState; interval=7, by = TransitionCount(:onset),
+    epicurve(state::SimulationState; interval=7, by=_onset_or_infection,
              reference_date=Date(2020, 1, 1), range=nothing)
 
 Epidemic curve of simulated outbreaks as a Makie `Figure`, available after
@@ -30,13 +30,11 @@ function chain_size_plot(args...; kwargs...)
 end
 
 """
-    containment_plot(results::AbstractDataFrame, x::Symbol; group=nothing,
-                     y=:containment_probability)
+    containment_plot(results::AbstractDataFrame, x::Symbol; group=nothing)
 
-Containment probability against a swept parameter as a Makie `Figure`,
-available after `using Makie` or a backend such as `using CairoMakie`. `results`
-is the output of [`scenario_sweep`](@ref); `x` names a numeric column and `y`
-the column plotted. The plot has one line for each value of the column `group`.
+Containment probability from a [`scenario_sweep`](@ref) table against the numeric
+column `x`, as a Makie `Figure`. With `group`, one line is drawn for each value
+of that column. Points are joined in order of `x`.
 """
 function containment_plot(args...; kwargs...)
     throw(ArgumentError("containment_plot needs a Makie backend: run `using CairoMakie` (or another Makie backend) first"))
@@ -44,7 +42,7 @@ end
 
 """
     end_of_outbreak_plot(state::SimulationState, offspring::NegativeBinomial,
-                         generation_time::Distribution; by=TransitionCount(:onset), times=nothing)
+                         generation_time::Distribution; by=_onset_or_infection, times=nothing)
 
 Probability that an outbreak is over at each time, as a Makie `Figure`,
 available after `using Makie` or a backend such as `using CairoMakie`. At each

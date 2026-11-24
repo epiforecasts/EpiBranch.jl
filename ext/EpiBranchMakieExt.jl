@@ -2,7 +2,7 @@ module EpiBranchMakieExt
 
 using EpiBranch: EpiBranch, SimulationState, TransitionCount, incidence, summarise,
     individuals, is_infected, end_of_outbreak_inputs, end_of_outbreak_probability,
-    _weekly_time
+    _onset_or_infection, _case_time
 using Dates: Date, Day
 using DataFrames: AbstractDataFrame, groupby
 using Distributions: DiscreteUnivariateDistribution, Distribution, NegativeBinomial, pdf, quantile
@@ -21,7 +21,7 @@ end
 
 function EpiBranch.epicurve(
         states::Vector{<:SimulationState};
-        interval::Integer = 7, by::TransitionCount = TransitionCount(:onset),
+        interval::Integer = 7, by::Union{TransitionCount, Function} = _onset_or_infection,
         reference_date::Date = Date(2020, 1, 1), range = nothing,
         probs = (0.025, 0.25, 0.5, 0.75, 0.975)
     )
@@ -44,7 +44,7 @@ end
 
 function EpiBranch.epicurve(
         state::SimulationState;
-        interval::Integer = 7, by::TransitionCount = TransitionCount(:onset),
+        interval::Integer = 7, by::Union{TransitionCount, Function} = _onset_or_infection,
         reference_date::Date = Date(2020, 1, 1), range = nothing
     )
     counts = incidence(state; interval, by, reference_date, range)
@@ -81,38 +81,45 @@ function EpiBranch.chain_size_plot(
 end
 
 function EpiBranch.containment_plot(
-        results::AbstractDataFrame, x::Symbol;
-        group::Union{Nothing, Symbol} = nothing, y::Symbol = :containment_probability
+        results::AbstractDataFrame, x::Symbol; group::Union{Nothing, Symbol} = nothing
     )
-    for col in (x, y)
-        hasproperty(results, col) ||
+    for col in (x, :containment_probability, group)
+        col === nothing || col in propertynames(results) ||
             throw(ArgumentError("containment_plot: results has no column $col"))
     end
-    eltype(results[!, x]) <: Real ||
-        throw(ArgumentError("containment_plot: column $x must be numeric"))
-    group === nothing || hasproperty(results, group) ||
-        throw(ArgumentError("containment_plot: results has no column $group"))
     isempty(results) && throw(ArgumentError("containment_plot: results is empty"))
-    fig = Figure()
-    ax = Axis(fig[1, 1]; xlabel = string(x), ylabel = "Containment probability")
-    parts = group === nothing ? [(nothing, results)] :
-        [(only(unique(g[!, group])), g) for g in groupby(results, group)]
-    for (value, part) in parts
-        part = sort(part, x)
-        kw = value === nothing ? (;) : (; label = "$group = $value")
-        scatterlines!(ax, Float64.(part[!, x]), Float64.(part[!, y]); kw...)
+    results = copy(results)
+    for col in (x, :containment_probability)
+        results[!, col] = identity.(results[!, col])
     end
-    Makie.ylims!(ax, 0, 1)
-    group === nothing || axislegend(ax; position = :rb)
+    eltype(results[!, x]) <: Real ||
+        throw(ArgumentError("containment_plot: column $x is not numeric"))
+    fig = Figure()
+    ax = Axis(
+        fig[1, 1]; xlabel = string(x), ylabel = "Containment probability",
+        limits = (nothing, (0, 1))
+    )
+    if group === nothing
+        sorted = sort(results, x)
+        scatterlines!(ax, sorted[!, x], sorted.containment_probability; color = :steelblue)
+    else
+        for (key, part) in pairs(groupby(results, group; sort = true))
+            sorted = sort(part, x)
+            scatterlines!(
+                ax, sorted[!, x], sorted.containment_probability; label = string(key[1])
+            )
+        end
+        axislegend(ax, string(group); position = :rt)
+    end
     return fig
 end
 
 function EpiBranch.end_of_outbreak_plot(
         state::SimulationState, offspring::NegativeBinomial,
         generation_time::Distribution;
-        by::TransitionCount = TransitionCount(:onset), times = nothing
+        by::Union{TransitionCount, Function} = _onset_or_infection, times = nothing
     )
-    observed = filter(isfinite, [_weekly_time(by, ind) for ind in individuals(state) if is_infected(ind)])
+    observed = filter(isfinite, [_case_time(by, ind) for ind in individuals(state) if is_infected(ind)])
     isempty(observed) && throw(ArgumentError("end_of_outbreak_plot: no cases to plot"))
     first_case = minimum(observed)
     if times === nothing
