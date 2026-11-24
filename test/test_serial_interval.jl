@@ -59,6 +59,23 @@
         )
     end
 
+    @testset "a shared-trajectory model throws an error that names the simulated route" begin
+        load = (rng, ind) -> (t -> t)
+        spec = ModelSpec(
+            BranchingProcess(
+                Infectiousness(
+                    NegBin(1.5, 0.5);
+                    kernel = ind -> HazardKernel(t -> 0.3 * EpiBranch.trajectory_value(ind, t); upper = 10.0)
+                )
+            );
+            attributes = within_host(load)
+        )
+        state = simulate(spec; n_initial = 2, max_cases = 20, rng = StableRNG(1))
+        @test_throws "realised_serial_intervals" serial_interval(
+            spec, individuals(state)[1], individuals(state)[1]
+        )
+    end
+
     @testset "a model with no clinical_presentation has no incubation period" begin
         spec = ModelSpec(BranchingProcess(NegBin(2.5, 0.16), gt))
         state = simulate(spec; n_initial = 2, rng = StableRNG(1))
