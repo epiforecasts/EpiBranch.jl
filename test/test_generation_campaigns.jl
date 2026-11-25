@@ -391,8 +391,8 @@ EpiBranch.trigger_time(e::_EligibleAt, infector, state) = e.time
             @test alloc(prepared_single, started, 4) == 0
         end
 
-        # A fresh state built by `simulate` holds one zero per campaign, so its
-        # first continuation keeps the type of the state and allocates nothing.
+        # A fresh state built by `simulate` holds one zero per campaign. Its
+        # first continuation then keeps the type of the state and allocates nothing.
         for interventions in (
                 [
                     CapacityConstrained(

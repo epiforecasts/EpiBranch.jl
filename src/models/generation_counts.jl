@@ -483,7 +483,7 @@ function _initial_generation_state(model::_GenerationProcess, n_initial, rng)
     )
 end
 
-# A fresh single-type state holds one zero per campaign, so that continuing it
+# A fresh single-type state holds one zero per campaign. Continuing it then
 # returns a state of the same type and allocates nothing.
 _zero_doses(state::GenerationCounts, campaigns::Tuple) = _with_doses(
     state, ntuple(_ -> 0, Val(length(campaigns)))
