@@ -32,10 +32,10 @@ When the attributes record the onset without an `onset_law` (a builder that
 draws a within-host trajectory, as in the [asymptomatic-cases
 tutorial](@ref "Onset and infectiousness both follow a trajectory")), the
 generation time may be a function of the individual. The interval is then a
-mixture over `n_trajectories` draws of the attributes, each draw's kernel
-conditioned on a contact and shifted by minus its onset, weighted by the chance
-of a contact. Draws without an onset are left out, `infector` and `infectee`
-are not read, and interventions are not applied.
+mixture over `n_trajectories` draws of the attributes. The kernel of each draw
+is conditioned on a contact and shifted by minus its onset, and the draws are
+weighted by the chance of a contact. Draws without an onset are left out.
+`infector` and `infectee` are not read, and interventions are not applied.
 
 Available once CensoredDistributions.jl and ConvolvedDistributions.jl are
 both loaded, on Julia 1.11 or later. On Julia 1.10 the two packages pull in

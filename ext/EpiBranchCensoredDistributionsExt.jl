@@ -52,7 +52,7 @@ end
 
 # Mixture over `n` draws of the attributes: each draw's kernel conditioned on
 # a contact, shifted by minus its onset, weighted by the chance of a contact.
-# The infectee's onset comes from the next draw, an independent case.
+# The onset of the infectee comes from the next draw, an independent case.
 function _trajectory_serial_interval(model, attrs, n::Integer, rng)
     n >= 2 || throw(ArgumentError("n_trajectories must be at least 2, got $n"))
     EpiBranch.single_type_offspring(model) isa Distribution || throw(
