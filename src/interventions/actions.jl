@@ -680,7 +680,7 @@ function _apply_population_actions!(
             continue
         end
         # A budgeted campaign is offered per dose date, to those still susceptible then.
-        # Only a race that supplies a `sink` can defer to the date; people created
+        # Deferring to the date needs a race that supplies a `sink`. People created
         # during a run are admitted at once.
         due = Dict{Any, Vector{eltype(actions)}}()
         for a in actions
