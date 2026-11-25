@@ -208,29 +208,55 @@ end
 _split_by_size(rng, doses, sizes) =
     length(sizes) == 1 ? [doses] : rand(rng, Multinomial(doses, sizes ./ sum(sizes)))
 
-# `_generation_doses` for a single type, written into `doses`; returns whether
-# any campaign has a dose.
-function _scalar_doses!(doses::Vector{Int}, campaigns, used, generation_length, gen)
-    isempty(doses) && return false
+# Gives the population campaigns' doses for generation `gen` at the start of
+# its interval, for a single type. Returns the susceptibles left, the people
+# protected and the doses used.
+function _vaccinate_scalar(
+        rng, campaigns::Tuple, used::Tuple, generation_length, gen, susceptibles::Int,
+        vaccinated::Int, size::Int
+    )
     t0, t1 = _generation_interval(generation_length, gen)
-    any_doses = false
-    for (k, c) in enumerate(campaigns)
-        if !_doses_contacts(c)
-            doses[k] = 0
-            continue
-        end
-        cc = c.budget isa AbstractVector ? only(c.budget) : c.budget
-        doses[k] = _doses_left(c, cc, t0, t1, only(used[k]))
-        any_doses |= doses[k] > 0
-    end
-    return any_doses
+    return _vaccinate_each(
+        rng, campaigns, used, 1, t0, t1, susceptibles, vaccinated, size
+    )
 end
 
-# `_deplete_dosed!` for a single type, returning the contacts kept and the
-# susceptibles left.
+# One campaign at a time, peeling the tuple so that campaigns of different types
+# are each handled with their own type known.
+_vaccinate_each(rng, ::Tuple{}, used, k, t0, t1, susceptibles, vaccinated, size) =
+    (susceptibles, vaccinated, used)
+function _vaccinate_each(rng, campaigns::Tuple, used, k, t0, t1, susceptibles, vaccinated, size)
+    c = first(campaigns)
+    if !_doses_contacts(c)
+        cc = c.budget isa AbstractVector ? only(c.budget) : c.budget
+        d = _doses_left(c, cc, t0, t1, used[k])
+        n = protected_by_doses(c.dosing, rng, d, c.efficacy, susceptibles, vaccinated, size)
+        susceptibles -= n
+        vaccinated += n
+        used = Base.setindex(used, used[k] + d, k)
+    end
+    return _vaccinate_each(
+        rng, Base.tail(campaigns), used, k + 1, t0, t1, susceptibles, vaccinated, size
+    )
+end
+
+# `_generation_doses` for a single type: the doses each campaign has for the
+# generation, zero for one that doses the population.
+function _scalar_doses(campaigns::Tuple, used::Tuple, generation_length, gen)
+    isempty(campaigns) && return ()
+    t0, t1 = _generation_interval(generation_length, gen)
+    return map(campaigns, used) do c, u
+        _doses_contacts(c) || return 0
+        cc = c.budget isa AbstractVector ? only(c.budget) : c.budget
+        return _doses_left(c, cc, t0, t1, u)
+    end
+end
+
+# `_deplete_dosed!` for a single type, returning the contacts kept, the
+# susceptibles left and the doses each campaign gave.
 function _deplete_dosed(
         rng, ::PerContactDepletion, potential::Real, susceptibles::Int, size::Int,
-        campaigns, doses::Vector{Int}, used
+        efficacies::Tuple, doses::Tuple
     )
     contacts = potential isa Int ? potential : rand(rng, Poisson(potential))
     kept = 0
@@ -241,8 +267,8 @@ function _deplete_dosed(
             done < d < level && (level = d)
         end
         pass = 1.0
-        for (k, c) in enumerate(campaigns)
-            doses[k] >= level && (pass *= 1 - c.efficacy)
+        for (k, e) in enumerate(efficacies)
+            doses[k] >= level && (pass *= 1 - e)
         end
         remaining = level - done
         while remaining > 0 && susceptibles > 0 && pass > 0
@@ -253,10 +279,7 @@ function _deplete_dosed(
         end
         done = level
     end
-    for k in eachindex(doses)
-        used[k][1] += min(doses[k], contacts)
-    end
-    return kept, susceptibles
+    return kept, susceptibles, map(d -> min(d, contacts), doses)
 end
 
 # How many of each type's `contacts` every campaign doses. A shared budget

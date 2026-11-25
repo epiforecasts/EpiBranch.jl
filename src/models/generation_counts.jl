@@ -91,10 +91,12 @@ single-type model holds an `Int` for each count below, a multi-type one a
 - `generation`: the last generation simulated.
 - `generation_length`: the length of a generation in days, or `nothing` if
   none was given; the state is at day `generation * generation_length`.
-- `doses_used`: for each vaccination campaign, how many doses it has given, per
-  budget (one for a shared budget, one per type for a [`PerGroup`](@ref) one).
-  Empty if no campaign has been applied.
-- `protected`: for each type, how many people the campaigns have protected.
+- `doses_used`: for each vaccination campaign, how many doses it has given. For a
+  single type a tuple of integers, one per campaign; otherwise a vector per
+  campaign with one entry per budget (one for a shared budget, one per type for
+  a [`PerGroup`](@ref) one). Empty if no campaign has been applied.
+- `protected`: how many people the campaigns have protected, an integer for a
+  single type and otherwise one per type.
 
 Continue it with `simulate(model, state; max_generations)`.
 """
@@ -102,6 +104,7 @@ struct GenerationCounts{
         C <: Union{Int, Vector{Int}}, P <: Union{Int, NoPopulation},
         S <: Union{Int, Vector{Int}, NoPopulation}, L <: Union{Float64, Nothing},
         D <: AbstractDepletion, R <: AbstractRNG,
+        U <: Union{Tuple{Vararg{Int}}, Vector{Vector{Int}}}, Q <: Union{Int, Vector{Int}},
     }
     counts::C
     cumulative_cases::Int
@@ -112,8 +115,8 @@ struct GenerationCounts{
     generation_length::L
     depletion::D
     rng::R
-    doses_used::Vector{Vector{Int}}
-    protected::Vector{Int}
+    doses_used::U
+    protected::Q
 end
 
 function Base.show(io::IO, s::GenerationCounts)
@@ -475,7 +478,7 @@ function _initial_generation_state(model::_GenerationProcess, n_initial, rng)
     resolution = model.resolution
     return GenerationCounts(
         counts, cumulative, pop, susceptibles, sizes, 0, resolution.generation_length,
-        resolution.depletion, rng, Vector{Int}[], zeros(Int, nt)
+        resolution.depletion, rng, nt == 1 ? () : Vector{Int}[], nt == 1 ? 0 : zeros(Int, nt)
     )
 end
 
@@ -542,7 +545,7 @@ function simulate(
         model::BranchingProcess, state::GenerationCounts;
         max_generations::Integer, rng::AbstractRNG = state.rng
     )
-    return _continue_generations(model, state, _Campaign[]; max_generations, rng)
+    return _continue_generations(model, state, (); max_generations, rng)
 end
 
 """
@@ -552,7 +555,7 @@ The vaccination campaigns of a [`ModelSpec`](@ref) and its branching process, as
 returned by [`prepare_generations`](@ref). Hold one to continue many
 [`GenerationCounts`](@ref) without building the campaigns again.
 """
-struct GenerationCampaigns{M <: BranchingProcess, V <: AbstractVector}
+struct GenerationCampaigns{M <: BranchingProcess, V <: Union{AbstractVector, Tuple}}
     model::M
     campaigns::V
 end
@@ -568,7 +571,11 @@ function prepare_generations(spec::ModelSpec, state::GenerationCounts)
     campaigns = _generation_campaigns(
         spec, state.generation_length, !(state.susceptibles isa NoPopulation)
     )
-    return GenerationCampaigns(_generation_process(spec), campaigns)
+    # A single type holds them as a tuple, so that the doses of each are
+    # counted without allocating.
+    return GenerationCampaigns(
+        _generation_process(spec), state.counts isa Int ? _as_tuple(campaigns) : campaigns
+    )
 end
 
 """
@@ -617,58 +624,42 @@ function _continue_generations(
     )
 end
 
-# A single type keeps its count, susceptibles and size as plain integers and
-# allocates no vectors for them in a generation.
+# A single type keeps its count, susceptibles, size, protected and the doses
+# of each campaign as plain integers (a tuple for the doses), so that a
+# generation allocates nothing, and a continuation returns a new state
+# without copying anything.
 function _run_generations(
-        model::BranchingProcess, offspring, state::GenerationCounts, campaigns,
+        model::BranchingProcess, offspring, state::GenerationCounts, campaigns_in,
         counts::Int; max_generations::Integer, rng::AbstractRNG
     )
+    campaigns = _as_tuple(campaigns_in)
+    efficacies = map(c -> c.efficacy, campaigns)
     susceptibles = state.susceptibles isa NoPopulation ? nothing : _scalar(state.susceptibles)
     sizes = state.type_sizes isa NoPopulation ? nothing : _scalar(state.type_sizes)
     cumulative = state.cumulative_cases
     gen = state.generation
-    owned = !(length(state.doses_used) == length(campaigns) && !isempty(campaigns))
-    used = owned ? _doses_used(state, campaigns) : state.doses_used
-    protected = state.protected
-    vaccinated = isempty(protected) ? 0 : only(protected)
-    vaccinated_start = vaccinated
-    doses = any(_doses_contacts, campaigns) ? zeros(Int, length(campaigns)) : _NO_DOSES
+    used = _single_used(state.doses_used, campaigns)
+    vaccinated = _protected(state.protected)
     vaccinates_population = !all(_doses_contacts, campaigns)
     while gen < max_generations && counts != 0
         if vaccinates_population && susceptibles !== nothing
-            t0, t1 = _generation_interval(state.generation_length, gen)
-            size = something(sizes)
-            for (k, c) in enumerate(campaigns)
-                _doses_contacts(c) && continue
-                cc = c.budget isa AbstractVector ? only(c.budget) : c.budget
-                d = _doses_left(c, cc, t0, t1, only(used[k]))
-                if d > 0 && !owned
-                    used = deepcopy(used)
-                    owned = true
-                end
-                n = protected_by_doses(
-                    c.dosing, rng, d, c.efficacy, susceptibles, vaccinated, size
-                )
-                susceptibles -= n
-                vaccinated += n
-                used[k][1] += d
-            end
+            susceptibles, vaccinated, used = _vaccinate_scalar(
+                rng, campaigns, used, state.generation_length, gen, susceptibles,
+                vaccinated, something(sizes)
+            )
         end
-        dosed = _scalar_doses!(doses, campaigns, used, state.generation_length, gen)
+        doses = _scalar_doses(campaigns, used, state.generation_length, gen)
         m = _draw_multiplier(rng, model.multiplier)
         potential = _single_potential(rng, offspring, counts, m, susceptibles !== nothing)
         if susceptibles === nothing
             # Without a finite population nothing is thinned.
             counts = potential
-        elseif dosed
-            if !owned
-                used = deepcopy(used)
-                owned = true
-            end
-            counts, susceptibles = _deplete_dosed(
+        elseif any(>(0), doses)
+            counts, susceptibles, taken = _deplete_dosed(
                 rng, state.depletion, potential, susceptibles, something(sizes),
-                campaigns, doses, used
+                efficacies, doses
             )
+            used = map(+, used, taken)
         else
             counts, susceptibles = _deplete(
                 rng, state.depletion, potential, susceptibles, something(sizes)
@@ -681,7 +672,7 @@ function _run_generations(
         counts, cumulative, state.population_size,
         susceptibles === nothing ? NoPopulation() : susceptibles,
         state.type_sizes, gen, state.generation_length, state.depletion, rng, used,
-        vaccinated == vaccinated_start ? protected : [vaccinated]
+        vaccinated
     )
 end
 
@@ -728,7 +719,16 @@ function _run_generations(
     )
 end
 
-const _NO_DOSES = Int[]
+_as_tuple(campaigns::Tuple) = campaigns
+_as_tuple(campaigns::AbstractVector) = isempty(campaigns) ? () : Tuple(campaigns)
+
+# The doses each campaign of a single-type continuation has given: those in the
+# state, or zeros if it holds none for these campaigns. With no campaigns they
+# stay as they were.
+_single_used(used::Tuple{Vararg{Int}}, campaigns::Tuple{}) = used
+function _single_used(used::Tuple{Vararg{Int}}, campaigns::NTuple{K, Any}) where {K}
+    return used isa NTuple{K, Int} ? used : ntuple(_ -> 0, Val(K))
+end
 
 # How many doses each campaign has given so far, per budget: those in the state,
 # or zeros for campaigns it has not met. A continuation without campaigns
@@ -749,6 +749,8 @@ end
 _as_vector(x::Vector{Int}) = x
 _as_vector(x::Int) = [x]
 _scalar(x::Int) = x
+_protected(x::Int) = x
+_protected(x::Vector{Int}) = isempty(x) ? 0 : only(x)
 _scalar(x::Vector{Int}) = only(x)
 _like(::Vector{Int}, v::Vector{Int}) = v
 

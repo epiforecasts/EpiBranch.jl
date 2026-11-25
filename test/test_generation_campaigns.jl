@@ -136,13 +136,12 @@ EpiBranch.trigger_time(e::_EligibleAt, infector, state) = e.time
             return kept
         end
         function by_counting(rng, n, s, size, doses)
-            campaigns = [EpiBranch._Campaign(e, (0.0, Inf), nothing, nothing) for (_, e) in doses]
-            used = [[0] for _ in doses]
-            kept, left = EpiBranch._deplete_dosed(
-                rng, PerContactDepletion(), n, s, size, campaigns, first.(doses), used
+            kept, left, taken = EpiBranch._deplete_dosed(
+                rng, PerContactDepletion(), n, s, size, Tuple(last.(doses)),
+                Tuple(first.(doses))
             )
             @test left == s - kept
-            @test getindex.(used, 1) == min.(first.(doses), n)
+            @test taken == Tuple(min.(first.(doses), n))
             return kept
         end
         reps = 4_000
@@ -348,7 +347,7 @@ EpiBranch.trigger_time(e::_EligibleAt, infector, state) = e.time
         # unless a campaign gives a dose.
         full = GenerationCounts(
             300, 300, 50_000, 30_000, 50_000, 5, 14.0, PerContactDepletion(),
-            StableRNG(1), [[10^6]], [0]
+            StableRNG(1), (10^6,), 0
         )
         spent = prepare_generations(
             ModelSpec(
@@ -363,7 +362,30 @@ EpiBranch.trigger_time(e::_EligibleAt, infector, state) = e.time
         )
         out = simulate(spent, full; max_generations = 7, rng = StableRNG(2))
         @test out.doses_used === full.doses_used
-        @test full.doses_used == [[10^6]]
+        @test full.doses_used == (10^6,)
+
+        # A single type counts its doses as integers, so that a continuation
+        # that takes doses, from a population or from contacts, allocates
+        # nothing once the state holds the doses of its campaigns.
+        alloc(prepared, s, n) = @allocated simulate(prepared, s; max_generations = n)
+        single = BranchingProcess(Poisson(2.0); population = Population(50_000))
+        fresh = GenerationCounts(
+            300, 300, 50_000, 30_000, 50_000, 0, 14.0, PerContactDepletion(),
+            StableRNG(1), (), 0
+        )
+        for vaccine in (
+                MassVaccination(efficacy = 0.9, eligibility_time = 0.0),
+                GroupVaccination(efficacy = 0.5, group_key = :type),
+            )
+            campaign = CapacityConstrained(vaccine; budget_per_period = 500.0, period = 14.0)
+            prepared_single = prepare_generations(
+                ModelSpec(single; interventions = [campaign]), fresh
+            )
+            started = simulate(prepared_single, fresh; max_generations = 2)
+            @test only(started.doses_used) > 0
+            alloc(prepared_single, started, 4)
+            @test alloc(prepared_single, started, 4) == 0
+        end
 
         # The checks of the spec still apply.
         @test_throws ArgumentError prepare_generations(

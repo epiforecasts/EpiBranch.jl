@@ -94,7 +94,7 @@ end
         spec = ModelSpec(model; interventions = [campaign])
         start(i) = EpiBranch.GenerationCounts(
             100, 100, 100_000, 90_000, 100_000, 0, 14.0, PerContactDepletion(),
-            StableRNG(i), Vector{Int}[], [0]
+            StableRNG(i), (), 0
         )
         # The 50,000 doses are given when the second generation starts. Each
         # reaches a susceptible with probability s / n and protects it with
@@ -105,7 +105,7 @@ end
             before = simulate(spec, start(i); max_generations = 1)
             after = simulate(spec, before; max_generations = 2)
             infected = after.counts
-            @test after.doses_used == [[50_000]]
+            @test after.doses_used == (50_000,)
             (before.susceptibles - after.susceptibles - infected) / before.susceptibles
         end
         @test abs(mean(shares) - (1 - exp(-0.45))) < 4 * std(shares) / sqrt(reps)
