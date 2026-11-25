@@ -182,9 +182,10 @@ function _doses_left(c::_Campaign, cc::CapacityConstrained, t0, t1, used)
 end
 
 # Gives the population campaigns' doses for generation `gen` at the start of
-# its interval, lowering `susceptibles` by those protected.
+# its interval, lowering `susceptibles` by those protected and raising `protected`.
 function _vaccinate_population!(
-        rng, campaigns, used, generation_length, gen, susceptibles::Vector{Int}, sizes
+        rng, campaigns, used, generation_length, gen, susceptibles::Vector{Int},
+        protected::Vector{Int}, sizes
     )
     isempty(campaigns) && return susceptibles
     t0, t1 = _generation_interval(generation_length, gen)
@@ -193,9 +194,11 @@ function _vaccinate_population!(
         d = _doses_of(c, c.budget, t0, t1, used[k])
         by_type = d isa Int ? _split_by_size(rng, d, sizes) : d
         for i in eachindex(by_type)
-            susceptibles[i] -= protected_by_doses(
-                c.dosing, rng, by_type[i], c.efficacy, susceptibles[i], sizes[i]
+            n = protected_by_doses(
+                c.dosing, rng, by_type[i], c.efficacy, susceptibles[i], protected[i], sizes[i]
             )
+            susceptibles[i] -= n
+            protected[i] += n
         end
         used[k] .+= length(used[k]) == 1 ? sum(by_type) : by_type
     end

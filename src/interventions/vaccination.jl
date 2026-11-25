@@ -1339,23 +1339,67 @@ the number of doses.
 struct RandomDosing <: AbstractDosing end
 
 """
-    EpiBranch.protected_by_doses(rule, rng, doses, efficacy, susceptibles, size) -> Int
+    EpiBranch.protected_by_doses(rule, rng, doses, efficacy, susceptibles, vaccinated, size) -> Int
 
 How many of a group's `susceptibles`, out of `size` people, a batch of
 `doses` protects under the dosing `rule`, each dose protecting a susceptible it
-reaches with probability `efficacy`. The caller removes them from the
-susceptibles. A new [`AbstractDosing`](@ref) defines this method.
+reaches with probability `efficacy`. `vaccinated` is the number of people the
+group's campaigns have already protected. The caller removes the protected from
+the susceptibles and adds them to `vaccinated`. A new [`AbstractDosing`](@ref)
+defines this method.
 """
 function protected_by_doses(
         ::RandomDosing, rng::AbstractRNG, doses::Integer, efficacy::Real,
-        susceptibles::Integer, size::Integer
+        susceptibles::Integer, vaccinated::Integer, size::Integer
     )
+    return _protected_among(rng, doses, efficacy, susceptibles, size)
+end
+
+# One binomial draw; `pool` is the weight of everyone a dose can reach.
+function _protected_among(rng, doses, efficacy, susceptibles, pool)
     (doses > 0 && susceptibles > 0 && efficacy > 0) || return 0
-    # A susceptible escapes all `doses` with probability (1 - efficacy / size)^doses.
-    # One binomial draw then costs the same for any number of doses. Treating
-    # people as independent is close to exact in a large population.
-    p = -expm1(doses * log1p(-min(efficacy / size, 1.0)))
+    p = -expm1(doses * log1p(-min(efficacy / pool, 1.0)))
     return rand(rng, Binomial(susceptibles, p))
+end
+
+"""
+    SusceptibleDosing()
+
+An [`AbstractDosing`](@ref) that gives every dose to a susceptible; no dose
+reaches an infected or already protected person.
+"""
+struct SusceptibleDosing <: AbstractDosing end
+
+function protected_by_doses(
+        ::SusceptibleDosing, rng::AbstractRNG, doses::Integer, efficacy::Real,
+        susceptibles::Integer, vaccinated::Integer, size::Integer
+    )
+    return _protected_among(rng, doses, efficacy, susceptibles, susceptibles)
+end
+
+"""
+    FavourVaccinated(weight)
+
+An [`AbstractDosing`](@ref) in which a person already protected by the
+campaigns is `weight` times as likely as anyone else to receive each dose. A
+`weight` of 1 is [`RandomDosing`](@ref) and 0 gives no dose to the protected.
+"""
+struct FavourVaccinated <: AbstractDosing
+    weight::Float64
+    function FavourVaccinated(weight::Real)
+        (isfinite(weight) && weight >= 0) || throw(
+            ArgumentError("`weight` must be finite and non-negative, got $weight")
+        )
+        return new(weight)
+    end
+end
+
+function protected_by_doses(
+        rule::FavourVaccinated, rng::AbstractRNG, doses::Integer, efficacy::Real,
+        susceptibles::Integer, vaccinated::Integer, size::Integer
+    )
+    pool = size - vaccinated + rule.weight * vaccinated
+    return _protected_among(rng, doses, efficacy, susceptibles, pool)
 end
 
 # ── MassVaccination ──────────────────────────────────────────────────

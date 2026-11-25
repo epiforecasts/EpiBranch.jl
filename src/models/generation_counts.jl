@@ -94,6 +94,7 @@ single-type model holds an `Int` for each count below, a multi-type one a
 - `doses_used`: for each vaccination campaign, how many doses it has given, per
   budget (one for a shared budget, one per type for a [`PerGroup`](@ref) one).
   Empty if no campaign has been applied.
+- `protected`: for each type, how many people the campaigns have protected.
 
 Continue it with `simulate(model, state; max_generations)`.
 """
@@ -112,6 +113,7 @@ struct GenerationCounts{
     depletion::D
     rng::R
     doses_used::Vector{Vector{Int}}
+    protected::Vector{Int}
 end
 
 function Base.show(io::IO, s::GenerationCounts)
@@ -473,7 +475,7 @@ function _initial_generation_state(model::_GenerationProcess, n_initial, rng)
     resolution = model.resolution
     return GenerationCounts(
         counts, cumulative, pop, susceptibles, sizes, 0, resolution.generation_length,
-        resolution.depletion, rng, Vector{Int}[]
+        resolution.depletion, rng, Vector{Int}[], zeros(Int, nt)
     )
 end
 
@@ -627,6 +629,9 @@ function _run_generations(
     gen = state.generation
     owned = !(length(state.doses_used) == length(campaigns) && !isempty(campaigns))
     used = owned ? _doses_used(state, campaigns) : state.doses_used
+    protected = state.protected
+    vaccinated = isempty(protected) ? 0 : only(protected)
+    vaccinated_start = vaccinated
     doses = any(_doses_contacts, campaigns) ? zeros(Int, length(campaigns)) : _NO_DOSES
     vaccinates_population = !all(_doses_contacts, campaigns)
     while gen < max_generations && counts != 0
@@ -641,9 +646,11 @@ function _run_generations(
                     used = deepcopy(used)
                     owned = true
                 end
-                susceptibles -= protected_by_doses(
-                    c.dosing, rng, d, c.efficacy, susceptibles, size
+                n = protected_by_doses(
+                    c.dosing, rng, d, c.efficacy, susceptibles, vaccinated, size
                 )
+                susceptibles -= n
+                vaccinated += n
                 used[k][1] += d
             end
         end
@@ -673,7 +680,8 @@ function _run_generations(
     return GenerationCounts(
         counts, cumulative, state.population_size,
         susceptibles === nothing ? NoPopulation() : susceptibles,
-        state.type_sizes, gen, state.generation_length, state.depletion, rng, used
+        state.type_sizes, gen, state.generation_length, state.depletion, rng, used,
+        vaccinated == vaccinated_start ? protected : [vaccinated]
     )
 end
 
@@ -688,9 +696,11 @@ function _run_generations(
     cumulative = state.cumulative_cases
     gen = state.generation
     used = _doses_used(state, campaigns)
+    protected = copy(state.protected)
     while gen < max_generations && !all(iszero, counts)
         susceptibles === nothing || _vaccinate_population!(
-            rng, campaigns, used, state.generation_length, gen, susceptibles, sizes
+            rng, campaigns, used, state.generation_length, gen, susceptibles, protected,
+            sizes
         )
         doses, taken = _generation_doses(campaigns, used, state.generation_length, gen)
         m = _draw_multiplier(rng, model.multiplier)
@@ -714,7 +724,7 @@ function _run_generations(
         _like(template, counts), cumulative, state.population_size,
         susceptibles === nothing ? NoPopulation() : _like(template, susceptibles),
         state.type_sizes, gen, state.generation_length, state.depletion,
-        rng, used
+        rng, used, protected
     )
 end
 

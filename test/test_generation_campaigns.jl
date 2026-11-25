@@ -348,7 +348,7 @@ EpiBranch.trigger_time(e::_EligibleAt, infector, state) = e.time
         # unless a campaign gives a dose.
         full = GenerationCounts(
             300, 300, 50_000, 30_000, 50_000, 5, 14.0, PerContactDepletion(),
-            StableRNG(1), [[10^6]]
+            StableRNG(1), [[10^6]], [0]
         )
         spent = prepare_generations(
             ModelSpec(
