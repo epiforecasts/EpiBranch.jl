@@ -259,6 +259,8 @@ MassVaccination
 GroupVaccination
 AbstractDosing
 RandomDosing
+SusceptibleDosing
+FavourVaccinated
 AbstractEffectMode
 EpiBranch.effect_mode
 EpiBranch.dose_label

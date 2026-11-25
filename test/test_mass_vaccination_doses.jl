@@ -5,7 +5,7 @@ using Statistics
 # A rule that protects every dose it gives, to show a dosing rule needs only
 # `protected_by_doses`.
 struct _NeverWastes <: AbstractDosing end
-function EpiBranch.protected_by_doses(::_NeverWastes, rng, doses, efficacy, susceptibles, size)
+function EpiBranch.protected_by_doses(::_NeverWastes, rng, doses, efficacy, susceptibles, vaccinated, size)
     return min(doses, susceptibles)
 end
 
@@ -21,7 +21,7 @@ end
 
     @testset "random dosing protects as many as the doses reach" begin
         protected(doses, e, s, n; seed = 1) = EpiBranch.protected_by_doses(
-            RandomDosing(), StableRNG(seed), doses, e, s, n
+            RandomDosing(), StableRNG(seed), doses, e, s, 0, n
         )
         @test protected(0, 0.9, 500, 1000) == 0
         @test protected(100, 0.0, 500, 1000) == 0
@@ -36,6 +36,56 @@ end
         @test abs(mean(draws) - expected) < 4 * std(draws) / sqrt(reps)
     end
 
+    @testset "dosing rules that follow the susceptibles or favour the vaccinated" begin
+        protected(rule, doses, e, s, v, n; seed = 1) = EpiBranch.protected_by_doses(
+            rule, StableRNG(seed), doses, e, s, v, n
+        )
+        reps = 400
+        mean_of(rule, args...) = mean(protected(rule, args...; seed = i) for i in 1:reps)
+        # Doses go to susceptibles only: each of s susceptibles escapes d doses
+        # with probability (1 - e / s)^d.
+        s, d, e = 400, 600, 0.8
+        expected = s * (1 - (1 - e / s)^d)
+        draws = [protected(SusceptibleDosing(), d, e, s, 0, 1_000; seed = i) for i in 1:reps]
+        @test abs(mean(draws) - expected) < 4 * std(draws) / sqrt(reps)
+        @test protected(SusceptibleDosing(), 10^6, 1.0, 500, 0, 1_000) == 500
+        # A weight of 1 is random dosing, whatever the vaccinated count.
+        same = [
+            protected(FavourVaccinated(1.0), 2_000, 0.8, 800, 100, 1_000; seed = i)
+                for i in 1:reps
+        ]
+        random = [
+            protected(RandomDosing(), 2_000, 0.8, 800, 100, 1_000; seed = i)
+                for i in 1:reps
+        ]
+        @test same == random
+        # A weight above 1 leaves fewer doses for the unprotected. The pool is
+        # the unprotected plus the weighted protected.
+        draws = [
+            protected(FavourVaccinated(3.0), 2_000, 0.8, 600, 300, 1_000; seed = i)
+                for i in 1:reps
+        ]
+        expected = 600 * (1 - (1 - 0.8 / (700 + 3 * 300))^2_000)
+        @test abs(mean(draws) - expected) < 4 * std(draws) / sqrt(reps)
+        @test protected(FavourVaccinated(3.0), 2_000, 0.8, 600, 300, 1_000) <
+            protected(FavourVaccinated(1.0), 2_000, 0.8, 600, 300, 1_000)
+        @test_throws ArgumentError FavourVaccinated(-1.0)
+    end
+
+    @testset "the protected accumulate in the counts and feed the next batch" begin
+        susceptibles = [1_000]
+        protected = [0]
+        used = [[0]]
+        c = EpiBranch._campaign(
+            budget(mass(dosing = FavourVaccinated(0.0)), 5_000.0), (0.0, Inf), nothing
+        )
+        EpiBranch._vaccinate_population!(
+            StableRNG(1), [c], used, 14.0, 0, susceptibles, protected, [1_000]
+        )
+        @test protected[1] > 0
+        @test susceptibles[1] == 1_000 - protected[1]
+    end
+
     @testset "simulate_by_generation takes the protected out of the susceptibles" begin
         model = BranchingProcess(Poisson(4.0); population = Population(100_000))
         campaign = budget(
@@ -44,7 +94,7 @@ end
         spec = ModelSpec(model; interventions = [campaign])
         start(i) = EpiBranch.GenerationCounts(
             100, 100, 100_000, 90_000, 100_000, 0, 14.0, PerContactDepletion(),
-            StableRNG(i), Vector{Int}[]
+            StableRNG(i), Vector{Int}[], [0]
         )
         # The 50,000 doses are given when the second generation starts. Each
         # reaches a susceptible with probability s / n and protects it with
@@ -75,7 +125,7 @@ end
         susceptibles = [50_000, 50_000]
         used = [[0, 0]]
         EpiBranch._vaccinate_population!(
-            StableRNG(1), [c], used, 14.0, 0, susceptibles, [50_000, 50_000]
+            StableRNG(1), [c], used, 14.0, 0, susceptibles, [0, 0], [50_000, 50_000]
         )
         @test susceptibles[1] == 50_000
         @test susceptibles[2] < 50_000 - 10_000
@@ -90,7 +140,7 @@ end
             susceptibles = [20_000, 80_000]
             used = [[0]]
             EpiBranch._vaccinate_population!(
-                StableRNG(i), [c], used, 14.0, 0, susceptibles, [20_000, 80_000]
+                StableRNG(i), [c], used, 14.0, 0, susceptibles, [0, 0], [20_000, 80_000]
             )
             @test sum(susceptibles) == 100_000 - 10_000
             @test used == [[10_000]]
