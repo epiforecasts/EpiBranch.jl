@@ -1,1 +1,1 @@
-The `serial_interval` documentation now says that it does not handle a model with a shared within-host trajectory yet. For such a model the errors point to fitting a distribution to `realised_serial_intervals` of simulated states for now.
+The `serial_interval` documentation now says that it does not yet handle a model with a shared within-host trajectory. For such a model the errors point to fitting a distribution to `realised_serial_intervals` of simulated states.
