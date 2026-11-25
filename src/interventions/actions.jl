@@ -667,8 +667,7 @@ end
 # `EpiBranch.lazily_populate!`): offering a dose to everyone and creating
 # people only once the outbreak reaches them do not mix.
 function _apply_population_actions!(
-        state, interventions, members,
-        sink = (action, admitter) -> _fire_action!(admitter, state, action)
+        state, interventions, members, sink = nothing
     )
     any(acts_on_population, interventions) || return nothing
     candidates = [_realised!(state, id) for id in members]
@@ -676,11 +675,13 @@ function _apply_population_actions!(
         acts_on_population(iv) || continue
         actions = intervention_actions(iv, state, candidates)
         actions === nothing && continue
-        if !offers_when_due(iv)
+        if sink === nothing || !offers_when_due(iv)
             _admit_actions!(iv, state, actions)
             continue
         end
         # A budgeted campaign is offered per dose date, to those still susceptible then.
+        # Only a race that supplies a `sink` can defer to the date; people created
+        # during a run are admitted at once.
         due = Dict{Any, Vector{eltype(actions)}}()
         for a in actions
             isfinite(a.time) && push!(get!(due, a.time, eltype(actions)[]), a)

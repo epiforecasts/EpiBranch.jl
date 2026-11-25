@@ -413,6 +413,22 @@ end
         @test_throws ArgumentError EpiBranch.capacity_time_key(flagging)
     end
 
+    @testset "A budgeted MassVaccination doses people a branching process creates" begin
+        cc = CapacityConstrained(
+            MassVaccination(efficacy = 1.0, eligibility_time = 0.0);
+            budget_per_period = 3.0
+        )
+        state = simulate(
+            ModelSpec(
+                BranchingProcess(Poisson(3.0), Exponential(5.0));
+                interventions = [cc], attributes = CLINICAL
+            );
+            max_cases = 50,
+            rng = StableRNG(1)
+        )
+        @test count(is_vaccinated, individuals(state)) > 0
+    end
+
     @testset "A dose's own date decides its period, not the call's clock" begin
         rv = RingVaccination(efficacy = 0.9)
         cc = CapacityConstrained(
