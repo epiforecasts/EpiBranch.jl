@@ -250,7 +250,7 @@ end
 
 Simulate `model` by generation, as case counts rather than individuals: see
 [`GenerationCounts`](@ref). This is `simulate` on `model` with
-`resolution = ByGeneration(; depletion, generation_length)`; a `model` that already has a `ByGeneration` resolution keeps its `depletion` and `generation_length` unless the keywords are given (default `PerContactDepletion()` and `nothing` otherwise). `model` needs a single infectiousness window with
+`resolution = ByGeneration(; depletion, generation_length)`. If `model` already has a `ByGeneration` resolution, its `depletion` and `generation_length` apply unless you give the keywords. Otherwise the defaults are `PerContactDepletion()` and `nothing`. `model` needs a single infectiousness window with
 no generation-time kernel (discrete generations), no `until` and no
 `calendar`, and an offspring specification of a `Distribution` or an
 offspring matrix (`MultiTypeOffspring`); any other model raises an
@@ -408,7 +408,7 @@ function _by_generation(model::BranchingProcess, population_by_type, depletion, 
     )
 end
 
-# A model already built with `ByGeneration` keeps its own settings for any keyword left unset.
+# A model already built with `ByGeneration` supplies its own settings for any keyword left unset.
 _resolution(::AbstractResolution, depletion, generation_length) =
     ByGeneration(;
     depletion = something(depletion, PerContactDepletion()), generation_length
