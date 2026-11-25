@@ -729,8 +729,8 @@ _single_used(used::Tuple{Vararg{Int}}, campaigns::Tuple{}) = used
 function _single_used(used::Tuple{Vararg{Int}}, campaigns::NTuple{K, Any}) where {K}
     return used isa NTuple{K, Int} ? used : ntuple(_ -> 0, Val(K))
 end
-# A state built for several types holds its doses as vectors, which a single
-# type cannot carry on.
+# A state built for several types stores its doses as vectors. A single-type
+# continuation cannot reuse them, so it starts from zero doses.
 _single_used(::Vector{Vector{Int}}, campaigns::Tuple) = ntuple(_ -> 0, Val(length(campaigns)))
 
 # How many doses each campaign has given so far, per budget: those in the state,
