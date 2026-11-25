@@ -345,7 +345,7 @@ EpiBranch.trigger_time(e::_EligibleAt, infector, state) = e.time
         @test a.susceptibles == b.susceptibles
 
         # A state that already holds one budget per campaign is not copied
-        # when no dose is taken from it.
+        # unless a campaign gives a dose.
         full = GenerationCounts(
             300, 300, 50_000, 30_000, 50_000, 5, 14.0, PerContactDepletion(),
             StableRNG(1), [[10^6]]
