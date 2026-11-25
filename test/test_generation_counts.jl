@@ -343,6 +343,17 @@ end
         @test wrapper.counts == state.counts
         @test wrapper.cumulative_cases == state.cumulative_cases
 
+        kept = simulate_by_generation(
+            model; n_initial = 5, max_generations = 6, rng = StableRNG(1)
+        )
+        @test kept.generation_length == 7.0
+        @test kept.counts == state.counts
+        overridden = simulate_by_generation(
+            model; n_initial = 5, max_generations = 6, generation_length = 3.0,
+            rng = StableRNG(1)
+        )
+        @test overridden.generation_length == 3.0
+
         spec = ModelSpec(model)
         @test simulate(spec; n_initial = 5, max_generations = 6, rng = StableRNG(1)).counts ==
             state.counts

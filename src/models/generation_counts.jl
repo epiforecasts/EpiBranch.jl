@@ -245,12 +245,12 @@ end
     simulate_by_generation(model::BranchingProcess; n_initial = 1,
                            max_generations = 100, rng = Random.default_rng(),
                            population_by_type = nothing,
-                           depletion = PerContactDepletion(),
+                           depletion = nothing,
                            generation_length = nothing)
 
 Simulate `model` by generation, as case counts rather than individuals: see
 [`GenerationCounts`](@ref). This is `simulate` on `model` with
-`resolution = ByGeneration(; depletion, generation_length)`. `model` needs a single infectiousness window with
+`resolution = ByGeneration(; depletion, generation_length)`; a `model` that already has a `ByGeneration` resolution keeps its `depletion` and `generation_length` unless the keywords are given (default `PerContactDepletion()` and `nothing` otherwise). `model` needs a single infectiousness window with
 no generation-time kernel (discrete generations), no `until` and no
 `calendar`, and an offspring specification of a `Distribution` or an
 offspring matrix (`MultiTypeOffspring`); any other model raises an
@@ -374,7 +374,7 @@ function simulate_by_generation(
         max_generations::Integer = _DEFAULT_MAX_GENERATIONS,
         rng::AbstractRNG = Random.default_rng(),
         population_by_type::Union{Nothing, AbstractVector{<:Integer}} = nothing,
-        depletion::AbstractDepletion = PerContactDepletion(),
+        depletion::Union{AbstractDepletion, Nothing} = nothing,
         generation_length::Union{Real, Nothing} = nothing
     )
     by_generation = _by_generation(model, population_by_type, depletion, generation_length)
@@ -387,7 +387,7 @@ function simulate_by_generation(
         max_generations::Integer = _DEFAULT_MAX_GENERATIONS,
         rng::AbstractRNG = Random.default_rng(),
         population_by_type::Union{Nothing, AbstractVector{<:Integer}} = nothing,
-        depletion::AbstractDepletion = PerContactDepletion(),
+        depletion::Union{AbstractDepletion, Nothing} = nothing,
         generation_length::Union{Real, Nothing} = nothing
     )
     model = _by_generation(
@@ -404,7 +404,19 @@ function _by_generation(model::BranchingProcess, population_by_type, depletion, 
     return BranchingProcess(
         model.infectiousness, _by_type_population(model, population_by_type),
         model.n_types, model.type_labels, model.multiplier, model.importations,
-        ByGeneration(; depletion, generation_length)
+        _resolution(model.resolution, depletion, generation_length)
+    )
+end
+
+# A model already built with `ByGeneration` keeps its own settings for any keyword left unset.
+_resolution(::AbstractResolution, depletion, generation_length) =
+    ByGeneration(;
+    depletion = something(depletion, PerContactDepletion()), generation_length
+)
+function _resolution(resolution::ByGeneration, depletion, generation_length)
+    return ByGeneration(;
+        depletion = something(depletion, resolution.depletion),
+        generation_length = something(generation_length, resolution.generation_length)
     )
 end
 
