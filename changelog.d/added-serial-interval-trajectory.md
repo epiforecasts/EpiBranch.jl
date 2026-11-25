@@ -1,0 +1,1 @@
+`serial_interval(model, infector, infectee)` now works for a model whose onset and infectiousness share a within-host trajectory. It returns a mixture over draws of the attributes, each weighted by the chance of a contact. It agrees with `realised_serial_intervals` from a large simulation, with no simulation needed. `n_trajectories` and `rng` set the draws.
