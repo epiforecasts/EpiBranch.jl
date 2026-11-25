@@ -202,27 +202,6 @@ function _vaccinate_population!(
     return susceptibles
 end
 
-# `_vaccinate_population!` for a single type. Copies `used` before the first
-# dose is recorded in it unless the caller already owns it.
-function _vaccinate_scalar(
-        rng, campaigns, used, owned::Bool, generation_length, gen, susceptibles::Int,
-        size::Int
-    )
-    t0, t1 = _generation_interval(generation_length, gen)
-    for (k, c) in enumerate(campaigns)
-        _doses_contacts(c) && continue
-        cc = c.budget isa AbstractVector ? only(c.budget) : c.budget
-        d = _doses_left(c, cc, t0, t1, only(used[k]))
-        if d > 0 && !owned
-            used = deepcopy(used)
-            owned = true
-        end
-        susceptibles -= protected_by_doses(c.dosing, rng, d, c.efficacy, susceptibles, size)
-        used[k][1] += d
-    end
-    return susceptibles, used, owned
-end
-
 _split_by_size(rng, doses, sizes) =
     length(sizes) == 1 ? [doses] : rand(rng, Multinomial(doses, sizes ./ sum(sizes)))
 

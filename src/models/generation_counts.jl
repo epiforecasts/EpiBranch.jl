@@ -625,17 +625,27 @@ function _run_generations(
     sizes = state.type_sizes isa NoPopulation ? nothing : _scalar(state.type_sizes)
     cumulative = state.cumulative_cases
     gen = state.generation
-    # The state's own `doses_used` is only copied once a dose is taken from it.
     owned = !(length(state.doses_used) == length(campaigns) && !isempty(campaigns))
     used = owned ? _doses_used(state, campaigns) : state.doses_used
     doses = any(_doses_contacts, campaigns) ? zeros(Int, length(campaigns)) : _NO_DOSES
     vaccinates_population = !all(_doses_contacts, campaigns)
     while gen < max_generations && counts != 0
         if vaccinates_population && susceptibles !== nothing
-            susceptibles, used, owned = _vaccinate_scalar(
-                rng, campaigns, used, owned, state.generation_length, gen,
-                susceptibles, something(sizes)
-            )
+            t0, t1 = _generation_interval(state.generation_length, gen)
+            size = something(sizes)
+            for (k, c) in enumerate(campaigns)
+                _doses_contacts(c) && continue
+                cc = c.budget isa AbstractVector ? only(c.budget) : c.budget
+                d = _doses_left(c, cc, t0, t1, only(used[k]))
+                if d > 0 && !owned
+                    used = deepcopy(used)
+                    owned = true
+                end
+                susceptibles -= protected_by_doses(
+                    c.dosing, rng, d, c.efficacy, susceptibles, size
+                )
+                used[k][1] += d
+            end
         end
         dosed = _scalar_doses!(doses, campaigns, used, state.generation_length, gen)
         m = _draw_multiplier(rng, model.multiplier)
