@@ -1,0 +1,1 @@
+Building a `ModelSpec` inside a function differentiated with plain `Enzyme.Reverse` no longer fails with `EnzymeRuntimeActivityError` when an `Isolation` or `attributes = clinical_presentation(...)` is captured from outside.

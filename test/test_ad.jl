@@ -219,8 +219,8 @@ end
     for f in intervention_cases
         check(f, [0.5], (mooncake,))
     end
-    check(intervention_cases[1], [0.5], (enzyme_activity,))
-    check(intervention_cases[3], [0.5], (enzyme_activity,))
+    check(intervention_cases[1], [0.5], (enzyme_bare,))
+    check(intervention_cases[3], [0.5], (enzyme_bare,))
 
     spec_cases = [
         R -> loglikelihood(
