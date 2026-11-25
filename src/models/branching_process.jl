@@ -273,8 +273,25 @@ end
 # ── BranchingProcess type and constructors ──────────────────────────
 
 """
+    AbstractResolution
+
+What a [`BranchingProcess`](@ref) is simulated as: [`Individuals`](@ref) (the
+default) or [`ByGeneration`](@ref). `simulate` dispatches on it.
+"""
+abstract type AbstractResolution end
+
+"""
+    Individuals()
+
+The default `resolution` of a [`BranchingProcess`](@ref): `simulate` creates an
+`Individual` for every case and returns a [`SimulationState`](@ref).
+"""
+struct Individuals <: AbstractResolution end
+
+"""
     BranchingProcess(offspring, generation_time; population = NoPopulation(),
-                     multiplier = nothing, importations = nothing)
+                     multiplier = nothing, importations = nothing,
+                     resolution = Individuals())
     BranchingProcess(offspring)
     BranchingProcess(windows::Infectiousness...)
 
@@ -302,7 +319,12 @@ gives each type its own draw. The offspring must be a `Distribution` with an
 [`EpiBranch.scale_mean`](@ref) method, or an offspring matrix whose laws have
 one; any other model raises an `ArgumentError` when built. A model with a
 `multiplier` runs as individuals, not on the daily count-level path of
-[`simulate`](@ref). [`simulate_by_generation`](@ref) draws the same multiplier.
+[`simulate`](@ref). A model with `resolution = ByGeneration()` draws the same
+multiplier in each generation of its counts.
+
+`resolution` is [`Individuals`](@ref) (the default) or [`ByGeneration`](@ref).
+With [`ByGeneration`](@ref), [`simulate`](@ref) returns a
+[`GenerationCounts`](@ref) of case counts, not a [`SimulationState`](@ref).
 
 `importations` is a vector of times at which further index cases arrive,
 or a rate of arrivals per day: a number, a [`Steps`](@ref) schedule giving
@@ -318,8 +340,8 @@ that bound raises an `ArgumentError`. Imports come in addition to the
 `:external`. In a multi-type model each import's type is drawn uniformly from
 the types; `index_types` applies only to the index cases at time 0. Only the
 offspring route of `BranchingProcess` reads `importations`; a model with its
-own `initialise_state` does not. [`simulate_by_generation`](@ref) and
-starting from observed cases raise an `ArgumentError` for a model with
+own `initialise_state` does not. A model with `resolution = ByGeneration()`
+and starting from observed cases raise an `ArgumentError` for a model with
 `importations`.
 
 The transmission model describes only who infects whom and when. Add the
@@ -358,17 +380,20 @@ For transmission by several routes, or starting and stopping at points in
 the natural history, build the process from [`Infectiousness`](@ref)
 windows. The forms above make a single one that starts at infection.
 """
-struct BranchingProcess{W <: Tuple, P, L, M, I} <: TransmissionModel
+struct BranchingProcess{W <: Tuple, P, L, M, I, R <: AbstractResolution} <: TransmissionModel
     infectiousness::W
     population::P
     n_types::Int
     type_labels::L
     multiplier::M
     importations::I
+    resolution::R
 end
 
 function BranchingProcess(windows::Tuple, population, n_types::Int, type_labels)
-    return BranchingProcess(windows, population, n_types, type_labels, nothing, nothing)
+    return BranchingProcess(
+        windows, population, n_types, type_labels, nothing, nothing, Individuals()
+    )
 end
 
 _check_multiplier(::Nothing, windows, n_types::Integer) = nothing
@@ -662,11 +687,12 @@ end
 function BranchingProcess(
         offspring::Distribution, gt;
         population = NoPopulation(), population_size = NoPopulation(), multiplier = nothing,
-        importations = nothing
+        importations = nothing,
+        resolution = Individuals()
     )
     return BranchingProcess(
         (Infectiousness(offspring; kernel = gt),); population, population_size, multiplier,
-        importations
+        importations, resolution
     )
 end
 
@@ -674,10 +700,12 @@ end
 function BranchingProcess(
         offspring::Distribution;
         population = NoPopulation(), population_size = NoPopulation(), multiplier = nothing,
-        importations = nothing
+        importations = nothing,
+        resolution = Individuals()
     )
     return BranchingProcess(
-        (Infectiousness(offspring),); population, population_size, multiplier, importations
+        (Infectiousness(offspring),); population, population_size, multiplier, importations,
+        resolution
     )
 end
 
@@ -686,11 +714,12 @@ function BranchingProcess(
         offspring, gt;
         n_types::Int = 1, population = NoPopulation(), population_size = NoPopulation(),
         type_labels::Union{Vector{String}, NoTypeLabels} = NoTypeLabels(), multiplier = nothing,
-        importations = nothing
+        importations = nothing,
+        resolution = Individuals()
     )
     return BranchingProcess(
         (Infectiousness(offspring; kernel = gt),); n_types, population, population_size,
-        type_labels, multiplier, importations
+        type_labels, multiplier, importations, resolution
     )
 end
 
@@ -699,12 +728,14 @@ function BranchingProcess(
         windows::Tuple{Infectiousness, Vararg{Infectiousness}};
         n_types::Int = 1, population = NoPopulation(), population_size = NoPopulation(),
         type_labels::Union{Vector{String}, NoTypeLabels} = NoTypeLabels(), multiplier = nothing,
-        importations = nothing
+        importations = nothing,
+        resolution = Individuals()
     )
     pop = _branching_population(population, population_size, n_types)
     return BranchingProcess(
         windows, pop, n_types, _type_labels(pop, type_labels),
-        _check_multiplier(multiplier, windows, n_types), _check_importations(importations)
+        _check_multiplier(multiplier, windows, n_types), _check_importations(importations),
+        resolution
     )
 end
 function BranchingProcess(window::Infectiousness, windows::Infectiousness...; kwargs...)

@@ -47,6 +47,33 @@ with the number of new infections alone.
 struct PerContactDepletion <: AbstractDepletion end
 
 """
+    ByGeneration(; depletion = PerContactDepletion(), generation_length = nothing)
+
+The `resolution` of a [`BranchingProcess`](@ref) that [`simulate`](@ref) runs by
+generation, as case counts, and returns as a [`GenerationCounts`](@ref). See
+[`simulate_by_generation`](@ref) for what the model needs and for `depletion` and
+`generation_length`.
+
+```julia
+using EpiBranch, Distributions
+model = BranchingProcess(
+    NegBin(2.0, 0.5); population = Population(200_000), resolution = ByGeneration()
+)
+state = simulate(model; n_initial = 10, max_generations = 30)
+```
+"""
+struct ByGeneration{D <: AbstractDepletion, L <: Union{Float64, Nothing}} <: AbstractResolution
+    depletion::D
+    generation_length::L
+end
+
+function ByGeneration(; depletion::AbstractDepletion = PerContactDepletion(), generation_length = nothing)
+    return ByGeneration(depletion, _generation_length(generation_length))
+end
+
+const _GenerationProcess = BranchingProcess{<:Any, <:Any, <:Any, <:Any, <:Any, <:ByGeneration}
+
+"""
     GenerationCounts
 
 The state of a [`BranchingProcess`](@ref) simulated by generation
@@ -170,7 +197,6 @@ end
 # size of a single-type model, and the sizes by type of a multi-type one.
 # `population_by_type` is deprecated: it splits a model's `population_size`
 # between types, which a `Population(sizes)` now gives directly.
-_type_sizes(model::BranchingProcess, ::Nothing, nt) = _type_sizes(population(model), nt)
 _type_sizes(::NoPopulation, nt) = NoPopulation()
 function _type_sizes(p::SinglePopulation, nt)
     nt == 1 && return p.size
@@ -223,7 +249,10 @@ end
                            generation_length = nothing)
 
 Simulate `model` by generation, as case counts rather than individuals: see
-[`GenerationCounts`](@ref). `model` needs a single infectiousness window with
+[`GenerationCounts`](@ref). This is `simulate` on `model` with
+`resolution = ByGeneration(; depletion, generation_length)`; a model built with
+that `resolution` runs this way under `simulate(model; n_initial,
+max_generations, rng)` directly. `model` needs a single infectiousness window with
 no generation-time kernel (discrete generations), no `until` and no
 `calendar`, and an offspring specification of a `Distribution` or an
 offspring matrix (`MultiTypeOffspring`); any other model raises an
@@ -350,10 +379,8 @@ function simulate_by_generation(
         depletion::AbstractDepletion = PerContactDepletion(),
         generation_length::Union{Real, Nothing} = nothing
     )
-    state = _initial_generation_state(
-        model, n_initial, rng, population_by_type, depletion, generation_length
-    )
-    return simulate(model, state; max_generations)
+    by_generation = _by_generation(model, population_by_type, depletion, generation_length)
+    return simulate(by_generation; n_initial, max_generations, rng)
 end
 
 function simulate_by_generation(
@@ -365,32 +392,81 @@ function simulate_by_generation(
         depletion::AbstractDepletion = PerContactDepletion(),
         generation_length::Union{Real, Nothing} = nothing
     )
-    model = _generation_process(spec)
-    state = _initial_generation_state(
-        model, n_initial, rng, population_by_type, depletion, generation_length
+    model = _by_generation(
+        _generation_process(spec), population_by_type, depletion, generation_length
     )
+    by_generation = ModelSpec(
+        model, spec.progression, spec.interventions, spec.attributes, spec.observation,
+        spec.recorder, spec.case_definition
+    )
+    return simulate(by_generation; n_initial, max_generations, rng)
+end
+
+# `model` with a `ByGeneration` resolution, and with the sizes of its types from
+# the deprecated `population_by_type` where that is given.
+function _by_generation(model::BranchingProcess, population_by_type, depletion, generation_length)
+    return BranchingProcess(
+        model.infectiousness, _by_type_population(model, population_by_type),
+        model.n_types, model.type_labels, model.multiplier, model.importations,
+        ByGeneration(; depletion, generation_length)
+    )
+end
+
+_by_type_population(model::BranchingProcess, ::Nothing) = model.population
+function _by_type_population(model::BranchingProcess, by_type)
+    nt = n_types(model)
+    return Population(_type_sizes(model, by_type, nt); immune = _immune(model.population, nt))
+end
+
+"""
+    simulate(model::BranchingProcess; n_initial = 1, max_generations = 100,
+             rng = Random.default_rng())
+
+Simulate a `model` built with `resolution = ByGeneration()` by generation and
+return a [`GenerationCounts`](@ref). `n_initial` is the number of index cases:
+an `Int` for a single-type model, a vector with one count per type otherwise.
+The model's `depletion` and `generation_length` are those of its
+[`ByGeneration`](@ref). A [`ModelSpec`](@ref) built on such a process takes the
+same keywords and applies its vaccination campaigns. See
+[`simulate_by_generation`](@ref) for what the model needs.
+"""
+function simulate(
+        model::_GenerationProcess;
+        n_initial::Union{Integer, AbstractVector{<:Integer}} = 1,
+        max_generations::Integer = _DEFAULT_MAX_GENERATIONS,
+        rng::AbstractRNG = Random.default_rng()
+    )
+    state = _initial_generation_state(model, n_initial, rng)
+    return simulate(model, state; max_generations)
+end
+
+function simulate(
+        spec::ModelSpec{<:_GenerationProcess};
+        n_initial::Union{Integer, AbstractVector{<:Integer}} = 1,
+        max_generations::Integer = _DEFAULT_MAX_GENERATIONS,
+        rng::AbstractRNG = Random.default_rng()
+    )
+    state = _initial_generation_state(spec.process, n_initial, rng)
     return simulate(spec, state; max_generations)
 end
 
-function _initial_generation_state(
-        model::BranchingProcess, n_initial, rng, population_by_type, depletion,
-        generation_length
-    )
+function _initial_generation_state(model::_GenerationProcess, n_initial, rng)
     model.importations === nothing || throw(
         ArgumentError(
-            "`simulate_by_generation` does not apply `importations`: " *
+            "a model run by generation does not apply `importations`: " *
                 "build the process without them"
         )
     )
     nt = n_types(model)
     counts = _per_type_counts(model, n_initial, :n_initial)
     pop = population_size(model)
-    sizes = _type_sizes(model, population_by_type, nt)
+    sizes = _type_sizes(population(model), nt)
     cumulative = counts isa Int ? counts : sum(counts)
     susceptibles = _initial_susceptibles(model, sizes, counts, _immune(population(model), nt))
-    gl = _generation_length(generation_length)
+    resolution = model.resolution
     return GenerationCounts(
-        counts, cumulative, pop, susceptibles, sizes, 0, gl, depletion, rng, Vector{Int}[]
+        counts, cumulative, pop, susceptibles, sizes, 0, resolution.generation_length,
+        resolution.depletion, rng, Vector{Int}[]
     )
 end
 

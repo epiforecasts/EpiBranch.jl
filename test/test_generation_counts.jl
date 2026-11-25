@@ -321,4 +321,37 @@ end
             transmission_rate = 0.4, population = Population(100; immune = 10)
         )
     end
+
+    @testset "simulate dispatches on the model's resolution" begin
+        pop = Population(5_000)
+        plain = BranchingProcess(NegBin(2.0, 0.5); population = pop)
+        @test plain.resolution isa Individuals
+        @test simulate(plain; n_initial = 5, max_generations = 4, rng = StableRNG(1)) isa
+            SimulationState
+
+        model = BranchingProcess(
+            NegBin(2.0, 0.5); population = pop,
+            resolution = ByGeneration(; generation_length = 7.0)
+        )
+        state = simulate(model; n_initial = 5, max_generations = 6, rng = StableRNG(1))
+        @test state isa GenerationCounts
+        @test state.generation_length == 7.0
+        wrapper = simulate_by_generation(
+            plain; n_initial = 5, max_generations = 6, generation_length = 7.0,
+            rng = StableRNG(1)
+        )
+        @test wrapper.counts == state.counts
+        @test wrapper.cumulative_cases == state.cumulative_cases
+
+        spec = ModelSpec(model)
+        @test simulate(spec; n_initial = 5, max_generations = 6, rng = StableRNG(1)).counts ==
+            state.counts
+
+        multi = BranchingProcess(
+            [0.5 0.1; 0.1 0.5], R -> Poisson(R), EpiBranch.NoGenerationTime();
+            population = Population([400, 600]), resolution = ByGeneration()
+        )
+        @test simulate(multi; n_initial = [5, 5], max_generations = 3, rng = StableRNG(1)) isa
+            GenerationCounts
+    end
 end
