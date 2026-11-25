@@ -1,0 +1,1 @@
+A budgeted `MassVaccination` on a network or household model is now offered on its dose date, and leaves out anyone already infected by then. Before, the budget was spent on the first people in priority order before the race started, whatever their status.

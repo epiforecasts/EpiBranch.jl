@@ -1010,13 +1010,6 @@ function _sellke_race_typed!(
     )
     removable = map(((w, _),) -> removed_by_interventions(w), rts)
 
-    # An intervention declaring `acts_on_population` needs no case settled to
-    # propose its actions, so it is offered every member before the race
-    # starts rather than case by case as the race goes; a resumed race already
-    # did this on its first call.
-    resume === nothing &&
-        _apply_population_actions!(state, interventions, _population_members(members))
-    resume === nothing && seed!(best, members, rng)
     # The host state each route's kernel reads, as the keys it declares through
     # `watched_records`. A route that declares nothing draws from hazards fixed
     # for the run, so its contacts are never redrawn; the race watches the union
@@ -1141,6 +1134,17 @@ function _sellke_race_typed!(
         return nothing
     end
 
+    # An intervention declaring `acts_on_population` needs no case settled to
+    # propose its actions, so it is offered every member before the race
+    # starts rather than case by case as the race goes; a resumed race already
+    # did this on its first call. A budgeted campaign is offered on its dose
+    # dates through the race's queue, so this follows the queue's setup.
+    if resume === nothing
+        _apply_population_actions!(
+            state, interventions, _population_members(members), action_sink
+        )
+        seed!(best, members, rng)
+    end
     # The seeds' own opening: no infector, so nothing about it is ever read.
     resume === nothing && push!(openings, _RouteOpening(0, 0, zero(T), T(Inf)))
     # The chosen initial cases' opening, which the risk check skips: they are
