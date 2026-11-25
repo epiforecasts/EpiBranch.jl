@@ -35,7 +35,7 @@ function EpiBranch.serial_interval(
     cp === nothing && throw(
         ArgumentError(
             "serial_interval needs the incubation period, from " *
-                "attributes = clinical_presentation(...)"
+                "attributes = clinical_presentation(...)."
         )
     )
     cp.incubation_period isa Union{Real, Distribution} || throw(
