@@ -30,5 +30,6 @@ once their registry pull requests merge.
 
 `CHANGELOG.md` holds the folded entries. The GitHub release that TagBot creates
 has a diff link to the previous tag, the merged pull requests and closed issues
-since it, and any release notes written under the `@JuliaRegistrator register`
-comment.
+since it, plus the release notes posted with the registration.
+
+The register workflow posts the lines after `/register` as the `Release notes:` block of the Registrator comment. A comment with no further lines gets a paragraph linking `CHANGELOG.md`. The General registry refuses a breaking version (a minor bump while the major version is 0) unless its notes mention "breaking" or "changelog". The first registration of a satellite is exempt from this check.

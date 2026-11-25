@@ -1,0 +1,1 @@
+The register workflow posts the lines after `/register` as the `Release notes:` block of the Registrator comment. A comment with no further lines, or a manual dispatch, gets a fixed paragraph that links `CHANGELOG.md` and mentions breaking changes. A breaking version then passes the release-notes check of the registry.
