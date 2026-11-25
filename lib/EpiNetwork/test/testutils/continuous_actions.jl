@@ -78,8 +78,8 @@ function test_continuous_vaccine_actions(make_process)
 
     @testset "A budgeted MassVaccination skips people already infected" begin
         # With a kernel this slow only the index case is infected by day 5 and
-        # with one this fast everyone is infected by day 0.5, so the people
-        # susceptible on the dose date are known.
+        # with one this fast everyone is infected by day 0.5. Either way the
+        # people susceptible on the dose date are known.
         slow, fast = make_process(Exponential(1.0e9)), make_process(Exponential(1.0e-6))
         clinical = clinical_presentation(incubation_period = Dirac(0.0))
         progression = [Transition(:recovered; delay = 3.0, terminal = true)]

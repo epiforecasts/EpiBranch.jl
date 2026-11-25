@@ -1137,8 +1137,8 @@ function _sellke_race_typed!(
     # An intervention declaring `acts_on_population` needs no case settled to
     # propose its actions, so it is offered every member before the race
     # starts rather than case by case as the race goes; a resumed race already
-    # did this on its first call. It follows the queue's setup, which a
-    # budgeted campaign's offers use.
+    # did this on its first call. It runs after the setup of the queue, which
+    # the offers of a budgeted campaign use.
     if resume === nothing
         _apply_population_actions!(
             state, interventions, _population_members(members), action_sink

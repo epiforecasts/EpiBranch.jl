@@ -700,8 +700,8 @@ end
 Whether the actions of an [`acts_on_population`](@ref
 EpiBranch.acts_on_population) intervention are offered on each action's own
 date, to those still susceptible then, instead of being admitted at once. A
-person already infected by that date is dropped, so a limited resource is not
-spent on them. People whose actions share a date are offered together, in the
+person already infected by that date is dropped and uses none of a limited
+resource. People whose actions share a date are offered together, in the
 order `intervention_actions` returned them. Define
 `EpiBranch.offers_when_due(::MyWrapper) = true` for a wrapper of your own that
 rations such a resource. The default is `false`: actions are admitted before

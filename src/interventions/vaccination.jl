@@ -1415,8 +1415,8 @@ and no dose is recorded on a person. Without a population or with an unlimited
 budget, each person is dosed on their `eligibility_time`.
 [`simulate_by_generation`](@ref) applies a budgeted `MassVaccination` in the
 same way. On a model that names its people, such as a network or household
-model, the doses are offered on the day each person's `eligibility_time`
-gives, and a person already infected by then takes no dose and uses none of the
+model, the doses are offered on the day set by each person's `eligibility_time`,
+and a person already infected by then takes no dose and uses none of the
 budget.
 
 # Closed-form offspring distribution
