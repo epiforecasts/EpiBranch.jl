@@ -49,8 +49,8 @@ struct PerContactDepletion <: AbstractDepletion end
 """
     ByGeneration(; depletion = PerContactDepletion(), generation_length = nothing)
 
-The `resolution` of a [`BranchingProcess`](@ref) that [`simulate`](@ref) runs by
-generation, as case counts, and returns as a [`GenerationCounts`](@ref). See
+The `resolution` for simulating a [`BranchingProcess`](@ref) by generation:
+[`simulate`](@ref) runs it as case counts and returns a [`GenerationCounts`](@ref). See
 [`simulate_by_generation`](@ref) for what the model needs and for `depletion` and
 `generation_length`.
 

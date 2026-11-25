@@ -275,8 +275,8 @@ end
 """
     AbstractResolution
 
-What a [`BranchingProcess`](@ref) is simulated as: [`Individuals`](@ref) (the
-default) or [`ByGeneration`](@ref). `simulate` dispatches on it.
+The level at which a [`BranchingProcess`](@ref) is simulated: [`Individuals`](@ref)
+(the default) or [`ByGeneration`](@ref). `simulate` dispatches on it.
 """
 abstract type AbstractResolution end
 
@@ -324,7 +324,7 @@ multiplier in each generation of its counts.
 
 `resolution` is [`Individuals`](@ref) (the default) or [`ByGeneration`](@ref).
 With [`ByGeneration`](@ref), [`simulate`](@ref) returns a
-[`GenerationCounts`](@ref) of case counts, not a [`SimulationState`](@ref).
+[`GenerationCounts`](@ref) of case counts instead of a [`SimulationState`](@ref).
 
 `importations` is a vector of times at which further index cases arrive,
 or a rate of arrivals per day: a number, a [`Steps`](@ref) schedule giving
@@ -340,8 +340,8 @@ that bound raises an `ArgumentError`. Imports come in addition to the
 `:external`. In a multi-type model each import's type is drawn uniformly from
 the types; `index_types` applies only to the index cases at time 0. Only the
 offspring route of `BranchingProcess` reads `importations`; a model with its
-own `initialise_state` does not. A model with `resolution = ByGeneration()`
-and starting from observed cases raise an `ArgumentError` for a model with
+own `initialise_state` does not. Simulating with `resolution = ByGeneration()`
+and starting from observed cases both raise an `ArgumentError` for a model with
 `importations`.
 
 The transmission model describes only who infects whom and when. Add the
