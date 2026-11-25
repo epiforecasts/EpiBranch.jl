@@ -571,8 +571,8 @@ function prepare_generations(spec::ModelSpec, state::GenerationCounts)
     campaigns = _generation_campaigns(
         spec, state.generation_length, !(state.susceptibles isa NoPopulation)
     )
-    # A single type holds them as a tuple, so that the doses of each are
-    # counted without allocating.
+    # A single type holds them as a tuple to count the doses of each without
+    # allocating.
     return GenerationCampaigns(
         _generation_process(spec), state.counts isa Int ? _as_tuple(campaigns) : campaigns
     )
@@ -625,9 +625,9 @@ function _continue_generations(
 end
 
 # A single type keeps its count, susceptibles, size, protected and the doses
-# of each campaign as plain integers (a tuple for the doses), so that a
-# generation allocates nothing, and a continuation returns a new state
-# without copying anything.
+# of each campaign as plain integers (a tuple for the doses). A generation
+# then allocates nothing and a continuation returns a new state without
+# copying anything.
 function _run_generations(
         model::BranchingProcess, offspring, state::GenerationCounts, campaigns_in,
         counts::Int; max_generations::Integer, rng::AbstractRNG

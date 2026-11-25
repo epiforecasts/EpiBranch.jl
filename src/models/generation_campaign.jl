@@ -181,7 +181,7 @@ function _doses_left(c::_Campaign, cc::CapacityConstrained, t0, t1, used)
     return b > s ? max(0, floor(Int, _doses_by(cc, b)) - used) : 0
 end
 
-# Gives the population campaigns' doses for generation `gen` at the start of
+# Gives the doses of the population campaigns for generation `gen` at the start of
 # its interval, lowering `susceptibles` by those protected and raising `protected`.
 function _vaccinate_population!(
         rng, campaigns, used, generation_length, gen, susceptibles::Vector{Int},
@@ -221,8 +221,8 @@ function _vaccinate_scalar(
     )
 end
 
-# One campaign at a time, peeling the tuple so that campaigns of different types
-# are each handled with their own type known.
+# Handles one campaign at a time, peeling the tuple, so each campaign keeps its
+# own type.
 _vaccinate_each(rng, ::Tuple{}, used, k, t0, t1, susceptibles, vaccinated, size) =
     (susceptibles, vaccinated, used)
 function _vaccinate_each(rng, campaigns::Tuple, used, k, t0, t1, susceptibles, vaccinated, size)

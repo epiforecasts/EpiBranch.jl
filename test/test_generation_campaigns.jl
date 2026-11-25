@@ -364,8 +364,8 @@ EpiBranch.trigger_time(e::_EligibleAt, infector, state) = e.time
         @test out.doses_used === full.doses_used
         @test full.doses_used == (10^6,)
 
-        # A single type counts its doses as integers, so that a continuation
-        # that takes doses, from a population or from contacts, allocates
+        # A single type counts its doses as integers. A continuation
+        # that takes doses from a population or from contacts then allocates
         # nothing once the state holds the doses of its campaigns.
         alloc(prepared, s, n) = @allocated simulate(prepared, s; max_generations = n)
         single = BranchingProcess(Poisson(2.0); population = Population(50_000))
