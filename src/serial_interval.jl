@@ -28,6 +28,10 @@ general way to resolve a convolution for every possible case), and
 `clinical_presentation`'s incubation period does not yet vary between cases,
 so today they only name which pair the serial interval is for.
 
+`serial_interval` does not yet handle a model whose onset and infectiousness share
+a within-host trajectory and throws an error for one. For now, fit a distribution
+to [`realised_serial_intervals`](@ref) of simulated states.
+
 Available once CensoredDistributions.jl and ConvolvedDistributions.jl are
 both loaded, on Julia 1.11 or later. On Julia 1.10 the two packages pull in
 EpiAwareADTools 0.1. Its `xlogy` differentiation rule clashes with the

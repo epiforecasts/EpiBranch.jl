@@ -12,6 +12,10 @@ using EpiBranch
 using ConvolvedDistributions: convolved, difference
 using Distributions: Distribution
 
+const _SIMULATED_ROUTE = " If the kernel follows a within-host trajectory shared with " *
+    "onset, serial_interval does not handle that yet. For now, fit a distribution " *
+    "to realised_serial_intervals(states) of simulated states."
+
 function EpiBranch.serial_interval(model, infector::Individual, infectee::Individual)
     gt = EpiBranch._single_kernel(model)
     gt isa Distribution || throw(
@@ -20,14 +24,14 @@ function EpiBranch.serial_interval(model, infector::Individual, infectee::Indivi
                 "per-case function (got $(typeof(gt))); it has no general way to " *
                 "resolve a convolution for every possible case. Build the " *
                 "BranchingProcess with a distribution, e.g. " *
-                "BranchingProcess(offspring, LogNormal(1.6, 0.5))."
+                "BranchingProcess(offspring, LogNormal(1.6, 0.5))." * _SIMULATED_ROUTE
         )
     )
     cp = EpiBranch._onset_law(EpiBranch.attributes(model))
     cp === nothing && throw(
         ArgumentError(
             "serial_interval needs the incubation period, from " *
-                "attributes = clinical_presentation(...)"
+                "attributes = clinical_presentation(...)."
         )
     )
     cp.incubation_period isa Union{Real, Distribution} || throw(
