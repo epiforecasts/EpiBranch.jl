@@ -200,6 +200,16 @@ end
         @test share(50.0) == late
     end
 
+    @testset "a period's doses leave out the cases infected after it" begin
+        model = BranchingProcess(Poisson(3.0), Gamma(2.0, 2.0); population = Population(100))
+        campaign = budget(mass(dosing = _NeverWastes()), 90.0)
+        state = simulate(model; n_initial = 1, max_generations = 4, rng = StableRNG(5))
+        @test state.cumulative_cases > 20
+        ledger = EpiBranch.population_ledger(campaign, model.population)
+        # Only the first case is infected when the doses are given.
+        @test EpiBranch.protected_share(ledger, state, 1, 1.0e3) * 100 == 90
+    end
+
     @testset "without a population or a limit each person is dosed in turn" begin
         open_model = BranchingProcess(Poisson(2.0), Gamma(2.0, 2.0))
         state = simulate(
