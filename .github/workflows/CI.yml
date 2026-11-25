@@ -138,8 +138,8 @@ jobs:
   docs:
     needs: [test, epinetwork, epihouseholds]
     runs-on: ubuntu-latest
-    # The build takes up to 20 minutes. The docs environment has no committed
-    # manifest, so a new release of a dependency can add up to 10 minutes of
+    # The build takes about 21 minutes. The docs environment has no committed
+    # manifest, so a new release of a dependency can add up to 12 minutes of
     # precompilation even when the cache is restored.
     timeout-minutes: 45
     permissions:
