@@ -206,7 +206,7 @@ export ImmuneShare, ImmuneCount
 export HybridProcess, HybridState
 export GenerationCounts, simulate_by_generation, prepare_generations,
     GenerationCampaigns
-export AbstractDepletion, PerContactDepletion
+export AbstractDepletion, PerContactDepletion, ByGeneration, Individuals
 export transmission_timing, implied_R
 export state_from_cases
 export Individual, InfectionEpisode, close_episode!, SimulationState

@@ -21,11 +21,12 @@ jobs:
         version:
           - '1'
           - 'lts'
-        # The root suite runs as five jobs of similar length, so that none
+        # The root suite runs as six jobs of similar length, so that none
         # reaches the job timeout. `test/runtests.jl` lists which files make up
         # each group; `Pkg.test()` without the variable runs them all.
         group:
           - engine
+          - ad
           - population
           - interventions
           - analytical
@@ -35,7 +36,14 @@ jobs:
       - uses: julia-actions/setup-julia@da908477b5db94c10ffce8cfea9f2b3b9d5db687 # v3.0.3
         with:
           version: ${{ matrix.version }}
+      # The groups share one test environment, so they share one cache per
+      # Julia version. A cache per group would hold the same packages once
+      # per group, exceed the repository's 10 GB cache limit and evict
+      # itself, leaving every job to precompile from scratch.
       - uses: julia-actions/cache@9353db09a0f2bbbdec6f41791918c75d37391b36 # v3.5.0
+        with:
+          cache-name: julia-cache;workflow=${{ github.workflow }};job=${{ github.job }};version=${{ matrix.version }}
+          include-matrix: false
       - uses: julia-actions/julia-buildpkg@e3eb439fad4f9aba7da2667e7510e4a46ebc46e1 # v1.7.0
       - uses: julia-actions/julia-runtest@e89ac6c957d7c4d7e0cb3162f12d8290a008f9d1 # v1.13.0
         with:

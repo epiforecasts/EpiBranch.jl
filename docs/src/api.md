@@ -118,10 +118,13 @@ HybridState
 
 ## Simulating a branching process by generation
 
-[`simulate_by_generation`](@ref) simulates a [`BranchingProcess`](@ref) with
-discrete generations using case counts, reducing computation for
-a large or finite population. It shares `simulate(model, state;
-max_generations)` with the exact, individual-based simulation.
+A [`BranchingProcess`](@ref) with discrete generations and
+`resolution = ByGeneration()` is simulated by `simulate` using case counts,
+reducing computation for a large or finite population. A plain
+`BranchingProcess` (`resolution = Individuals()`) still returns individuals.
+[`simulate_by_generation`](@ref) builds the generation-level model from a plain one
+and calls `simulate`. Both continue with `simulate(model, state;
+max_generations)`.
 
 The state holds the susceptibles of each type, set from the population size
 and the number immune. The `immune` of the population and the `multiplier` of the model
@@ -137,6 +140,9 @@ contacts of each generation in order.
 
 ```@docs
 simulate_by_generation
+ByGeneration
+Individuals
+AbstractResolution
 GenerationCounts
 prepare_generations
 GenerationCampaigns

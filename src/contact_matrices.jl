@@ -386,13 +386,15 @@ model = BranchingProcess(
 function BranchingProcess(
         mixing::Mixing, q::Union{Real, AbstractVector{<:Real}}, D::Real, dist_fn, gt;
         population = NoPopulation(), population_size = NoPopulation(),
-        type_labels::Union{Vector{String}, NoTypeLabels} = NoTypeLabels(), multiplier = nothing
+        type_labels::Union{Vector{String}, NoTypeLabels} = NoTypeLabels(), multiplier = nothing,
+        resolution = Individuals()
     )
     pop = _population_input(population, population_size)
     M = _next_generation(mixing, q, D, pop)
     labels = _merge_labels(mixing.labels, type_labels)
     return BranchingProcess(
-        M, dist_fn, gt; population = pop, type_labels = labels, multiplier
+        M, dist_fn, gt; population = pop, type_labels = labels, multiplier,
+        resolution
     )
 end
 
