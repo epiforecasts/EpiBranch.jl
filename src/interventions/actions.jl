@@ -676,34 +676,29 @@ function _apply_population_actions!(
         acts_on_population(iv) || continue
         actions = intervention_actions(iv, state, candidates)
         actions === nothing && continue
-        _offer_actions!(iv, state, actions, sink)
+        if !_rations_doses(iv)
+            _admit_actions!(iv, state, actions)
+            continue
+        end
+        # A budgeted campaign is offered per dose date, to those still susceptible then.
+        due = Dict{Any, Vector{eltype(actions)}}()
+        for a in actions
+            isfinite(a.time) && push!(get!(due, a.time, eltype(actions)[]), a)
+        end
+        for t in sort!(collect(keys(due)))
+            batch = due[t]
+            still_susceptible = (_, _, _) -> filter(a -> !is_infected(a.individual), batch)
+            sink(InterventionAction(first(batch).individual, t, still_susceptible), iv)
+        end
     end
     return nothing
 end
 
-# Whether `iv` rations its doses: a campaign under a finite budget.
+# Whether `iv` is a campaign under a finite budget.
 _rations_doses(::AbstractIntervention) = false
 _rations_doses(w::InterventionWrapper) = _rations_doses(w.intervention)
 _rations_doses(cc::CapacityConstrained) =
     !(cc.budget_per_period isa Real && isinf(cc.budget_per_period))
-
-# A budgeted campaign is admitted on each dose date, when a person already
-# infected no longer takes a dose or a place in the budget. `sink` queues the
-# offer for that date. The people with the same date are offered together, so
-# the priority still ranks them. An unbudgeted campaign is admitted at once.
-function _offer_actions!(iv, state, actions, sink)
-    _rations_doses(iv) || return _admit_actions!(iv, state, actions)
-    due = Dict{Any, Vector{eltype(actions)}}()
-    for a in actions
-        isfinite(a.time) && push!(get!(due, a.time, eltype(actions)[]), a)
-    end
-    for t in sort!(collect(keys(due)))
-        batch = due[t]
-        still_susceptible = (_, _, _) -> filter(a -> !is_infected(a.individual), batch)
-        sink(InterventionAction(first(batch).individual, t, still_susceptible), iv)
-    end
-    return nothing
-end
 
 # Offer a person a branching process has just created to `interventions`, those
 # the race found proposing actions that need no named contacts. `GroupVaccination` finds its
