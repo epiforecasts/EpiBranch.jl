@@ -78,4 +78,51 @@
             spec, individuals(state)[1], individuals(state)[2]
         )
     end
+
+    @testset "a shared trajectory behind onset and infectiousness matches the simulated intervals" begin
+        function draw_trajectory(rng)
+            peak_time = rand(rng, Gamma(6.0, 0.7))
+            peak = rand(rng, LogNormal(0.0, 0.6))
+            clearance = rand(rng, Gamma(8.0, 0.1))
+            load = t -> t < peak_time ? peak * t / peak_time :
+                peak * exp(-clearance * (t - peak_time))
+            return (; load, peak_time, peak)
+        end
+        function both_follow(rng, ind)
+            trajectory = draw_trajectory(rng)
+            ind.state[:trajectory] = trajectory.load
+            ind.state[:asymptomatic] = trajectory.peak <= 0.8
+            ind.state[:incubation_period] = trajectory.peak_time * 0.8 / trajectory.peak
+            return nothing
+        end
+        shared = Infectiousness(
+            Poisson(1.0);
+            kernel = ind -> HazardKernel(
+                t -> 0.4 * EpiBranch.trajectory_value(ind, t); upper = 60.0
+            )
+        )
+        onset_only = Infectiousness(Poisson(1.0); kernel = Exponential(5.0))
+        for window in (shared, onset_only)
+            spec = ModelSpec(BranchingProcess(window); attributes = both_follow)
+            states = simulate(
+                spec, 4000; max_generations = 3, max_cases = 3000, rng = StableRNG(1)
+            )
+            simulated = realised_serial_intervals(states)
+            a = Individual(id = 1)
+            si = serial_interval(spec, a, a; n_trajectories = 400, rng = StableRNG(2))
+            for x in (-2, 0, 3, 6, 10)
+                @test cdf(si, x) ≈ mean(simulated .<= x) atol = 0.025
+            end
+        end
+    end
+
+    @testset "a shared trajectory needs at least two draws and an onset" begin
+        spec = ModelSpec(
+            BranchingProcess(Poisson(1.0), Exponential(5.0));
+            attributes = (rng, ind) -> (ind.state[:asymptomatic] = true)
+        )
+        a = Individual(id = 1)
+        @test_throws "n_trajectories" serial_interval(spec, a, a; n_trajectories = 1)
+        @test_throws "no draw of the attributes with an onset" serial_interval(spec, a, a)
+    end
 end

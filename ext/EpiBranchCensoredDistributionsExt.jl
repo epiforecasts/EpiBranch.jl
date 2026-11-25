@@ -10,9 +10,17 @@ module EpiBranchCensoredDistributionsExt
 
 using EpiBranch
 using ConvolvedDistributions: convolved, difference
-using Distributions: Distribution
+using Distributions: Distribution, MixtureModel, cdf, truncated
+using Random: AbstractRNG, default_rng
 
-function EpiBranch.serial_interval(model, infector::Individual, infectee::Individual)
+function EpiBranch.serial_interval(
+        model, infector::Individual, infectee::Individual;
+        n_trajectories::Integer = 200, rng::AbstractRNG = default_rng()
+    )
+    attrs = EpiBranch.attributes(model)
+    if EpiBranch._onset_law(attrs) === nothing && !(attrs isa EpiBranch.NoAttributes)
+        return _trajectory_serial_interval(model, attrs, n_trajectories, rng)
+    end
     gt = EpiBranch._single_kernel(model)
     gt isa Distribution || throw(
         ArgumentError(
@@ -40,6 +48,55 @@ function EpiBranch.serial_interval(model, infector::Individual, infectee::Indivi
     inc_infector = EpiBranch.resolve(cp.incubation_period, infector)
     inc_infectee = EpiBranch.resolve(cp.incubation_period, infectee)
     return convolved(gt, difference(inc_infectee, inc_infector))
+end
+
+# The serial interval of a model whose onset and transmission share a
+# within-host trajectory: a mixture over `n` draws of the attributes. Given a
+# draw, the infector's transmission times follow its kernel, conditioned on
+# the contact happening, and its onset is a fixed time, so each component is
+# that kernel shifted by minus the onset. A draw is weighted by the chance a
+# contact happens, which is proportional to its expected offspring. The
+# infectee's incubation period is the incubation period of the next draw, an
+# independent case, so its mixture over draws needs no further components.
+# Cases with no onset are left out, as `realised_serial_intervals` leaves
+# them out.
+function _trajectory_serial_interval(model, attrs, n::Integer, rng)
+    n >= 2 || throw(ArgumentError("n_trajectories must be at least 2, got $n"))
+    EpiBranch.single_type_offspring(model) isa Distribution || throw(
+        ArgumentError(
+            "serial_interval needs a fixed offspring distribution, not a function " *
+                "of the individual"
+        )
+    )
+    window_kernel = EpiBranch._single_kernel(model)
+    kernels, onsets = Any[], Float64[]
+    for k in 1:n
+        ind = Individual(id = k)
+        EpiBranch._apply_attributes!(attrs, rng, ind)
+        EpiBranch._set_onset_from_incubation!(ind)
+        onset = EpiBranch.onset_time(ind)
+        isnan(onset) && continue
+        push!(onsets, onset)
+        push!(kernels, EpiBranch.get_generation_time(window_kernel, ind))
+    end
+    isempty(onsets) && throw(
+        ArgumentError(
+            "serial_interval found no draw of the attributes with an onset time; " *
+                "the attributes must record `:incubation_period`"
+        )
+    )
+    m = length(onsets)
+    weights = [cdf(kern, Inf) for kern in kernels]
+    keep = findall(>(0), weights)
+    isempty(keep) && throw(
+        ArgumentError("no draw of the attributes has a contact that happens")
+    )
+    components = map(keep) do i
+        kern = kernels[i]
+        base = kern isa HazardKernel ? truncated(kern, 0.0, Inf) : kern
+        return base + (onsets[mod1(i + 1, m)] - onsets[i])
+    end
+    return MixtureModel(components, weights[keep] ./ sum(weights[keep]))
 end
 
 end # module

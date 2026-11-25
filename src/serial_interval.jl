@@ -10,7 +10,7 @@
 # here to keep `serial_interval` exported and documented either way.
 
 """
-    serial_interval(model, infector, infectee)
+    serial_interval(model, infector, infectee; n_trajectories = 200, rng = default_rng())
 
 The distribution of the serial interval (symptom onset in `infector` to onset
 in `infectee`) implied by `model`'s generation time and incubation period:
@@ -27,6 +27,17 @@ general way to resolve a convolution for every possible case), and
 `infectee` are [`Individual`](@ref)s, read the same way for both:
 `clinical_presentation`'s incubation period does not yet vary between cases,
 so today they only name which pair the serial interval is for.
+
+When the attributes record the onset without an `onset_law` (a builder that
+draws a within-host trajectory, as in the [asymptomatic-cases
+tutorial](@ref "Onset and infectiousness both follow a trajectory")), the
+generation time may be a function of the individual. The interval is then a
+mixture over `n_trajectories` draws of the attributes: each draw contributes
+its kernel conditioned on a contact happening, shifted by minus its onset, and
+is weighted by the chance of a contact, so high-load draws count for more. The
+infectee's incubation period is taken from an independent draw. Draws without
+an onset are left out, as [`realised_serial_intervals`](@ref) leaves them out,
+and `infector` and `infectee` are not read. Interventions are not applied.
 
 Available once CensoredDistributions.jl and ConvolvedDistributions.jl are
 both loaded, on Julia 1.11 or later. On Julia 1.10 the two packages pull in
