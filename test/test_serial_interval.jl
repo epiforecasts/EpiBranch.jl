@@ -82,6 +82,12 @@
         @test_throws "needs the incubation period" serial_interval(
             spec, individuals(state)[1], individuals(state)[2]
         )
+        err = try
+            serial_interval(spec, individuals(state)[1], individuals(state)[2])
+        catch e
+            e
+        end
+        @test !occursin("realised_serial_intervals", err.msg)
     end
 
     @testset "a multi-window model has no single generation time" begin

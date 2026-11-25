@@ -12,9 +12,9 @@ using EpiBranch
 using ConvolvedDistributions: convolved, difference
 using Distributions: Distribution
 
-const _SIMULATED_ROUTE = " serial_interval does not handle a model whose onset and " *
-    "infectiousness share a trajectory yet. For now, fit a distribution to " *
-    "realised_serial_intervals(states) of simulated states."
+const _SIMULATED_ROUTE = " If the kernel follows a within-host trajectory shared with " *
+    "onset, serial_interval does not handle that yet. For now, fit a distribution " *
+    "to realised_serial_intervals(states) of simulated states."
 
 function EpiBranch.serial_interval(model, infector::Individual, infectee::Individual)
     gt = EpiBranch._single_kernel(model)
@@ -31,14 +31,14 @@ function EpiBranch.serial_interval(model, infector::Individual, infectee::Indivi
     cp === nothing && throw(
         ArgumentError(
             "serial_interval needs the incubation period, from " *
-                "attributes = clinical_presentation(...)." * _SIMULATED_ROUTE
+                "attributes = clinical_presentation(...)."
         )
     )
     cp.incubation_period isa Union{Real, Distribution} || throw(
         ArgumentError(
             "serial_interval reads the incubation period directly and needs a " *
                 "number or a distribution, not a function of the individual " *
-                "(got $(typeof(cp.incubation_period)))." * _SIMULATED_ROUTE
+                "(got $(typeof(cp.incubation_period)))."
         )
     )
     inc_infector = EpiBranch.resolve(cp.incubation_period, infector)
