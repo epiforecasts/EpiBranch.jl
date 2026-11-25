@@ -343,8 +343,8 @@ EpiBranch.trigger_time(e::_EligibleAt, infector, state) = e.time
         @test a.counts == b.counts
         @test a.susceptibles == b.susceptibles
 
-        # A state that already holds one budget per campaign is continued
-        # without allocating, and its doses are unchanged.
+        # Continuing a state that already holds one budget per campaign
+        # allocates nothing and leaves its doses unchanged.
         full = GenerationCounts(
             300, 300, 50_000, 30_000, 50_000, 5, 14.0, PerContactDepletion(),
             StableRNG(1), (10^6,), 0
