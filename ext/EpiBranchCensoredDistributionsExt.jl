@@ -50,16 +50,9 @@ function EpiBranch.serial_interval(
     return convolved(gt, difference(inc_infectee, inc_infector))
 end
 
-# The serial interval of a model whose onset and transmission share a
-# within-host trajectory: a mixture over `n` draws of the attributes. Given a
-# draw, the infector's transmission times follow its kernel, conditioned on
-# the contact happening, and its onset is a fixed time, so each component is
-# that kernel shifted by minus the onset. A draw is weighted by the chance a
-# contact happens, which is proportional to its expected offspring. The
-# infectee's incubation period is the incubation period of the next draw, an
-# independent case, so its mixture over draws needs no further components.
-# Cases with no onset are left out, as `realised_serial_intervals` leaves
-# them out.
+# Mixture over `n` draws of the attributes: each draw's kernel conditioned on
+# a contact, shifted by minus its onset, weighted by the chance of a contact.
+# The infectee's onset comes from the next draw, an independent case.
 function _trajectory_serial_interval(model, attrs, n::Integer, rng)
     n >= 2 || throw(ArgumentError("n_trajectories must be at least 2, got $n"))
     EpiBranch.single_type_offspring(model) isa Distribution || throw(
