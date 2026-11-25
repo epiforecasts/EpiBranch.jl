@@ -33,5 +33,5 @@ permissions:
 
 jobs:
   release-nudge:
-    uses: EpiAware/.github/.github/workflows/release-nudge.yml@2c7ce73459772f11dad46ac7f456e35f0d296faf
+    uses: EpiAware/.github/.github/workflows/release-nudge.yml@59ec75be81cbc2cf83d9cb172bf22e29e1391a91
     secrets: inherit  # pragma: allowlist secret
