@@ -250,9 +250,7 @@ end
 
 Simulate `model` by generation, as case counts rather than individuals: see
 [`GenerationCounts`](@ref). This is `simulate` on `model` with
-`resolution = ByGeneration(; depletion, generation_length)`; a model built with
-that `resolution` runs this way under `simulate(model; n_initial,
-max_generations, rng)` directly. `model` needs a single infectiousness window with
+`resolution = ByGeneration(; depletion, generation_length)`. `model` needs a single infectiousness window with
 no generation-time kernel (discrete generations), no `until` and no
 `calendar`, and an offspring specification of a `Distribution` or an
 offspring matrix (`MultiTypeOffspring`); any other model raises an
@@ -402,8 +400,6 @@ function simulate_by_generation(
     return simulate(by_generation; n_initial, max_generations, rng)
 end
 
-# `model` with a `ByGeneration` resolution, and with the sizes of its types from
-# the deprecated `population_by_type` where that is given.
 function _by_generation(model::BranchingProcess, population_by_type, depletion, generation_length)
     return BranchingProcess(
         model.infectiousness, _by_type_population(model, population_by_type),
@@ -425,8 +421,7 @@ end
 Simulate a `model` built with `resolution = ByGeneration()` by generation and
 return a [`GenerationCounts`](@ref). `n_initial` is the number of index cases:
 an `Int` for a single-type model, a vector with one count per type otherwise.
-The model's `depletion` and `generation_length` are those of its
-[`ByGeneration`](@ref). A [`ModelSpec`](@ref) built on such a process takes the
+A [`ModelSpec`](@ref) built on such a process takes the
 same keywords and applies its vaccination campaigns. See
 [`simulate_by_generation`](@ref) for what the model needs.
 """
