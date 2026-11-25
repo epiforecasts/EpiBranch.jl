@@ -936,6 +936,7 @@ EpiBranch.action_cache
 EpiBranch.apply_actions!
 EpiBranch.action_candidates
 EpiBranch.acts_on_population
+EpiBranch.offers_when_due
 EpiBranch.population_ledger
 EpiBranch.protected_share
 EpiBranch.gates_on_population_clock

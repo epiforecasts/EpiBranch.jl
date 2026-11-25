@@ -676,7 +676,7 @@ function _apply_population_actions!(
         acts_on_population(iv) || continue
         actions = intervention_actions(iv, state, candidates)
         actions === nothing && continue
-        if !_rations_doses(iv)
+        if !offers_when_due(iv)
             _admit_actions!(iv, state, actions)
             continue
         end
@@ -694,11 +694,22 @@ function _apply_population_actions!(
     return nothing
 end
 
-# Whether `iv` is a campaign under a finite budget.
-_rations_doses(::AbstractIntervention) = false
-_rations_doses(w::InterventionWrapper) = _rations_doses(w.intervention)
-_rations_doses(cc::CapacityConstrained) =
-    !(cc.budget_per_period isa Real && isinf(cc.budget_per_period))
+"""
+    offers_when_due(intervention) -> Bool
+
+Whether the actions of an [`acts_on_population`](@ref
+EpiBranch.acts_on_population) intervention are offered on each action's own
+date, to those still susceptible then, instead of being admitted at once. A
+person already infected by that date is dropped, so a limited resource is not
+spent on them. People whose actions share a date are offered together, in the
+order `intervention_actions` returned them. Define
+`EpiBranch.offers_when_due(::MyWrapper) = true` for a wrapper of your own that
+rations such a resource. The default is `false`: actions are admitted before
+the race starts. A wrapper asks the intervention it wraps;
+[`CapacityConstrained`](@ref) answers `true` only for a finite
+`budget_per_period`.
+"""
+offers_when_due(::AbstractIntervention) = false
 
 # Offer a person a branching process has just created to `interventions`, those
 # the race found proposing actions that need no named contacts. `GroupVaccination` finds its
