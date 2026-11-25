@@ -259,5 +259,5 @@ every contact was infected.
     For models that simulate a fixed population (`HomogeneousProcess`,
     `HouseholdProcess`, `MixingProcess`, `NetworkProcess`, `RoutedNetwork`), `contacts` lists
     every infector-infectee pair the race settled, but has no row for a
-    household-mate or network neighbour who was exposed without being
-    infected: these models keep no record of that.
+    household-mate or network neighbour exposed but uninfected: these models
+    keep no record of that.

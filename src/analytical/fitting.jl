@@ -479,7 +479,7 @@ function loglikelihood(data::ChainLengths, m::Union{TransmissionModel, ModelSpec
     )
 end
 
-# Share of cases that are reported: the `Reporting` probability times the
+# Reported share of cases: the `Reporting` probability times the
 # symptomatic share when it reports from onset. Chain lengths are simulated, so
 # the closed-form guards of `_effective_reporting_probability` do not apply.
 function _chain_length_reporting_share(prog, attrs)

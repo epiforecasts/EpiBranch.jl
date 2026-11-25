@@ -129,7 +129,7 @@ the time they are traced, even before they have symptoms. `duration` sets how
 long isolation and quarantine last. When it ends the person is released, and
 one who is still infectious can transmit again. Use `duration = Inf` for
 isolation or quarantine that is never lifted.
-`count(is_isolated, decided)` counts the people who were isolated or
+`count(is_isolated, decided)` counts the people isolated or
 quarantined at some point, including quarantined contacts who were never
 infected. `decided` leaves out the contacts whose infection was still
 undecided when the run stopped at the cap, which have no infection time;

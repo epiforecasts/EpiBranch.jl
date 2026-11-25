@@ -4,7 +4,7 @@
 Containment probability: the proportion of simulated outbreaks that died out,
 from a vector of simulations such as `simulate(model, n)`. Returns a named
 tuple `(; n_contained, n, proportion, mcse, posterior)`: the number of
-outbreaks that were contained, the number simulated, their ratio, the Monte
+contained outbreaks, the number simulated, their ratio, the Monte
 Carlo standard error `sqrt(p * (1 - p) / n)` of that ratio, and the posterior
 for the underlying probability, `Beta(n_contained + 0.5, n - n_contained + 0.5)`,
 which is the Jeffreys prior `Beta(0.5, 0.5)` updated with the runs. Any

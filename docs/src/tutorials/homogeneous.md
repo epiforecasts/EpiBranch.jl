@@ -61,7 +61,7 @@ df = linelist(state)
 first(df, 5)
 ```
 
-The attack rate is the proportion of the population that was infected. At
+The attack rate is the proportion of the population infected. At
 R0 = 2 a major outbreak infects about 80% of the population, the value the
 deterministic final-size equation `z = 1 - exp(-R0 z)` gives:
 
