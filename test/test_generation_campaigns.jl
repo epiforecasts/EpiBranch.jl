@@ -343,8 +343,8 @@ EpiBranch.trigger_time(e::_EligibleAt, infector, state) = e.time
         @test a.counts == b.counts
         @test a.susceptibles == b.susceptibles
 
-        # A state that already holds one budget per campaign is not copied
-        # unless a campaign gives a dose.
+        # A state that already holds one budget per campaign is continued
+        # without allocating, and its doses are unchanged.
         full = GenerationCounts(
             300, 300, 50_000, 30_000, 50_000, 5, 14.0, PerContactDepletion(),
             StableRNG(1), (10^6,), 0
@@ -361,7 +361,10 @@ EpiBranch.trigger_time(e::_EligibleAt, infector, state) = e.time
             ), full
         )
         out = simulate(spent, full; max_generations = 7, rng = StableRNG(2))
-        @test out.doses_used === full.doses_used
+        @test out.doses_used == full.doses_used
+        rng = StableRNG(3)
+        simulate(spent, full; max_generations = 7, rng)
+        @test (@allocated simulate(spent, full; max_generations = 7, rng)) == 0
         @test full.doses_used == (10^6,)
 
         # A single type counts its doses as integers. A continuation
