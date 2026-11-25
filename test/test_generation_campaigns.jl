@@ -391,6 +391,33 @@ EpiBranch.trigger_time(e::_EligibleAt, infector, state) = e.time
             @test alloc(prepared_single, started, 4) == 0
         end
 
+        # A fresh state built by `simulate` holds one zero per campaign, so its
+        # first continuation keeps the type of the state and allocates nothing.
+        for interventions in (
+                [
+                    CapacityConstrained(
+                        MassVaccination(efficacy = 0.9, eligibility_time = 0.0);
+                        budget_per_period = 500.0, period = 14.0
+                    ),
+                ],
+                [
+                    CapacityConstrained(
+                        GroupVaccination(efficacy = 0.5, group_key = :type);
+                        budget_per_period = 500.0, period = 14.0
+                    ),
+                ],
+                [],
+            )
+            spec_single = ModelSpec(single; interventions)
+            prepared_fresh = prepare_generations(spec_single, fresh)
+            zeroed = EpiBranch._zero_doses(fresh, prepared_fresh.campaigns)
+            @test zeroed.doses_used == ntuple(_ -> 0, length(interventions))
+            @test typeof(simulate(prepared_fresh, zeroed; max_generations = 2)) ==
+                typeof(zeroed)
+            alloc(prepared_fresh, zeroed, 4)
+            @test alloc(prepared_fresh, zeroed, 4) == 0
+        end
+
         # The checks of the spec still apply.
         @test_throws ArgumentError prepare_generations(
             ModelSpec(

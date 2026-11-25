@@ -459,7 +459,8 @@ function simulate(
         rng::AbstractRNG = Random.default_rng()
     )
     state = _initial_generation_state(spec.process, n_initial, rng)
-    return simulate(spec, state; max_generations)
+    prepared = prepare_generations(spec, state)
+    return simulate(prepared, _zero_doses(state, prepared.campaigns); max_generations)
 end
 
 function _initial_generation_state(model::_GenerationProcess, n_initial, rng)
@@ -479,6 +480,21 @@ function _initial_generation_state(model::_GenerationProcess, n_initial, rng)
     return GenerationCounts(
         counts, cumulative, pop, susceptibles, sizes, 0, resolution.generation_length,
         resolution.depletion, rng, nt == 1 ? () : Vector{Int}[], nt == 1 ? 0 : zeros(Int, nt)
+    )
+end
+
+# A fresh single-type state holds one zero per campaign, so that continuing it
+# returns a state of the same type and allocates nothing.
+_zero_doses(state::GenerationCounts, campaigns::Tuple) = _with_doses(
+    state, ntuple(_ -> 0, Val(length(campaigns)))
+)
+_zero_doses(state::GenerationCounts, campaigns) = state
+
+function _with_doses(state::GenerationCounts, used)
+    return GenerationCounts(
+        state.counts, state.cumulative_cases, state.population_size, state.susceptibles,
+        state.type_sizes, state.generation, state.generation_length, state.depletion,
+        state.rng, used, state.protected
     )
 end
 
