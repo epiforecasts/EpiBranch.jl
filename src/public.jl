@@ -134,7 +134,7 @@ public susceptibility_components, susceptibility_host_times, HazardScaling,
     removal_block_probability, record_removal!, revise_removal!, withdraw_removal!,
     removal_stretches
 public InterventionAction, intervention_actions, action_draw!, action_cache,
-    apply_actions!, action_candidates, acts_on_population, gates_on_population_clock,
+    apply_actions!, action_candidates, acts_on_population, offers_when_due, gates_on_population_clock,
     needs_contacts, population_ledger, protected_share,
     may_revise, is_settled
 

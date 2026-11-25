@@ -712,6 +712,9 @@ end
 # own override too, which looks past its always-present forwarding method to
 # what its action overrides.
 discovers_actions(w::_CapacityWrapper) = discovers_actions(w.intervention)
+offers_when_due(cc::CapacityConstrained) =
+    acts_on_population(cc.intervention) &&
+    !(cc.budget_per_period isa Real && isinf(cc.budget_per_period))
 time_aware(w::_CapacityWrapper) = time_aware(w.intervention)
 resolves_under_capacity(w::_CapacityWrapper) = resolves_under_capacity(w.intervention)
 has_competing_risk(::_CapacityWrapper) = true

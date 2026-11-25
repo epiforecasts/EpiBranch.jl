@@ -666,17 +666,51 @@ end
 # this realises the whole population on a lazily populated model (see
 # `EpiBranch.lazily_populate!`): offering a dose to everyone and creating
 # people only once the outbreak reaches them do not mix.
-function _apply_population_actions!(state, interventions, members)
+function _apply_population_actions!(
+        state, interventions, members, sink = nothing
+    )
     any(acts_on_population, interventions) || return nothing
     candidates = [_realised!(state, id) for id in members]
     for iv in interventions
         acts_on_population(iv) || continue
         actions = intervention_actions(iv, state, candidates)
         actions === nothing && continue
-        _admit_actions!(iv, state, actions)
+        if sink === nothing || !offers_when_due(iv)
+            _admit_actions!(iv, state, actions)
+            continue
+        end
+        # A budgeted campaign is offered per dose date, to those still susceptible then.
+        # Deferring to the date needs a race that supplies a `sink`. People created
+        # during a run are admitted at once.
+        due = Dict{Any, Vector{eltype(actions)}}()
+        for a in actions
+            isfinite(a.time) && push!(get!(due, a.time, eltype(actions)[]), a)
+        end
+        for t in sort!(collect(keys(due)))
+            batch = due[t]
+            still_susceptible = (_, _, _) -> filter(a -> !is_infected(a.individual), batch)
+            sink(InterventionAction(first(batch).individual, t, still_susceptible), iv)
+        end
     end
     return nothing
 end
+
+"""
+    offers_when_due(intervention) -> Bool
+
+Whether the actions of an [`acts_on_population`](@ref
+EpiBranch.acts_on_population) intervention are offered on each action's own
+date, to those still susceptible then, instead of being admitted at once. A
+person already infected by that date is dropped and uses none of a limited
+resource. People whose actions share a date are offered together, in the
+order `intervention_actions` returned them. Define
+`EpiBranch.offers_when_due(::MyWrapper) = true` for a wrapper of your own that
+rations such a resource. The default is `false`: actions are admitted before
+the race starts. A wrapper asks the intervention it wraps;
+[`CapacityConstrained`](@ref) answers `true` only for a finite
+`budget_per_period`.
+"""
+offers_when_due(::AbstractIntervention) = false
 
 # Offer a person a branching process has just created to `interventions`, those
 # the race found proposing actions that need no named contacts. `GroupVaccination` finds its

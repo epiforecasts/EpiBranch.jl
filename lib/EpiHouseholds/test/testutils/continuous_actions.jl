@@ -75,5 +75,35 @@ function test_continuous_vaccine_actions(make_process)
         @test all(ind -> is_infected(ind) && isnan(onset_time(ind)), aborted)
         @test_logs min_level = Base.CoreLogging.Warn simulate(model; rng = StableRNG(1))
     end
+
+    @testset "A budgeted MassVaccination skips people already infected" begin
+        # With a kernel this slow only the index case is infected by day 5 and
+        # with one this fast everyone is infected by day 0.5. Either way the
+        # people susceptible on the dose date are known.
+        slow, fast = make_process(Exponential(1.0e9)), make_process(Exponential(1.0e-6))
+        clinical = clinical_presentation(incubation_period = Dirac(0.0))
+        progression = [Transition(:recovered; delay = 3.0, terminal = true)]
+        campaign(day) = CapacityConstrained(
+            MassVaccination(efficacy = 1.0, eligibility_time = day); budget_per_period = 3.0
+        )
+        run(process, day, seed) = simulate(
+            ModelSpec(
+                process; progression, attributes = clinical,
+                interventions = [campaign(day)]
+            );
+            rng = StableRNG(seed)
+        )
+        # With the index case alone infected, the three doses go to the three
+        # people still susceptible, whoever the index case is.
+        for seed in 1:20
+            state = run(slow, 5.0, seed)
+            index = only(filter(is_infected, individuals(state)))
+            @test !is_vaccinated(index)
+            @test count(is_vaccinated, individuals(state)) == 3
+            @test state.cumulative_cases == 1
+        end
+        # Everyone infected before the dose date, so no dose is given.
+        @test all(seed -> count(is_vaccinated, individuals(run(fast, 0.5, seed))) == 0, 1:20)
+    end
     return nothing
 end
