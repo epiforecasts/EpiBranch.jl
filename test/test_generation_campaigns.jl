@@ -362,9 +362,10 @@ EpiBranch.trigger_time(e::_EligibleAt, infector, state) = e.time
         )
         out = simulate(spent, full; max_generations = 7, rng = StableRNG(2))
         @test out.doses_used == full.doses_used
+        alloc_rng(prepared, s, n, rng) = @allocated simulate(prepared, s; max_generations = n, rng)
         rng = StableRNG(3)
-        simulate(spent, full; max_generations = 7, rng)
-        @test (@allocated simulate(spent, full; max_generations = 7, rng)) == 0
+        alloc_rng(spent, full, 7, rng)
+        @test alloc_rng(spent, full, 7, rng) == 0
         @test full.doses_used == (10^6,)
 
         # A single type counts its doses as integers. A continuation
