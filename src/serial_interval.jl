@@ -28,9 +28,9 @@ general way to resolve a convolution for every possible case), and
 `clinical_presentation`'s incubation period does not yet vary between cases,
 so today they only name which pair the serial interval is for.
 
-A model whose onset and infectiousness share a within-host trajectory has no
-closed form and throws an error. Fit a distribution to
-[`realised_serial_intervals`](@ref) of simulated states instead.
+`serial_interval` does not handle a model whose onset and infectiousness share
+a within-host trajectory yet, and throws an error. For now, fit a distribution
+to [`realised_serial_intervals`](@ref) of simulated states.
 
 Available once CensoredDistributions.jl and ConvolvedDistributions.jl are
 both loaded, on Julia 1.11 or later. On Julia 1.10 the two packages pull in

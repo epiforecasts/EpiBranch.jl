@@ -12,9 +12,9 @@ using EpiBranch
 using ConvolvedDistributions: convolved, difference
 using Distributions: Distribution
 
-const _SIMULATED_ROUTE = " For a model whose onset and infectiousness share a " *
-    "trajectory, simulate it and fit the intervals from " *
-    "realised_serial_intervals(states) instead."
+const _SIMULATED_ROUTE = " serial_interval does not handle a model whose onset and " *
+    "infectiousness share a trajectory yet. For now, fit a distribution to " *
+    "realised_serial_intervals(states) of simulated states."
 
 function EpiBranch.serial_interval(model, infector::Individual, infectee::Individual)
     gt = EpiBranch._single_kernel(model)
