@@ -1,0 +1,1 @@
+A `BranchingProcess` takes a `resolution`: `Individuals()` (the default) or `ByGeneration(; depletion, generation_length)`. `simulate` on a model with `ByGeneration()` returns a `GenerationCounts`, and `simulate_by_generation(model)` is `simulate` on the model with that resolution. A plain `BranchingProcess` still returns individuals.
