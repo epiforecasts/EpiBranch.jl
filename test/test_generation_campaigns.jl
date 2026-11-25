@@ -344,6 +344,27 @@ EpiBranch.trigger_time(e::_EligibleAt, infector, state) = e.time
         @test a.counts == b.counts
         @test a.susceptibles == b.susceptibles
 
+        # A state that already holds one budget per campaign is not copied
+        # when no dose is taken from it.
+        full = GenerationCounts(
+            300, 300, 50_000, 30_000, 50_000, 5, 14.0, PerContactDepletion(),
+            StableRNG(1), [[10^6]]
+        )
+        spent = prepare_generations(
+            ModelSpec(
+                BranchingProcess(Poisson(2.0); population = Population(50_000));
+                interventions = [
+                    CapacityConstrained(
+                        MassVaccination(efficacy = 1.0, eligibility_time = 0.0);
+                        budget_per_period = 5.0, period = Inf
+                    ),
+                ]
+            ), full
+        )
+        out = simulate(spent, full; max_generations = 7, rng = StableRNG(2))
+        @test out.doses_used === full.doses_used
+        @test full.doses_used == [[10^6]]
+
         # The checks of the spec still apply.
         @test_throws ArgumentError prepare_generations(
             ModelSpec(

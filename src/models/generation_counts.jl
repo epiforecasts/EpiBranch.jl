@@ -625,16 +625,17 @@ function _run_generations(
     sizes = state.type_sizes isa NoPopulation ? nothing : _scalar(state.type_sizes)
     cumulative = state.cumulative_cases
     gen = state.generation
-    used = _doses_used(state, campaigns)
-    doses = zeros(Int, length(campaigns))
+    # The state's own `doses_used` is only copied once a dose is taken from it.
+    owned = !(length(state.doses_used) == length(campaigns) && !isempty(campaigns))
+    used = owned ? _doses_used(state, campaigns) : state.doses_used
+    doses = any(_doses_contacts, campaigns) ? zeros(Int, length(campaigns)) : _NO_DOSES
     vaccinates_population = !all(_doses_contacts, campaigns)
     while gen < max_generations && counts != 0
         if vaccinates_population && susceptibles !== nothing
-            s = [susceptibles]
-            _vaccinate_population!(
-                rng, campaigns, used, state.generation_length, gen, s, [something(sizes)]
+            susceptibles, used, owned = _vaccinate_scalar(
+                rng, campaigns, used, owned, state.generation_length, gen,
+                susceptibles, something(sizes)
             )
-            susceptibles = only(s)
         end
         dosed = _scalar_doses!(doses, campaigns, used, state.generation_length, gen)
         m = _draw_multiplier(rng, model.multiplier)
@@ -643,6 +644,10 @@ function _run_generations(
             # Without a finite population nothing is thinned.
             counts = potential
         elseif dosed
+            if !owned
+                used = deepcopy(used)
+                owned = true
+            end
             counts, susceptibles = _deplete_dosed(
                 rng, state.depletion, potential, susceptibles, something(sizes),
                 campaigns, doses, used
@@ -702,6 +707,8 @@ function _run_generations(
         rng, used
     )
 end
+
+const _NO_DOSES = Int[]
 
 # How many doses each campaign has given so far, per budget: those in the state,
 # or zeros for campaigns it has not met. A continuation without campaigns
