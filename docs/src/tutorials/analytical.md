@@ -228,6 +228,18 @@ println("Transmission tree unknown: P(over) = $(round(p_unknown, digits=3))")
 
 Zeros, for an unknown transmission tree, give the plain product of the per-case values. Pass the result as `prob_concluded` to [`chain_size_distribution`](@ref) or the chain-size likelihood for real-time cluster data.
 
+[`end_of_outbreak_plot`](@ref) plots the probability over time. Here infection times are observed immediately, and the transmission tree is known at each time:
+
+```@example analytical
+using CairoMakie
+using StableRNGs
+
+outbreak_offspring = NegBin(0.8, 0.5)
+outbreak_gt = Gamma(2.0, 3.0)
+outbreak = simulate(BranchingProcess(outbreak_offspring, outbreak_gt); rng = StableRNG(19))
+end_of_outbreak_plot(outbreak, outbreak_offspring, outbreak_gt; by = TransitionCount(:infection))
+```
+
 ## Checking against simulation
 
 The exact extinction probability should match the proportion of simulated
