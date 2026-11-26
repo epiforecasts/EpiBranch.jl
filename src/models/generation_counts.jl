@@ -904,10 +904,70 @@ end
 
 # The same draws for a single type, with its susceptibles as an integer:
 # returns the contacts kept and the susceptibles left.
+const _depletion_logfactorials = let values = zeros(256)
+    for k in 2:255
+        values[k + 1] = values[k] + log(k)
+    end
+    Tuple(values)
+end
+
+@inline function _depletion_logfactorial(k::Int)
+    k < 256 && return _depletion_logfactorials[k + 1]
+    x = Float64(k)
+    invx = inv(x)
+    return (x + 0.5) * log(x) - x + 0.9189385332046727 +
+        invx * (1 / 12 - invx^2 / 360)
+end
+
+function _depletion_binomial(rng, n::Int, p::Float64)
+    (p <= 0 || n == 0) && return 0
+    p >= 1 && return n
+    q = min(p, 1 - p)
+    np = n * q
+    # The standard sampler is faster at larger means and avoids cancellation
+    # in the log-factorial ratio for very large populations.
+    (n > 10_000_000 || np > 500) && return rand(rng, Binomial(n, p))
+    if np < 10
+        mass = exp(n * log1p(-q))
+        u = rand(rng)
+        k = 0
+        while u > mass && k < n
+            u -= mass
+            k += 1
+            mass *= (n - k + 1) / k * (q / (1 - q))
+        end
+        return p > 0.5 ? n - k : k
+    end
+    spq = sqrt(np * (1 - q))
+    b = 1.15 + 2.53 * spq
+    a = 0.0873 + 0.0248 * b + 0.01 * q
+    c = np + 0.5
+    alpha = (2.83 + 5.1 / b) * spq
+    vr = 0.92 - 4.2 / b
+    mode = floor(Int, (n + 1) * q)
+    logratio = log(q / (1 - q))
+    modefactorial = _depletion_logfactorial(mode) + _depletion_logfactorial(n - mode)
+    while true
+        u = rand(rng) - 0.5
+        v = rand(rng)
+        us = 0.5 - abs(u)
+        us == 0 && continue
+        k = floor(Int, (2 * a / us + b) * u + c)
+        (k < 0 || k > n) && continue
+        if (us >= 0.07 && v <= vr) ||
+                log(v * alpha / (a / us^2 + b)) <=
+                (k - mode) * logratio + modefactorial -
+                _depletion_logfactorial(k) - _depletion_logfactorial(n - k)
+            return p > 0.5 ? n - k : k
+        end
+    end
+    return
+end
+
 function _deplete(rng, ::PerContactDepletion, potential::Float64, susceptibles::Int, size::Int)
     (potential <= 0 || susceptibles <= 0) && return 0, susceptibles
     reached = -expm1(-potential / size)
-    kept = rand(rng, Binomial(susceptibles, reached))
+    kept = _depletion_binomial(rng, susceptibles, reached)
     return kept, susceptibles - kept
 end
 
