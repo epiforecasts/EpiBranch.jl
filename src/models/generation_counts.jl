@@ -967,6 +967,7 @@ function _deplete(rng, ::PerContactDepletion, potential::Float64, susceptibles::
             return kept, n - kept
         end
     end
+    return
 end
 
 function _deplete(rng, ::PerContactDepletion, potential::Int, susceptibles::Int, size::Int)
