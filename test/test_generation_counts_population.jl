@@ -10,7 +10,8 @@ using Statistics
                 (100, 0.101), (100, 0.5), (1000, 0.99), (30_000, 0.005),
                 (50_000, 0.4),
             )
-            draws = [EpiBranch._depletion_binomial(rng, n, p) for _ in 1:50_000]
+            potential = -log1p(-p) * n
+            draws = [first(EpiBranch._deplete(rng, PerContactDepletion(), potential, n, n)) for _ in 1:50_000]
             d = Binomial(n, p)
             @test all(x -> 0 <= x <= n, draws)
             if 0 < p < 1
@@ -21,8 +22,10 @@ using Statistics
             end
         end
         for (n, p) in ((10_000_001, 0.00001), (50_000, 0.4))
-            @test EpiBranch._depletion_binomial(StableRNG(9), n, p) ==
-                rand(StableRNG(9), Binomial(n, p))
+            potential = -log1p(-p) * n
+            reached = -expm1(-potential / n)
+            @test first(EpiBranch._deplete(StableRNG(9), PerContactDepletion(), potential, n, n)) ==
+                rand(StableRNG(9), Binomial(n, reached))
         end
     end
     @testset "susceptibles and the immune, per type" begin

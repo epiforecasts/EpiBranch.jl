@@ -919,14 +919,18 @@ end
         invx * (1 / 12 - invx^2 / 360)
 end
 
-function _depletion_binomial(rng, n::Int, p::Float64)
-    (p <= 0 || n == 0) && return 0
-    p >= 1 && return n
+function _deplete(rng, ::PerContactDepletion, potential::Float64, susceptibles::Int, size::Int)
+    (potential <= 0 || susceptibles <= 0) && return 0, susceptibles
+    n = susceptibles
+    p = -expm1(-potential / size)
+    p <= 0 && return 0, susceptibles
+    p >= 1 && return n, 0
     q = min(p, 1 - p)
     np = n * q
-    # The standard sampler is faster at larger means and avoids cancellation
-    # in the log-factorial ratio for very large populations.
-    (n > 10_000_000 || np > 500) && return rand(rng, Binomial(n, p))
+    if n > 10_000_000 || np > 500
+        kept = rand(rng, Binomial(n, p))
+        return kept, n - kept
+    end
     if np < 10
         mass = exp(n * log1p(-q))
         u = rand(rng)
@@ -936,7 +940,8 @@ function _depletion_binomial(rng, n::Int, p::Float64)
             k += 1
             mass *= (n - k + 1) / k * (q / (1 - q))
         end
-        return p > 0.5 ? n - k : k
+        kept = p > 0.5 ? n - k : k
+        return kept, n - kept
     end
     spq = sqrt(np * (1 - q))
     b = 1.15 + 2.53 * spq
@@ -958,17 +963,10 @@ function _depletion_binomial(rng, n::Int, p::Float64)
                 log(v * alpha / (a / us^2 + b)) <=
                 (k - mode) * logratio + modefactorial -
                 _depletion_logfactorial(k) - _depletion_logfactorial(n - k)
-            return p > 0.5 ? n - k : k
+            kept = p > 0.5 ? n - k : k
+            return kept, n - kept
         end
     end
-    return
-end
-
-function _deplete(rng, ::PerContactDepletion, potential::Float64, susceptibles::Int, size::Int)
-    (potential <= 0 || susceptibles <= 0) && return 0, susceptibles
-    reached = -expm1(-potential / size)
-    kept = _depletion_binomial(rng, susceptibles, reached)
-    return kept, susceptibles - kept
 end
 
 function _deplete(rng, ::PerContactDepletion, potential::Int, susceptibles::Int, size::Int)
