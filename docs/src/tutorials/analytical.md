@@ -228,7 +228,7 @@ println("Transmission tree unknown: P(over) = $(round(p_unknown, digits=3))")
 
 Zeros, for an unknown transmission tree, give the plain product of the per-case values. Pass the result as `prob_concluded` to [`chain_size_distribution`](@ref) or the chain-size likelihood for real-time cluster data.
 
-For a simulated outbreak, [`end_of_outbreak_plot`](@ref) shows how the probability changes as cases occur and time passes without further cases. This example uses infection times and assumes they are observed immediately, together with the transmission tree known at each time.
+[`end_of_outbreak_plot`](@ref) shows the probability over time. This example assumes infection times are observed immediately and the transmission tree is known at each time.
 
 ```@example analytical
 using CairoMakie
