@@ -142,7 +142,7 @@ contacts of each generation in order.
 simulate_by_generation
 ByGeneration
 Individuals
-AbstractResolution
+EpiBranch.AbstractResolution
 GenerationCounts
 prepare_generations
 GenerationCampaigns
@@ -519,6 +519,8 @@ chain started by an imported case, uses [`IndexChainSize`](@ref).
 
 ```@docs
 IndexChainSize
+EpiBranch.Distributions.logpdf(::IndexChainSize, ::Integer)
+Base.rand(::EpiBranch.Random.AbstractRNG, ::IndexChainSize)
 ```
 
 ### Household reproduction number
@@ -643,6 +645,7 @@ ChainDetection
 observe
 ChainSizeLaw
 ThinnedChainSize
+Base.rand(::EpiBranch.Random.AbstractRNG, ::ThinnedChainSize)
 TruncatedChainSize
 DetectedChainSize
 ```
@@ -709,6 +712,8 @@ NetworkInfections
 routed_network_infections
 RoutedNetworkInfections
 RoutedMassActionHazard
+EpiNetwork.Distributions.loglikelihood(::NetworkInfections, ::NetworkProcess)
+EpiNetwork.Distributions.loglikelihood(::RoutedNetworkInfections, ::RoutedNetwork)
 ```
 
 ### Serial interval likelihood
@@ -1062,7 +1067,6 @@ EpiBranch.get_generation_time
 EpiBranch.population_size
 EpiBranch.logsumexp
 EpiBranch.required_fields
-EpiBranch._validate_required_fields
 EpiBranch._column_order
 EpiBranch._borel_logpdf
 EpiBranch._gammaborel_logpdf
