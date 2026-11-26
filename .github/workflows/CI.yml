@@ -157,7 +157,8 @@ jobs:
         with:
           node-version: '22'
       - run: julia --project=docs -e 'using Pkg; Pkg.instantiate()'
-      - run: julia --project=docs docs/make.jl
+      # Threads let the tutorials' `parallel = true` comparisons use every core.
+      - run: julia --project=docs --threads=auto docs/make.jl
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Read by `docs/make.jl`, which explains what it does.

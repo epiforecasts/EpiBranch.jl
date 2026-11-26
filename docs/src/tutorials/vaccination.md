@@ -151,7 +151,7 @@ for (label, interventions) in (
         ("same-day protection", [iso, ct_onset, rv]),
         ("7-day delay", [iso, ct_onset, rv_delayed]))
     diff = containment_difference(scenario(interventions), base_delay, n_delay;
-        max_cases = 500, paired = true, seed = 42)
+        max_cases = 500, paired = true, seed = 42, parallel = true)
     println(rpad(label, 22), "containment ", round(diff.a, digits = 3),
         " against ", round(diff.b, digits = 3), " with no vaccination; difference ",
         round(diff.difference, digits = 3), " (MCSE ", round(diff.mcse, digits = 3), ")")
@@ -436,7 +436,7 @@ clustered_model = scenario([iso, ct_noquarantine, rv_clustered_onward], populati
 independent_model = scenario([iso, ct_noquarantine, rv_independent_onward], population)
 
 compare(a, b) = containment_difference(a, b, n_outbreaks;
-    max_cases = 200, paired = true, seed = 42)
+    max_cases = 200, paired = true, seed = 42, parallel = true)
 gain_clustered = compare(clustered_model, no_vaccination)
 gain_independent = compare(independent_model, no_vaccination)
 clustered_vs_independent = compare(clustered_model, independent_model)
@@ -452,7 +452,7 @@ println("Clustered minus independent: ",
     " (MCSE ", round(clustered_vs_independent.mcse, digits = 3), ")")
 ```
 
-Containment is 0.222 with clustered refusal and 0.224 with independent refusal, against 0.214 with no vaccination. Vaccinating about half the traced contacts gains 0.008 (MCSE 0.006) with clustered refusal and 0.010 (MCSE 0.006) with independent refusal, each within about two MCSEs of zero. Clustered minus independent refusal is -0.001 (MCSE 0.006), well within the noise: at this number of outbreaks the two kinds of refusal are indistinguishable. To compare any two scenarios in the same way, use [`containment_difference`](@ref) on the two models.
+Containment is 0.220 under both clustered and independent refusal, against 0.203 with no vaccination. Vaccinating about half the traced contacts gains 0.017 (MCSE 0.003) either way. Clustered minus independent refusal is -0.001 (MCSE 0.001), within the noise: at this number of outbreaks the two kinds of refusal are indistinguishable. To compare any two scenarios in the same way, use [`containment_difference`](@ref) on the two models.
 
 Clustering has little effect here because `groups(20)` puts each person in a
 community independently of who infected them. A case's contacts are spread
