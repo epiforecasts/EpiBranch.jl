@@ -568,8 +568,8 @@ end
 """
     GenerationCampaigns
 
-The branching process and vaccination campaigns of a [`ModelSpec`](@ref),
-used to start or continue [`GenerationCounts`](@ref).
+The branching process and vaccination campaigns of a [`ModelSpec`](@ref)
+for starting or continuing [`GenerationCounts`](@ref).
 """
 struct GenerationCampaigns{M <: BranchingProcess, V <: Union{AbstractVector, Tuple}}
     model::M
