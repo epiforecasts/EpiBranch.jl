@@ -336,8 +336,6 @@ EpiBranch 0.1.0 lacks the interfaces they use. Release publication is pending.
 
 ### Fixed
 
-- Fix stale and missing API reference entries.
-
 - `initial_cases` can now be combined with an active `external_hazard` on
   `NetworkProcess`, `RoutedNetwork` and `HouseholdProcess`: the chosen cases are
   seeded at time zero, and the hazard still acts on everyone else from the
