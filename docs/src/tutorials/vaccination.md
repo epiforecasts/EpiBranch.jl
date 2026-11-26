@@ -452,6 +452,9 @@ println("Clustered minus independent: ",
     " (MCSE ", round(clustered_vs_independent.mcse, digits = 3), ")")
 ```
 
+!!! note "Results from a threaded run"
+    The output above and the figures below come from a run with more than one thread (for example `julia --threads=auto`). With one thread, `parallel = true` runs the outbreaks one after another and draws different ones, and the printed numbers differ slightly.
+
 Containment is 0.220 under both clustered and independent refusal, against 0.203 with no vaccination. Vaccinating about half the traced contacts gains 0.017 (MCSE 0.003) either way. Clustered minus independent refusal is -0.001 (MCSE 0.001), within the noise: at this number of outbreaks the two kinds of refusal are indistinguishable. To compare any two scenarios in the same way, use [`containment_difference`](@ref) on the two models.
 
 Clustering has little effect here because `groups(20)` puts each person in a
