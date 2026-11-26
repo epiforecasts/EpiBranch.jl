@@ -357,6 +357,31 @@ EpiBranch.trigger_time(e::_EligibleAt, infector, state) = e.time
         @test a.counts == b.counts
         @test a.susceptibles == b.susceptibles
         @test a.doses_used == b.doses_used
+
+        total = BranchingProcess(
+            matrix, R -> Poisson(R), EpiBranch.NoGenerationTime(); population = Population(200_000)
+        )
+        for sizes in ([40_000, 160_000], [0, 200_000], [200_000, 0])
+            initial = min.([10, 2], sizes)
+            budget = CapacityConstrained(group(); budget_per_period = 500.0, period = 14.0)
+            original = ModelSpec(total; interventions = [budget])
+            state = @test_logs (:warn, r"population_by_type") match_mode = :any simulate_by_generation(
+                original; n_initial = initial, population_by_type = sizes,
+                max_generations = 1, generation_length = 14.0, rng = StableRNG(1)
+            )
+            prepared = prepare_generations(original, state)
+            reference = ModelSpec(discrete(; sizes); interventions = [budget])
+            for seed in 1:3
+                a = simulate(prepared; n_initial = initial, max_generations = 3, rng = StableRNG(seed))
+                b = simulate_by_generation(
+                    reference; n_initial = initial, max_generations = 3,
+                    generation_length = 14.0, rng = StableRNG(seed)
+                )
+                for field in (:counts, :cumulative_cases, :population_size, :type_sizes, :susceptibles, :doses_used, :protected)
+                    @test getproperty(a, field) == getproperty(b, field)
+                end
+            end
+        end
     end
 
     @testset "a prepared spec continues a state as the spec does" begin

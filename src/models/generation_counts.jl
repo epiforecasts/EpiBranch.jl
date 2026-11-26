@@ -591,10 +591,15 @@ function prepare_generations(spec::ModelSpec, state::GenerationCounts)
     model = _generation_process(spec)
     resolution = ByGeneration(; depletion = state.depletion, generation_length = state.generation_length)
     model = BranchingProcess(
-        model.infectiousness, model.population, model.n_types, model.type_labels,
+        model.infectiousness, _prepared_population(model.population, state.type_sizes), model.n_types, model.type_labels,
         model.multiplier, model.importations, resolution
     )
     return GenerationCampaigns(model, state.counts isa Int ? _as_tuple(campaigns) : campaigns)
+end
+
+_prepared_population(population, sizes) = population
+function _prepared_population(population::SinglePopulation, sizes::Vector{Int})
+    return Population(sizes; immune = _immune(population, length(sizes)))
 end
 
 """
