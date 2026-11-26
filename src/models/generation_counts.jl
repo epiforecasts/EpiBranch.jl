@@ -568,9 +568,8 @@ end
 """
     GenerationCampaigns
 
-The vaccination campaigns of a [`ModelSpec`](@ref) and its branching process, as
-returned by [`prepare_generations`](@ref). Hold one to start or continue many
-[`GenerationCounts`](@ref) without building the campaigns again.
+The branching process and vaccination campaigns of a [`ModelSpec`](@ref),
+used to start or continue [`GenerationCounts`](@ref).
 """
 struct GenerationCampaigns{M <: BranchingProcess, V <: Union{AbstractVector, Tuple}}
     model::M
@@ -580,10 +579,8 @@ end
 """
     prepare_generations(spec::ModelSpec, state::GenerationCounts)
 
-Build the vaccination campaigns of `spec` for continuing `state`. The
-`generation_length` and whether the population is finite come from `state`. Pass the result to
-`simulate` in place of `spec`. To start new states, prepare campaigns from a state
-started with the same process settings.
+Return the vaccination campaigns of `spec` with the generation length and
+depletion setting of `state`, for starting or continuing generation counts.
 """
 function prepare_generations(spec::ModelSpec, state::GenerationCounts)
     campaigns = _generation_campaigns(
