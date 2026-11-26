@@ -1,1 +1,1 @@
-Single-type generation counts draw finite-population depletion faster for Poisson contacts.
+Single-type generation counts draw depletion in a finite population faster for Poisson contacts.
