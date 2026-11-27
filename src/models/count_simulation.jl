@@ -30,7 +30,7 @@ transmission, apart from the depletion of a finite population by type and the
 vaccination campaigns, which are applied to the counts as doses, and its
 generation time is a distribution on whole days. A
 [`BranchingProcess`](@ref) may have several infectiousness windows or several
-types, but not a `multiplier` or an `immune` population, which run as
+types, but not a `multiplier`, which runs as
 individuals. A method for a new model type gives it the count-level path. The rule is
 a [`CountRule`](@ref), or a [`CountRules`](@ref) for several windows or types.
 """
@@ -133,7 +133,6 @@ function count_rule(model::BranchingProcess)
     isempty(transmission_risks(model)) || return nothing
     model.multiplier === nothing || return nothing
     model.importations === nothing || return nothing
-    _immune_total(population(model)) == 0 || return nothing
     _counts_population(population(model), n_types(model)) || return nothing
     windows = model.infectiousness
     all(w -> w.from === :infection && isempty(w.until) && w.calendar === nothing, windows) ||
@@ -156,6 +155,8 @@ _counts_population(p::GroupedPopulation, nt) = length(p.sizes) == nt
 _count_sizes(::NoPopulation) = nothing
 _count_sizes(p::SinglePopulation) = [p.size]
 _count_sizes(p::GroupedPopulation) = copy(p.sizes)
+_count_immune(p::SinglePopulation) = [p.immune]
+_count_immune(p::GroupedPopulation) = p.immune
 
 # The row of channels of one window and its allocation between types.
 function _window_channels(o, kernel, n::Int)
@@ -568,14 +569,15 @@ function _simulate_counts(
         by_class[n_types == 1 ? 1 : _draw_type(rng, index_types, i, n_types), 1] += 1
     end
     sizes = _count_sizes(population(process_of(model)))
-    sizes === nothing || all(sum(by_class; dims = 2) .<= sizes) || throw(
-        ArgumentError("initial cases cannot exceed the population size of any type")
+    available = sizes === nothing ? nothing : sizes .- _count_immune(population(process_of(model)))
+    available === nothing || all(vec(sum(by_class; dims = 2)) .<= available) || throw(
+        ArgumentError("initial cases cannot exceed the susceptible population of any type")
     )
     state = CountSimulationState(
         process_of(model), layers, rules, [n_initial], max_generations, [by_class],
         Array{Float64, 3}[], Array{Vector{Float64}, 3}[],
         [zeros(Int, _max_lag(rules), size(rules.channels, 1), n_types, ncls, n_types)],
-        sizes === nothing ? nothing : sizes .- vec(sum(by_class; dims = 2)), sizes,
+        available === nothing ? nothing : available .- vec(sum(by_class; dims = 2)), sizes,
         0, n_initial, n_initial == 0, rng, stream, nothing
     )
     _push_cohorts!(state, by_class)
