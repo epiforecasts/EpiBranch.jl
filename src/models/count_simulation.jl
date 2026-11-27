@@ -303,8 +303,9 @@ function Base.copy(s::CountSimulationState)
     built = s.built
     return CountSimulationState(
         s.model, s.layers, s.rule, copy(s.counts), s.max_generation,
-        deepcopy(s.generation_counts), deepcopy(s.cohort_infectiousness),
-        deepcopy(s.cohort_members), deepcopy(s.inflow), _copy_susceptibles(s.susceptibles),
+        copy.(s.generation_counts), copy.(s.cohort_infectiousness),
+        [copy.(members) for members in s.cohort_members], copy.(s.inflow),
+        _copy_susceptibles(s.susceptibles),
         s.sizes, s.day, s.cumulative_cases,
         s.extinct, _copy_count_rng(s.rng), copy(s.individual_stream),
         built === nothing ? nothing : copy(built)

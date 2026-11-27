@@ -280,6 +280,29 @@ using EpiBranch, Distributions, Random, StableRNGs, Statistics, DataFrames
         @test isequal(linelist(other), linelist(state))
     end
 
+    @testset "copying count history" begin
+        model = BranchingProcess(
+            Poisson(4.5), DiscreteNonParametric([14], [1.0]);
+            population = Population(30_000)
+        )
+        state = simulate(
+            model; n_initial = 50, max_time = 42.0, max_generations = 10_000,
+            rng = Xoshiro(1)
+        )
+        copy(state)
+        deepcopy((state.generation_counts, state.cohort_infectiousness, state.cohort_members, state.inflow))
+        copied_bytes = @allocated copy(state)
+        deep_bytes = @allocated deepcopy((state.generation_counts, state.cohort_infectiousness, state.cohort_members, state.inflow))
+        @test copied_bytes < deep_bytes ÷ 2
+        other = copy(state)
+        other.inflow[1][1] = 123
+        other.generation_counts[1][1] = 123
+        push!(other.cohort_members[1][1], 123.0)
+        @test state.inflow[1][1] != 123
+        @test state.generation_counts[1][1] != 123
+        @test isempty(state.cohort_members[1][1])
+    end
+
     @testset "extinction" begin
         state = count_run(
             BranchingProcess(Poisson(0.2), gt); n_initial = 1, max_time = 200, rng = StableRNG(2)
