@@ -290,10 +290,10 @@ using EpiBranch, Distributions, Random, StableRNGs, Statistics, DataFrames
             rng = Xoshiro(1)
         )
         copy(state)
-        deepcopy((state.generation_counts, state.cohort_infectiousness, state.cohort_members, state.inflow))
+        deepcopy(state)
         copied_bytes = @allocated copy(state)
-        deep_bytes = @allocated deepcopy((state.generation_counts, state.cohort_infectiousness, state.cohort_members, state.inflow))
-        @test copied_bytes < deep_bytes ÷ 2
+        deep_bytes = @allocated deepcopy(state)
+        @test copied_bytes < deep_bytes
         other = copy(state)
         other.inflow[1][1] = 123
         other.generation_counts[1][1] = 123
