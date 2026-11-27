@@ -928,11 +928,70 @@ end
 
 # The same draws for a single type, with its susceptibles as an integer:
 # returns the contacts kept and the susceptibles left.
+const _depletion_logfactorials = let values = zeros(256)
+    for k in 2:255
+        values[k + 1] = values[k] + log(k)
+    end
+    Tuple(values)
+end
+
+@inline function _depletion_logfactorial(k::Int)
+    k < 256 && return _depletion_logfactorials[k + 1]
+    x = Float64(k)
+    invx = inv(x)
+    return (x + 0.5) * log(x) - x + 0.9189385332046727 +
+        invx * (1 / 12 - invx^2 / 360)
+end
+
 function _deplete(rng, ::PerContactDepletion, potential::Float64, susceptibles::Int, size::Int)
     (potential <= 0 || susceptibles <= 0) && return 0, susceptibles
-    reached = -expm1(-potential / size)
-    kept = rand(rng, Binomial(susceptibles, reached))
-    return kept, susceptibles - kept
+    n = susceptibles
+    p = -expm1(-potential / size)
+    p <= 0 && return 0, susceptibles
+    p >= 1 && return n, 0
+    q = min(p, 1 - p)
+    np = n * q
+    if n > 10_000_000 || np > 500
+        kept = rand(rng, Binomial(n, p))
+        return kept, n - kept
+    end
+    if np < 10
+        mass = exp(n * log1p(-q))
+        u = rand(rng)
+        k = 0
+        while u > mass && k < n
+            u -= mass
+            k += 1
+            mass *= (n - k + 1) / k * (q / (1 - q))
+        end
+        kept = p > 0.5 ? n - k : k
+        return kept, n - kept
+    end
+    spq = sqrt(np * (1 - q))
+    b = 1.15 + 2.53 * spq
+    a = 0.0873 + 0.0248 * b + 0.01 * q
+    c = np + 0.5
+    alpha = (2.83 + 5.1 / b) * spq
+    vr = 0.92 - 4.2 / b
+    mode = floor(Int, (n + 1) * q)
+    logratio = log(q / (1 - q))
+    modefactorial = _depletion_logfactorial(mode) + _depletion_logfactorial(n - mode)
+    while true
+        u = rand(rng) - 0.5
+        v = rand(rng)
+        us = 0.5 - abs(u)
+        us == 0 && continue
+        k = floor(Int, (2 * a / us + b) * u + c)
+        (k < 0 || k > n) && continue
+        if (us >= 0.07 && v <= vr) ||
+                log(v * alpha / (a / us^2 + b)) <=
+                (k - mode) * logratio + modefactorial -
+                _depletion_logfactorial(k) - _depletion_logfactorial(n - k)
+            kept = p > 0.5 ? n - k : k
+            return kept, n - kept
+        end
+    end
+    return
 end
 
 function _deplete(rng, ::PerContactDepletion, potential::Int, susceptibles::Int, size::Int)
