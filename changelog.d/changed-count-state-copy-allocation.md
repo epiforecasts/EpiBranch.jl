@@ -1,1 +1,1 @@
-Copying a daily-count simulation state allocates less memory while retaining independent cohort histories.
+Copying a daily-count simulation state allocates less memory. The cohort histories remain independent.
