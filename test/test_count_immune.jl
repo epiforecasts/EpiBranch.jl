@@ -14,7 +14,6 @@ using EpiBranch, Distributions, Random, Statistics
     @test state isa EpiBranch.CountSimulationState
     @test state.susceptibles == [59, 49]
 
-    # One day's expected infections follow sequential depletion of susceptibles.
     runs = [simulate(model; n_initial = 10, max_time = 1, max_generations = nothing, rng = Xoshiro(i)) for i in 1:2000]
     infections = [s.counts[2] for s in runs]
     expected = 50 * (1 - exp(-20 / 100))
