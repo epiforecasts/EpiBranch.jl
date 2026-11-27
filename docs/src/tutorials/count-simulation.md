@@ -12,7 +12,7 @@ The run must be asked for in a way counts can answer: a finite `max_time` or a `
 
 ## A finite population and vaccination
 
-A finite population runs on counts as described above, and `state.susceptibles` holds the number left in each type. The contacts of the day fall at random on the people of each type, as under [`PerContactDepletion`](@ref), and the infections are shared among the cohorts in proportion to the contacts each made. The cost does not depend on the number of cases.
+A finite population runs on counts as described above. `state.susceptibles` holds the number of susceptibles left in each type after subtracting prior immunity and initial cases. Each day's contacts are allocated at random among the people of each type, as under [`PerContactDepletion`](@ref). Infections are shared among the cohorts in proportion to the contacts each made. The cost does not depend on the number of cases.
 
 A [`ModelSpec`](@ref) with `GroupVaccination` (with `group_key = :type`) under [`CapacityConstrained`](@ref), and optionally `Scheduled` with a `start_time` and `end_time`, qualifies when the population is finite. The doses of the day interval `[t - 1, t)` reach the susceptibles before the contacts of day `t` are drawn, in the way [`simulate_by_generation`](@ref) gives them between generations: a dose reaches a susceptible of a type with probability equal to their share of the population of the type and protects with probability `efficacy`. This approximates the individual simulation, which offers doses to contacts as they are made. The two agree only when the budget reaches everyone. A specification this cannot apply runs as individuals.
 

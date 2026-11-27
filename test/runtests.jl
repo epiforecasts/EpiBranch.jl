@@ -42,6 +42,7 @@ const TEST_GROUPS = (
         "test_infectiousness.jl",
         "test_renewal_offspring.jl",
         "test_count_simulation.jl",
+        "test_count_immune.jl",
         "test_engine_support.jl",
         "test_event_queue.jl",
         "test_route_windows.jl",
