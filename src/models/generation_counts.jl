@@ -479,7 +479,8 @@ function _initial_generation_state(model::_GenerationProcess, n_initial, rng)
     resolution = model.resolution
     return GenerationCounts(
         counts, cumulative, pop, susceptibles, sizes, 0, resolution.generation_length,
-        resolution.depletion, rng, nt == 1 ? () : Vector{Int}[], nt == 1 ? 0 : zeros(Int, nt)
+        resolution.depletion, rng, counts isa Int ? () : Vector{Int}[],
+        counts isa Int ? 0 : zeros(Int, nt)
     )
 end
 
@@ -567,9 +568,8 @@ end
 """
     GenerationCampaigns
 
-The vaccination campaigns of a [`ModelSpec`](@ref) and its branching process, as
-returned by [`prepare_generations`](@ref). Hold one to continue many
-[`GenerationCounts`](@ref) without building the campaigns again.
+The branching process and vaccination campaigns of a [`ModelSpec`](@ref)
+for starting or continuing [`GenerationCounts`](@ref).
 """
 struct GenerationCampaigns{M <: BranchingProcess, V <: Union{AbstractVector, Tuple}}
     model::M
@@ -579,9 +579,8 @@ end
 """
     prepare_generations(spec::ModelSpec, state::GenerationCounts)
 
-Build the vaccination campaigns of `spec` for continuing `state`. The
-`generation_length` and whether the population is finite come from `state`. Pass the result to
-`simulate` in place of `spec`.
+Return the vaccination campaigns of `spec` with the generation length and
+depletion setting of `state`, for starting or continuing generation counts.
 """
 function prepare_generations(spec::ModelSpec, state::GenerationCounts)
     campaigns = _generation_campaigns(
@@ -589,9 +588,34 @@ function prepare_generations(spec::ModelSpec, state::GenerationCounts)
     )
     # A single type holds them as a tuple to count the doses of each without
     # allocating.
-    return GenerationCampaigns(
-        _generation_process(spec), state.counts isa Int ? _as_tuple(campaigns) : campaigns
+    model = _generation_process(spec)
+    resolution = ByGeneration(; depletion = state.depletion, generation_length = state.generation_length)
+    model = BranchingProcess(
+        model.infectiousness, _prepared_population(model.population, state.type_sizes), model.n_types, model.type_labels,
+        model.multiplier, model.importations, resolution
     )
+    return GenerationCampaigns(model, state.counts isa Int ? _as_tuple(campaigns) : campaigns)
+end
+
+_prepared_population(population, sizes) = population
+function _prepared_population(population::SinglePopulation, sizes::Vector{Int})
+    return Population(sizes; immune = _immune(population, length(sizes)))
+end
+
+"""
+    simulate(prepared::GenerationCampaigns; n_initial = 1, max_generations = 100,
+             rng = Random.default_rng())
+
+Start a [`GenerationCounts`](@ref) with the prepared model and campaigns.
+"""
+function simulate(
+        prepared::GenerationCampaigns;
+        n_initial::Union{Integer, AbstractVector{<:Integer}} = 1,
+        max_generations::Integer = _DEFAULT_MAX_GENERATIONS,
+        rng::AbstractRNG = Random.default_rng()
+    )
+    state = _initial_generation_state(prepared.model, n_initial, rng)
+    return simulate(prepared, _zero_doses(state, prepared.campaigns); max_generations)
 end
 
 """
