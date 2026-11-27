@@ -281,12 +281,12 @@ using EpiBranch, Distributions, Random, StableRNGs, Statistics, DataFrames
     end
 
     @testset "copying count history" begin
-        model = BranchingProcess(
-            Poisson(4.5), DiscreteNonParametric([14], [1.0]);
-            population = Population(30_000)
-        )
         state = simulate(
-            model; n_initial = 50, max_time = 42.0, max_generations = 10_000,
+            BranchingProcess(
+                Poisson(4.5), DiscreteNonParametric([14], [1.0]);
+                population = Population(30_000)
+            );
+            n_initial = 50, max_time = 42.0, max_generations = 10_000,
             rng = Xoshiro(1)
         )
         copy(state)
